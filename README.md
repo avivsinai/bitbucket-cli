@@ -48,18 +48,32 @@ Contexts capture the host mapping, default project/workspace, and optional defau
 ```bash
 bkt repo list --limit 20
 bkt repo view platform-api
+bkt repo create data-pipeline --description "Data ingestion" --project DATA
+bkt repo clone platform-api --project DATA --ssh
 ```
 
-`repo list` and `repo view` use the Bitbucket Data Center REST API (`/rest/api/1.0/projects/{projectKey}/repos`) to enumerate repositories and surface clone/web URLs for scripting.
+`repo list`/`repo view` use the Bitbucket Data Center REST API (`/rest/api/1.0/projects/{projectKey}/repos`) to enumerate repositories and surface clone/web URLs for scripting.citeturn0search2
 
-### 4. Inspect build statuses
+### 4. Pull request workflows
 
 ```bash
-bkt status commit <sha>
-bkt status pr 42 --repo platform-api
+bkt pr list --state OPEN --limit 10
+bkt pr create --title "feat: cache" --source feature/cache --target main --reviewer alice
+bkt pr merge 42 --message "merge: feature/cache"
 ```
 
-Commit and pull request status inspection reads from `/rest/build-status/1.0/commits/{sha}` so you can see CI results without leaving the terminal.
+The CLI wraps Bitbucket pull-request endpoints for creation, listing, review, and merge operations.citeturn0search4turn1search2turn1search1
+
+### 5. Branch, permission, and webhook management
+
+```bash
+bkt branch list
+bkt branch create release/1.9 --from main
+bkt perms repo list --project DATA --repo platform-api
+bkt webhook create --name "CI" --url https://ci.example.com/hook --event repo:refs_changed
+```
+
+Branch utilities use Bitbucket's Branch Utils REST API for listing, creation, deletion, and default updates.citeturn1search0turn3search0turn4search1 Permission and webhook commands map to their REST endpoints for consistent automation.citeturn0search3turn2search2
 
 ### Structured output
 
@@ -67,7 +81,6 @@ Every command supports the global `--json` and `--yaml` flags for automation-rea
 
 ## Roadmap highlights
 
-- Bitbucket Cloud support (API token auth, workspaces, pipelines).
-- Repository creation, clone helpers, and `repo browse` deep links.
-- Pull request management (`list`, `view`, `create`, `merge`).
-- Webhook administration and pipeline orchestration.
+- Bitbucket Cloud authentication and Pipelines integration.
+- Branch protection helpers and webhook test harness.
+- `bkt status` enhancements for aggregated build reporting.

@@ -53,11 +53,12 @@ type User struct {
 
 // Repository represents a Bitbucket repository.
 type Repository struct {
-	Slug    string   `json:"slug"`
-	Name    string   `json:"name"`
-	ID      int      `json:"id"`
-	Project *Project `json:"project"`
-	Links   struct {
+	Slug          string   `json:"slug"`
+	Name          string   `json:"name"`
+	ID            int      `json:"id"`
+	Project       *Project `json:"project"`
+	DefaultBranch string   `json:"defaultBranch,omitempty"`
+	Links         struct {
 		Self []struct {
 			Href string `json:"href"`
 		} `json:"self"`
@@ -83,15 +84,19 @@ type Project struct {
 
 // PullRequest models a Bitbucket pull request.
 type PullRequest struct {
-	ID     int    `json:"id"`
-	Title  string `json:"title"`
-	State  string `json:"state"`
-	Author struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	State       string `json:"state"`
+	Version     int    `json:"version"`
+	Author      struct {
 		User User `json:"user"`
 	} `json:"author"`
-	FromRef Ref `json:"fromRef"`
-	ToRef   Ref `json:"toRef"`
-	Links   struct {
+	FromRef      Ref                      `json:"fromRef"`
+	ToRef        Ref                      `json:"toRef"`
+	Reviewers    []PullRequestReviewer    `json:"reviewers"`
+	Participants []PullRequestParticipant `json:"participants"`
+	Links        struct {
 		Self []struct {
 			Href string `json:"href"`
 		} `json:"self"`
@@ -232,14 +237,7 @@ func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, sta
 		return nil, fmt.Errorf("project key and repository slug are required")
 	}
 
-	if limit <= 0 {
-		limit = 25
-	}
-
-	params := []string{fmt.Sprintf("limit=%d", limit)}
-	if state != "" {
-		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-	}
+	const defaultPageSize = 25
 
 	var (
 		start = 0
@@ -247,6 +245,22 @@ func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, sta
 	)
 
 	for {
+		pageSize := defaultPageSize
+		if limit > 0 {
+			remaining := limit - len(all)
+			if remaining <= 0 {
+				break
+			}
+			if remaining < pageSize {
+				pageSize = remaining
+			}
+		}
+
+		params := []string{fmt.Sprintf("limit=%d", pageSize)}
+		if state != "" {
+			params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
+		}
+
 		u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests?%s&start=%d",
 			url.PathEscape(projectKey),
 			url.PathEscape(repoSlug),
@@ -269,6 +283,10 @@ func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, sta
 			break
 		}
 		start = resp.NextPageStart
+	}
+
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
 	}
 
 	return all, nil

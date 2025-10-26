@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -32,6 +33,15 @@ func NewCmdRepo(f *cmdutil.Factory) *cobra.Command {
 type listOptions struct {
 	Project string
 	Limit   int
+}
+
+type createOptions struct {
+	Project       string
+	Description   string
+	Public        bool
+	Forkable      bool
+	DefaultBranch string
+	SCM           string
 }
 
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
@@ -152,6 +162,13 @@ type viewOptions struct {
 	Repo    string
 }
 
+type cloneOptions struct {
+	Project string
+	Repo    string
+	UseSSH  bool
+	Dest    string
+}
+
 func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &viewOptions{}
 	cmd := &cobra.Command{
@@ -260,37 +277,223 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 	return nil
 }
 
+func runClone(cmd *cobra.Command, f *cmdutil.Factory, opts *cloneOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+	if host.Kind != "dc" {
+		return fmt.Errorf("repo clone currently supports Data Center contexts only")
+	}
+
+	projectKey := strings.TrimSpace(opts.Project)
+	if projectKey == "" {
+		projectKey = ctxCfg.ProjectKey
+	}
+	if projectKey == "" {
+		return fmt.Errorf("project key required; set with --project or configure the context default")
+	}
+
+	repoSlug := strings.TrimSpace(opts.Repo)
+	if repoSlug == "" {
+		repoSlug = ctxCfg.DefaultRepo
+	}
+	if repoSlug == "" {
+		return fmt.Errorf("repository slug required; pass argument or set the context default")
+	}
+
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+	defer cancel()
+
+	repo, err := client.GetRepository(ctx, projectKey, repoSlug)
+	if err != nil {
+		return err
+	}
+
+	var cloneURL string
+	desired := "http"
+	if opts.UseSSH {
+		desired = "ssh"
+	}
+	for _, link := range repo.Links.Clone {
+		if strings.EqualFold(link.Name, desired) {
+			cloneURL = link.Href
+			break
+		}
+	}
+	if cloneURL == "" {
+		return fmt.Errorf("no %s clone URL available", desired)
+	}
+
+	args := []string{"clone", cloneURL}
+	if opts.Dest != "" {
+		args = append(args, opts.Dest)
+	}
+
+	cmdExec := exec.CommandContext(cmd.Context(), "git", args...)
+	cmdExec.Stdout = ios.Out
+	cmdExec.Stderr = ios.ErrOut
+	cmdExec.Stdin = ios.In
+
+	return cmdExec.Run()
+}
+
+func runBrowse(cmd *cobra.Command, f *cmdutil.Factory) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+	if host.Kind != "dc" {
+		return fmt.Errorf("repo browse currently supports Data Center contexts only")
+	}
+
+	projectKey := ctxCfg.ProjectKey
+	repoSlug := ctxCfg.DefaultRepo
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("context must define project and default repo")
+	}
+
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+	defer cancel()
+	repo, err := client.GetRepository(ctx, projectKey, repoSlug)
+	if err != nil {
+		return err
+	}
+
+	if link := firstLink(*repo, "web"); link != "" {
+		fmt.Fprintln(ios.Out, link)
+		return nil
+	}
+
+	return fmt.Errorf("repository does not expose a web URL")
+}
+
 func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
+	var opts createOptions
+
 	cmd := &cobra.Command{
 		Use:   "create <repository>",
 		Short: "Create a new repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			repoSlug := args[0]
+			return runCreate(cmd, f, repoSlug, opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Description, "description", "", "Repository description")
+	cmd.Flags().BoolVar(&opts.Public, "public", false, "Create repository as public")
+	cmd.Flags().BoolVar(&opts.Forkable, "forkable", false, "Allow forking of the repository")
+	cmd.Flags().StringVar(&opts.DefaultBranch, "default-branch", "", "Default branch to set after creation")
+	cmd.Flags().StringVar(&opts.SCM, "scm", "git", "SCM type (git)")
+
 	return cmd
 }
 
+func runCreate(cmd *cobra.Command, f *cmdutil.Factory, slug string, opts createOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+	if host.Kind != "dc" {
+		return fmt.Errorf("repo create currently supports Data Center contexts only")
+	}
+
+	projectKey := strings.TrimSpace(opts.Project)
+	if projectKey == "" {
+		projectKey = ctxCfg.ProjectKey
+	}
+	if projectKey == "" {
+		return fmt.Errorf("project key required; set with --project or configure the context default")
+	}
+
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+	defer cancel()
+
+	input := bbdc.CreateRepositoryInput{
+		Name:          slug,
+		SCMID:         opts.SCM,
+		Description:   opts.Description,
+		Public:        opts.Public,
+		Forkable:      opts.Forkable,
+		DefaultBranch: opts.DefaultBranch,
+	}
+
+	repo, err := client.CreateRepository(ctx, projectKey, input)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(ios.Out, "✓ Created %s/%s\n", repo.Project.Key, repo.Slug)
+	if repo.DefaultBranch != "" {
+		fmt.Fprintf(ios.Out, "  default branch: %s\n", repo.DefaultBranch)
+	}
+	for _, clone := range cloneLinks(*repo) {
+		fmt.Fprintf(ios.Out, "  clone: %s\n", clone)
+	}
+	return nil
+}
+
 func newCloneCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &cloneOptions{}
 	cmd := &cobra.Command{
 		Use:   "clone <repository>",
 		Short: "Clone a repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			opts.Repo = args[0]
+			return runClone(cmd, f, opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().BoolVar(&opts.UseSSH, "ssh", false, "Use SSH clone URL")
+	cmd.Flags().StringVar(&opts.Dest, "dest", "", "Destination directory")
+
 	return cmd
 }
 
 func newBrowseCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "browse [path]",
-		Short: "Open repository pages in the browser",
-		Args:  cobra.MaximumNArgs(1),
+		Use:   "browse",
+		Short: "Print the repository web URL",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			return runBrowse(cmd, f)
 		},
 	}
 	return cmd

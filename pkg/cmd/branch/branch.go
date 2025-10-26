@@ -1,9 +1,16 @@
 package branch
 
 import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCmdBranch exposes branch operations.
@@ -22,41 +29,228 @@ func NewCmdBranch(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
+type listOptions struct {
+	Project string
+	Repo    string
+	Filter  string
+	Limit   int
+}
+
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &listOptions{Limit: 50}
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List branches",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			return runList(cmd, f, opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().StringVar(&opts.Filter, "filter", "", "Filter branches by text")
+	cmd.Flags().IntVar(&opts.Limit, "limit", opts.Limit, "Maximum branches to list (0 for all)")
+
 	return cmd
 }
 
+func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+	if host.Kind != "dc" {
+		return fmt.Errorf("branch list currently supports Data Center contexts only")
+	}
+
+	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+	}
+
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+	defer cancel()
+
+	branches, err := client.ListBranches(ctx, projectKey, repoSlug, bbdc.BranchListOptions{Filter: opts.Filter, Limit: opts.Limit})
+	if err != nil {
+		return err
+	}
+
+	formatOpt, err := cmdutil.OutputFormat(cmd)
+	if err != nil {
+		return err
+	}
+
+	if formatOpt != "" {
+		payload := map[string]any{
+			"project":  projectKey,
+			"repo":     repoSlug,
+			"branches": branches,
+		}
+		return format.Write(ios.Out, formatOpt, payload, nil)
+	}
+
+	if len(branches) == 0 {
+		fmt.Fprintln(ios.Out, "No branches found.")
+		return nil
+	}
+
+	for _, branch := range branches {
+		marker := " "
+		if branch.IsDefault {
+			marker = "*"
+		}
+		fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.DisplayID, branch.LatestCommit)
+	}
+	return nil
+}
+
+type createOptions struct {
+	Project string
+	Repo    string
+	Source  string
+	Message string
+}
+
 func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &createOptions{}
 	cmd := &cobra.Command{
 		Use:   "create <branch>",
 		Short: "Create a new branch",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			return runCreate(cmd, f, args[0], opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().StringVar(&opts.Source, "from", "", "Branch or commit to start from (required)")
+	cmd.Flags().StringVar(&opts.Message, "message", "", "Optional branch creation message")
+	_ = cmd.MarkFlagRequired("from")
+
 	return cmd
 }
 
+func runCreate(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *createOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+	if host.Kind != "dc" {
+		return fmt.Errorf("branch create currently supports Data Center contexts only")
+	}
+
+	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+	}
+
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+	defer cancel()
+
+	branch, err := client.CreateBranch(ctx, projectKey, repoSlug, bbdc.CreateBranchInput{
+		Name:       name,
+		StartPoint: opts.Source,
+		Message:    opts.Message,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(ios.Out, "✓ Created branch %s (%s)\n", branch.DisplayID, branch.LatestCommit)
+	return nil
+}
+
+type deleteOptions struct {
+	Project string
+	Repo    string
+	DryRun  bool
+}
+
 func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &deleteOptions{}
 	cmd := &cobra.Command{
 		Use:     "delete <branch>",
 		Aliases: []string{"rm"},
 		Short:   "Delete a branch",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			return runDelete(cmd, f, args[0], opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Perform a dry run without deleting")
+
 	return cmd
+}
+
+func runDelete(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *deleteOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+	if host.Kind != "dc" {
+		return fmt.Errorf("branch delete currently supports Data Center contexts only")
+	}
+
+	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+	}
+
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+	defer cancel()
+
+	if err := client.DeleteBranch(ctx, projectKey, repoSlug, name, opts.DryRun); err != nil {
+		return err
+	}
+
+	action := "Deleted"
+	if opts.DryRun {
+		action = "Validated"
+	}
+	fmt.Fprintf(ios.Out, "✓ %s branch %s\n", action, name)
+	return nil
 }
 
 func newSetDefaultCmd(f *cmdutil.Factory) *cobra.Command {
@@ -65,10 +259,47 @@ func newSetDefaultCmd(f *cmdutil.Factory) *cobra.Command {
 		Short: "Set the default branch",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			return runSetDefault(cmd, f, args[0])
 		},
 	}
 	return cmd
+}
+
+func runSetDefault(cmd *cobra.Command, f *cmdutil.Factory, name string) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+	if host.Kind != "dc" {
+		return fmt.Errorf("branch set-default currently supports Data Center contexts only")
+	}
+
+	projectKey := ctxCfg.ProjectKey
+	repoSlug := ctxCfg.DefaultRepo
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("context must supply project and repo")
+	}
+
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+	defer cancel()
+
+	if err := client.SetDefaultBranch(ctx, projectKey, repoSlug, name); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(ios.Out, "✓ Set default branch to %s\n", name)
+	return nil
 }
 
 func newProtectCmd(f *cmdutil.Factory) *cobra.Command {
@@ -77,8 +308,17 @@ func newProtectCmd(f *cmdutil.Factory) *cobra.Command {
 		Short: "Configure branch protection rules",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdutil.NotImplemented(cmd)
+			return fmt.Errorf("branch protection is not yet implemented")
 		},
 	}
 	return cmd
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
