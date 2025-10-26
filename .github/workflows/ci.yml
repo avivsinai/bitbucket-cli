@@ -46,7 +46,7 @@ jobs:
           args: dir:. -o cyclonedx-json=sbom.cdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sbom
           path: sbom.cdx.json
