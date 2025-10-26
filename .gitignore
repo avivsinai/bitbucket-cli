@@ -1,0 +1,17 @@
+# Build artifacts
+bkt
+dist/
+
+# Go
+bin/
+*.test
+*.out
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# macOS
+.DS_Store
+
