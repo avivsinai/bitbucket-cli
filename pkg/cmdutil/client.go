@@ -53,3 +53,27 @@ func NewCloudClient(host *config.Host) (*bbcloud.Client, error) {
 	}
 	return bbcloud.New(opts)
 }
+
+// NewHTTPClient constructs a raw HTTP client for the configured host.
+func NewHTTPClient(host *config.Host) (*httpx.Client, error) {
+	if host == nil {
+		return nil, fmt.Errorf("missing host configuration")
+	}
+
+	switch host.Kind {
+	case "dc":
+		client, err := NewDCClient(host)
+		if err != nil {
+			return nil, err
+		}
+		return client.HTTP(), nil
+	case "cloud":
+		client, err := NewCloudClient(host)
+		if err != nil {
+			return nil, err
+		}
+		return client.HTTP(), nil
+	default:
+		return nil, fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}

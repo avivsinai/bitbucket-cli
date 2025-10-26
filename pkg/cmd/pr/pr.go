@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
@@ -40,11 +41,12 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 }
 
 type listOptions struct {
-	Project string
-	Repo    string
-	State   string
-	Limit   int
-	Mine    bool
+	Project   string
+	Workspace string
+	Repo      string
+	State     string
+	Limit     int
+	Mine      bool
 }
 
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
@@ -59,6 +61,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.State, "state", opts.State, "Filter by state (OPEN, MERGED, DECLINED)")
 	cmd.Flags().IntVar(&opts.Limit, "limit", opts.Limit, "Maximum pull requests to list (0 for all)")
@@ -78,67 +81,120 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr list currently supports Data Center contexts only")
-	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
 
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
 
-	prs, err := client.ListPullRequests(ctx, projectKey, repoSlug, opts.State, opts.Limit)
-	if err != nil {
-		return err
-	}
+		prs, err := client.ListPullRequests(ctx, projectKey, repoSlug, opts.State, opts.Limit)
+		if err != nil {
+			return err
+		}
 
-	if opts.Mine && host.Username != "" {
-		filtered := prs[:0]
-		current := strings.ToLower(host.Username)
-		for _, pr := range prs {
-			author := strings.ToLower(firstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
-			if author == current {
-				filtered = append(filtered, pr)
+		if opts.Mine && host.Username != "" {
+			filtered := prs[:0]
+			current := strings.ToLower(host.Username)
+			for _, pr := range prs {
+				author := strings.ToLower(firstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
+				if author == current {
+					filtered = append(filtered, pr)
+				}
 			}
+			prs = filtered
 		}
-		prs = filtered
-	}
 
-	payload := map[string]any{
-		"project":       projectKey,
-		"repo":          repoSlug,
-		"pull_requests": prs,
-	}
+		payload := map[string]any{
+			"project":       projectKey,
+			"repo":          repoSlug,
+			"pull_requests": prs,
+		}
 
-	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-		if len(prs) == 0 {
-			fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			if len(prs) == 0 {
+				fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+				return nil
+			}
+
+			for _, pr := range prs {
+				author := firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+				fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title)
+				fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author)
+			}
 			return nil
+		})
+
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
 
-		for _, pr := range prs {
-			author := firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
-			fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title)
-			fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author)
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
 		}
-		return nil
-	})
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		mine := ""
+		if opts.Mine && host.Username != "" {
+			mine = host.Username
+		}
+
+		prs, err := client.ListPullRequests(ctx, workspace, repoSlug, bbcloud.PullRequestListOptions{
+			State: opts.State,
+			Limit: opts.Limit,
+			Mine:  mine,
+		})
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"workspace":     workspace,
+			"repo":          repoSlug,
+			"pull_requests": prs,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			if len(prs) == 0 {
+				fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+				return nil
+			}
+
+			for _, pr := range prs {
+				author := firstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
+				fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title)
+				fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name, author)
+			}
+			return nil
+		})
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
 }
 
 type viewOptions struct {
-	Project string
-	Repo    string
-	ID      int
-	Web     bool
+	Project   string
+	Workspace string
+	Repo      string
+	ID        int
+	Web       bool
 }
 
 func newViewCmd(f *cmdutil.Factory) *cobra.Command {
@@ -158,6 +214,7 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().BoolVar(&opts.Web, "web", false, "Open the pull request in your browser")
 
@@ -175,65 +232,115 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr view currently supports Data Center contexts only")
-	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
-
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
-	defer cancel()
-
-	pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, opts.ID)
-	if err != nil {
-		return err
-	}
-
-	payload := map[string]any{
-		"project":      projectKey,
-		"repo":         repoSlug,
-		"pull_request": pr,
-	}
-
-	if opts.Web {
-		if link := firstPRLink(pr, "self"); link != "" {
-			if err := f.BrowserOpener().Open(link); err != nil {
-				return fmt.Errorf("open browser: %w", err)
-			}
-		} else {
-			return fmt.Errorf("pull request does not expose a web URL")
-		}
-	}
-
-	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-		fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title)
-		fmt.Fprintf(ios.Out, "State: %s\n", pr.State)
-		fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name))
-		fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID)
-		if strings.TrimSpace(pr.Description) != "" {
-			fmt.Fprintf(ios.Out, "\n%s\n", pr.Description)
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
 
-		if len(pr.Reviewers) > 0 {
-			fmt.Fprintln(ios.Out, "\nReviewers:")
-			for _, reviewer := range pr.Reviewers {
-				fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name))
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"project":      projectKey,
+			"repo":         repoSlug,
+			"pull_request": pr,
+		}
+
+		if opts.Web {
+			if link := firstPRLinkDC(pr, "self"); link != "" {
+				if err := f.BrowserOpener().Open(link); err != nil {
+					return fmt.Errorf("open browser: %w", err)
+				}
+			} else {
+				return fmt.Errorf("pull request does not expose a web URL")
 			}
 		}
-		return nil
-	})
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title)
+			fmt.Fprintf(ios.Out, "State: %s\n", pr.State)
+			fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name))
+			fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID)
+			if strings.TrimSpace(pr.Description) != "" {
+				fmt.Fprintf(ios.Out, "\n%s\n", pr.Description)
+			}
+
+			if len(pr.Reviewers) > 0 {
+				fmt.Fprintln(ios.Out, "\nReviewers:")
+				for _, reviewer := range pr.Reviewers {
+					fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name))
+				}
+			}
+			return nil
+		})
+
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pr, err := client.GetPullRequest(ctx, workspace, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"workspace":    workspace,
+			"repo":         repoSlug,
+			"pull_request": pr,
+		}
+
+		if opts.Web {
+			if link := firstPRLinkCloud(pr); link != "" {
+				if err := f.BrowserOpener().Open(link); err != nil {
+					return fmt.Errorf("open browser: %w", err)
+				}
+			} else {
+				return fmt.Errorf("pull request does not expose a web URL")
+			}
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title)
+			fmt.Fprintf(ios.Out, "State: %s\n", pr.State)
+			fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.DisplayName, pr.Author.Username))
+			fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name)
+			if strings.TrimSpace(pr.Summary.Raw) != "" {
+				fmt.Fprintf(ios.Out, "\n%s\n", pr.Summary.Raw)
+			}
+			return nil
+		})
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
 }
 
-func firstPRLink(pr *bbdc.PullRequest, kind string) string {
+func firstPRLinkDC(pr *bbdc.PullRequest, kind string) string {
 	if pr == nil {
 		return ""
 	}
@@ -248,8 +355,19 @@ func firstPRLink(pr *bbdc.PullRequest, kind string) string {
 	return ""
 }
 
+func firstPRLinkCloud(pr *bbcloud.PullRequest) string {
+	if pr == nil {
+		return ""
+	}
+	if pr.Links.HTML.Href != "" {
+		return pr.Links.HTML.Href
+	}
+	return ""
+}
+
 type createOptions struct {
 	Project     string
+	Workspace   string
 	Repo        string
 	Title       string
 	Source      string
@@ -270,6 +388,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Title, "title", "", "Pull request title (required)")
 	cmd.Flags().StringVar(&opts.Description, "description", "", "Pull request description")
@@ -296,38 +415,71 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr create currently supports Data Center contexts only")
+
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pr, err := client.CreatePullRequest(ctx, projectKey, repoSlug, bbdc.CreatePROptions{
+			Title:        opts.Title,
+			Description:  opts.Description,
+			SourceBranch: opts.Source,
+			TargetBranch: opts.Target,
+			Reviewers:    opts.Reviewers,
+			CloseSource:  opts.CloseSource,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID)
+		return nil
+
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pr, err := client.CreatePullRequest(ctx, workspace, repoSlug, bbcloud.CreatePullRequestInput{
+			Title:       opts.Title,
+			Description: opts.Description,
+			Source:      opts.Source,
+			Destination: opts.Target,
+			CloseSource: opts.CloseSource,
+			Reviewers:   opts.Reviewers,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID)
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
-
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
-
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
-	defer cancel()
-
-	pr, err := client.CreatePullRequest(ctx, projectKey, repoSlug, bbdc.CreatePROptions{
-		Title:        opts.Title,
-		Description:  opts.Description,
-		SourceBranch: opts.Source,
-		TargetBranch: opts.Target,
-		Reviewers:    opts.Reviewers,
-		CloseSource:  opts.CloseSource,
-	})
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID)
-	return nil
 }
 
 type checkoutOptions struct {

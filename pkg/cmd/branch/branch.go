@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
@@ -30,10 +31,11 @@ func NewCmdBranch(f *cmdutil.Factory) *cobra.Command {
 }
 
 type listOptions struct {
-	Project string
-	Repo    string
-	Filter  string
-	Limit   int
+	Project   string
+	Workspace string
+	Repo      string
+	Filter    string
+	Limit     int
 }
 
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
@@ -48,6 +50,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Filter, "filter", "", "Filter branches by text")
 	cmd.Flags().IntVar(&opts.Limit, "limit", opts.Limit, "Maximum branches to list (0 for all)")
@@ -66,50 +69,99 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("branch list currently supports Data Center contexts only")
-	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
-
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-	defer cancel()
-
-	branches, err := client.ListBranches(ctx, projectKey, repoSlug, bbdc.BranchListOptions{Filter: opts.Filter, Limit: opts.Limit})
-	if err != nil {
-		return err
-	}
-
-	payload := map[string]any{
-		"project":  projectKey,
-		"repo":     repoSlug,
-		"branches": branches,
-	}
-
-	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-		if len(branches) == 0 {
-			fmt.Fprintln(ios.Out, "No branches found.")
-			return nil
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
 
-		for _, branch := range branches {
-			marker := " "
-			if branch.IsDefault {
-				marker = "*"
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		branches, err := client.ListBranches(ctx, projectKey, repoSlug, bbdc.BranchListOptions{Filter: opts.Filter, Limit: opts.Limit})
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"project":  projectKey,
+			"repo":     repoSlug,
+			"branches": branches,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			if len(branches) == 0 {
+				fmt.Fprintln(ios.Out, "No branches found.")
+				return nil
 			}
-			fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.DisplayID, branch.LatestCommit)
+
+			for _, branch := range branches {
+				marker := " "
+				if branch.IsDefault {
+					marker = "*"
+				}
+				fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.DisplayID, branch.LatestCommit)
+			}
+			return nil
+		})
+
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
-		return nil
-	})
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		branches, err := client.ListBranches(ctx, workspace, repoSlug, bbcloud.BranchListOptions{Filter: opts.Filter, Limit: opts.Limit})
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"workspace": workspace,
+			"repo":      repoSlug,
+			"branches":  branches,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			if len(branches) == 0 {
+				fmt.Fprintln(ios.Out, "No branches found.")
+				return nil
+			}
+
+			for _, branch := range branches {
+				marker := " "
+				if branch.IsDefault {
+					marker = "*"
+				}
+				hash := branch.Target.Hash
+				if len(hash) > 12 {
+					hash = hash[:12]
+				}
+				fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.Name, hash)
+			}
+			return nil
+		})
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
 }
 
 type createOptions struct {

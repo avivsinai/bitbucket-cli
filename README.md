@@ -4,7 +4,7 @@
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/avivsinai/bitbucket-cli?label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/avivsinai/bitbucket-cli)
 [![Go Reference](https://pkg.go.dev/badge/github.com/avivsinai/bitbucket-cli.svg)](https://pkg.go.dev/github.com/avivsinai/bitbucket-cli)
 
-`bkt` is a stand-alone Bitbucket command-line interface that targets Bitbucket Data Center first and is ready for Bitbucket Cloud. It mirrors the ergonomics of `gh` while remaining provider-pure (no Jenkins coupling) and delivers a consistent JSON/YAML contract for automation.
+`bkt` is a stand-alone Bitbucket command-line interface that targets Bitbucket Data Center **and** Bitbucket Cloud. It mirrors the ergonomics of `gh` while remaining provider-pure (no Jenkins coupling) and delivers a consistent JSON/YAML contract for automation.
 
 ## Project layout
 
@@ -52,12 +52,13 @@ Contexts capture the host mapping, default project/workspace, and optional defau
 
 ```bash
 bkt repo list --limit 20
+bkt repo list --workspace myteam --limit 10   # Cloud workspace override
 bkt repo view platform-api
 bkt repo create data-pipeline --description "Data ingestion" --project DATA
 bkt repo clone platform-api --project DATA --ssh
 ```
 
-`repo list`/`repo view` call the Bitbucket Data Center REST API (`/rest/api/1.0/projects/{projectKey}/repos`) to enumerate repositories and surface clone/web URLs for scripting.
+`repo list`/`repo view` automatically target the right REST API for your active context: Data Center uses `/rest/api/1.0/projects/{projectKey}/repos`, while Cloud uses `/2.0/repositories/{workspace}`.
 
 ### 4. Pull request workflows
 
@@ -69,23 +70,34 @@ bkt pr merge 42 --message "merge: feature/cache"
 
 The CLI wraps Bitbucket pull-request endpoints for creation, listing, review, and merge operations.
 
-### 5. Branch, permission, webhook, and pipeline management
+### 5. Branch, permission, webhook, pipeline, and extension management
 
 ```bash
-bkt branch list
-bkt branch create release/1.9 --from main
+bkt branch list --workspace myteam           # Cloud branch listing
+bkt branch create release/1.9 --from main    # Data Center branch utils
 bkt perms repo list --project DATA --repo platform-api
 bkt webhook create --name "CI" --url https://ci.example.com/hook --event repo:refs_changed
 bkt pipeline run --workspace myteam --repo api --ref main --var ENV=staging
+bkt extension install https://github.com/example/bkt-hello.git
+bkt extension exec hello -- --flag=1
 bkt status pipeline {pipeline-uuid}
 bkt status rate-limit
 ```
 
 Branch utilities use Bitbucket's Branch Utils REST API for listing, creation, deletion, and default updates. Permission and webhook commands map to their respective REST endpoints for consistent automation.
 
-### Structured output
+Extensions are cloned into `$XDG_CONFIG_HOME/bkt/extensions` (or the directory configured via `BKT_CONFIG_DIR`) and executed in-place. Binaries should follow the `bkt-<name>` naming convention so the CLI can discover them automatically.
+
+### Structured output & raw API access
 
 Every command supports the global `--json` and `--yaml` flags for automation-ready output.
+
+For endpoints that are not yet wrapped, reach directly for the API escape hatch:
+
+```bash
+bkt api /rest/api/1.0/projects --param limit=100 --json
+bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
+```
 
 ## Support
 

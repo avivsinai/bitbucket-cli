@@ -10,8 +10,13 @@ All notable changes to this project will be documented here. The format follows
 - Comprehensive Data Center coverage: reviewer groups, auto-merge management,
   diff statistics, PR tasks and suggestions, comment reactions, branch
   permissions, secrets rotation, logging controls.
-- Bitbucket Cloud support: authentication, Pipelines run/list/view/log, webhook
-  management, `status pipeline`, shared rate-limit telemetry.
+- Bitbucket Cloud support: authentication, repository/branch/pull-request
+  flows, Pipelines run/list/view/log, webhook management, `status pipeline`,
+  shared rate-limit telemetry.
+- Raw `bkt api` escape hatch with method/field/header/param support for
+  experimentation and automation.
+- Extension lifecycle commands (`bkt extension install|list|remove|exec`) with
+  automatic cloning into the CLI config directory.
 - Shared infrastructure upgrades: retrying HTTP client with caching, jq and
   Go-template output, pager integration, interactive prompts, browser helpers.
 - Observability: `bkt status rate-limit`, adaptive throttling, HTTP trace mode.

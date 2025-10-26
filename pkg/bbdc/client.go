@@ -23,6 +23,11 @@ type Client struct {
 	http *httpx.Client
 }
 
+// HTTP exposes the underlying HTTP client for advanced scenarios.
+func (c *Client) HTTP() *httpx.Client {
+	return c.http
+}
+
 // New constructs a Bitbucket Data Center client.
 func New(opts Options) (*Client, error) {
 	if opts.BaseURL == "" {

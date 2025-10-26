@@ -24,6 +24,11 @@ type Client struct {
 	http *httpx.Client
 }
 
+// HTTP exposes the underlying HTTP client for advanced scenarios.
+func (c *Client) HTTP() *httpx.Client {
+	return c.http
+}
+
 // New constructs a Bitbucket Cloud client.
 func New(opts Options) (*Client, error) {
 	if opts.BaseURL == "" {
@@ -67,9 +72,26 @@ func (c *Client) CurrentUser(ctx context.Context) (*User, error) {
 
 // Repository identifies a Bitbucket Cloud repository.
 type Repository struct {
-	UUID string `json:"uuid"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	UUID      string `json:"uuid"`
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	SCM       string `json:"scm"`
+	IsPrivate bool   `json:"is_private"`
+	Links     struct {
+		Clone []struct {
+			Href string `json:"href"`
+			Name string `json:"name"`
+		} `json:"clone"`
+		HTML struct {
+			Href string `json:"href"`
+		} `json:"html"`
+	} `json:"links"`
+	Workspace struct {
+		Slug string `json:"slug"`
+	} `json:"workspace"`
+	Project struct {
+		Key string `json:"key"`
+	} `json:"project"`
 }
 
 // Pipeline represents a pipeline execution.
@@ -128,6 +150,136 @@ func (c *Client) ListPipelines(ctx context.Context, workspace, repoSlug string, 
 	}
 
 	return page.Values, nil
+}
+
+// RepositoryListPage encapsulates paginated repository responses.
+type repositoryListPage struct {
+	Values []Repository `json:"values"`
+	Next   string       `json:"next"`
+}
+
+// ListRepositories enumerates repositories for the workspace.
+func (c *Client) ListRepositories(ctx context.Context, workspace string, limit int) ([]Repository, error) {
+	if workspace == "" {
+		return nil, fmt.Errorf("workspace is required")
+	}
+
+	pageLen := limit
+	if pageLen <= 0 || pageLen > 100 {
+		pageLen = 20
+	}
+
+	path := fmt.Sprintf("/repositories/%s?pagelen=%d",
+		url.PathEscape(workspace),
+		pageLen,
+	)
+
+	var repos []Repository
+
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var page repositoryListPage
+		if err := c.http.Do(req, &page); err != nil {
+			return nil, err
+		}
+
+		repos = append(repos, page.Values...)
+
+		if limit > 0 && len(repos) >= limit {
+			repos = repos[:limit]
+			break
+		}
+
+		if page.Next == "" {
+			break
+		}
+
+		// Bitbucket returns absolute URLs for next; reuse as-is.
+		pathURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		path = pathURL.RequestURI()
+	}
+
+	return repos, nil
+}
+
+// GetRepository retrieves repository details.
+func (c *Client) GetRepository(ctx context.Context, workspace, repoSlug string) (*Repository, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+	)
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var repo Repository
+	if err := c.http.Do(req, &repo); err != nil {
+		return nil, err
+	}
+	return &repo, nil
+}
+
+// CreateRepositoryInput describes repository creation parameters.
+type CreateRepositoryInput struct {
+	Slug        string
+	Name        string
+	Description string
+	IsPrivate   bool
+	ProjectKey  string
+}
+
+// CreateRepository creates a repository within the workspace.
+func (c *Client) CreateRepository(ctx context.Context, workspace string, input CreateRepositoryInput) (*Repository, error) {
+	if workspace == "" {
+		return nil, fmt.Errorf("workspace is required")
+	}
+	if input.Slug == "" {
+		return nil, fmt.Errorf("repository slug is required")
+	}
+
+	body := map[string]any{
+		"scm":        "git",
+		"is_private": input.IsPrivate,
+	}
+
+	if input.Name != "" {
+		body["name"] = input.Name
+	}
+	if input.Description != "" {
+		body["description"] = input.Description
+	}
+	if input.ProjectKey != "" {
+		body["project"] = map[string]any{
+			"key": input.ProjectKey,
+		}
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s",
+		url.PathEscape(workspace),
+		url.PathEscape(input.Slug),
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var repo Repository
+	if err := c.http.Do(req, &repo); err != nil {
+		return nil, err
+	}
+	return &repo, nil
 }
 
 // TriggerPipelineInput configures a pipeline run.
