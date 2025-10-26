@@ -10,7 +10,6 @@ import (
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCmdBranch exposes branch operations.
@@ -25,6 +24,7 @@ func NewCmdBranch(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newDeleteCmd(f))
 	cmd.AddCommand(newSetDefaultCmd(f))
 	cmd.AddCommand(newProtectCmd(f))
+	cmd.AddCommand(newRebaseCmd(f))
 
 	return cmd
 }
@@ -89,33 +89,27 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		return err
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
+	payload := map[string]any{
+		"project":  projectKey,
+		"repo":     repoSlug,
+		"branches": branches,
 	}
 
-	if formatOpt != "" {
-		payload := map[string]any{
-			"project":  projectKey,
-			"repo":     repoSlug,
-			"branches": branches,
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(branches) == 0 {
+			fmt.Fprintln(ios.Out, "No branches found.")
+			return nil
 		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
-	}
 
-	if len(branches) == 0 {
-		fmt.Fprintln(ios.Out, "No branches found.")
+		for _, branch := range branches {
+			marker := " "
+			if branch.IsDefault {
+				marker = "*"
+			}
+			fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.DisplayID, branch.LatestCommit)
+		}
 		return nil
-	}
-
-	for _, branch := range branches {
-		marker := " "
-		if branch.IsDefault {
-			marker = "*"
-		}
-		fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.DisplayID, branch.LatestCommit)
-	}
-	return nil
+	})
 }
 
 type createOptions struct {
@@ -300,18 +294,6 @@ func runSetDefault(cmd *cobra.Command, f *cmdutil.Factory, name string) error {
 
 	fmt.Fprintf(ios.Out, "✓ Set default branch to %s\n", name)
 	return nil
-}
-
-func newProtectCmd(f *cmdutil.Factory) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "protect <branch>",
-		Short: "Configure branch protection rules",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("branch protection is not yet implemented")
-		},
-	}
-	return cmd
 }
 
 func firstNonEmpty(values ...string) string {

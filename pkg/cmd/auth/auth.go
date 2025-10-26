@@ -14,9 +14,10 @@ import (
 	"golang.org/x/term"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 )
 
@@ -87,10 +88,6 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 	if err != nil {
 		return err
 	}
-	hostKey, err := cmdutil.HostKeyFromURL(baseURL)
-	if err != nil {
-		return err
-	}
 
 	kind := strings.ToLower(opts.Kind)
 	if kind == "" {
@@ -102,8 +99,14 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		return err
 	}
 
+	var hostKey string
+
 	switch kind {
 	case "dc":
+		hostKey, err = cmdutil.HostKeyFromURL(baseURL)
+		if err != nil {
+			return err
+		}
 		if opts.Username == "" {
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("username is required when not running in a TTY")
@@ -153,8 +156,74 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		}
 
 		fmt.Fprintf(ios.Out, "✓ Logged in to %s as %s (%s)\n", baseURL, user.FullName, user.Name)
+	case "cloud":
+		if opts.Username == "" {
+			if !isTerminal(ios.In) {
+				return fmt.Errorf("username is required when not running in a TTY")
+			}
+			opts.Username, err = promptString(reader, ios.Out, "Bitbucket username")
+			if err != nil {
+				return err
+			}
+		}
+
+		if opts.Token == "" {
+			if !isTerminal(ios.In) {
+				return fmt.Errorf("token is required when not running in a TTY")
+			}
+			opts.Token, err = promptSecret(ios, "App password")
+			if err != nil {
+				return err
+			}
+		}
+
+		apiURL := baseURL
+		if strings.Contains(baseURL, "bitbucket.org") && !strings.Contains(baseURL, "api.bitbucket.org") {
+			apiURL = "https://api.bitbucket.org/2.0"
+		}
+
+		hostKey, err = cmdutil.HostKeyFromURL(apiURL)
+		if err != nil {
+			return err
+		}
+
+		client, err := bbcloud.New(bbcloud.Options{
+			BaseURL:     apiURL,
+			Username:    opts.Username,
+			Token:       opts.Token,
+			EnableCache: true,
+			Retry: httpx.RetryPolicy{
+				MaxAttempts:    4,
+				InitialBackoff: 200 * time.Millisecond,
+				MaxBackoff:     2 * time.Second,
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		user, err := client.CurrentUser(ctx)
+		if err != nil {
+			return fmt.Errorf("verify credentials: %w", err)
+		}
+
+		cfg.SetHost(hostKey, &config.Host{
+			Kind:     "cloud",
+			BaseURL:  apiURL,
+			Username: opts.Username,
+			Token:    opts.Token,
+		})
+
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(ios.Out, "✓ Logged in to Bitbucket Cloud as %s (%s)\n", user.Display, user.Username)
 	default:
-		return fmt.Errorf("cloud authentication is not yet implemented")
+		return fmt.Errorf("unsupported deployment kind %q", opts.Kind)
 	}
 
 	return nil
@@ -178,11 +247,6 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 	}
 
 	cfg, err := f.ResolveConfig()
-	if err != nil {
-		return err
-	}
-
-	formatOpt, err := cmdutil.OutputFormat(cmd)
 	if err != nil {
 		return err
 	}
@@ -239,56 +303,54 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 		})
 	}
 
-	if formatOpt != "" {
-		payload := struct {
-			ActiveContext string           `json:"active_context,omitempty"`
-			Hosts         []hostSummary    `json:"hosts"`
-			Contexts      []contextSummary `json:"contexts"`
-		}{
-			ActiveContext: cfg.ActiveContext,
-			Hosts:         hosts,
-			Contexts:      contexts,
-		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
+	payload := struct {
+		ActiveContext string           `json:"active_context,omitempty"`
+		Hosts         []hostSummary    `json:"hosts"`
+		Contexts      []contextSummary `json:"contexts"`
+	}{
+		ActiveContext: cfg.ActiveContext,
+		Hosts:         hosts,
+		Contexts:      contexts,
 	}
 
-	if len(hosts) == 0 {
-		fmt.Fprintln(ios.Out, "No hosts configured. Run `bkt auth login` to add one.")
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(hosts) == 0 {
+			fmt.Fprintln(ios.Out, "No hosts configured. Run `bkt auth login` to add one.")
+			return nil
+		}
+
+		fmt.Fprintln(ios.Out, "Hosts:")
+		for _, h := range hosts {
+			fmt.Fprintf(ios.Out, "  %s (%s)\n", h.BaseURL, h.Kind)
+			if h.Username != "" {
+				fmt.Fprintf(ios.Out, "    user: %s\n", h.Username)
+			}
+		}
+
+		if len(contexts) == 0 {
+			fmt.Fprintf(ios.Out, "\nNo contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
+			return nil
+		}
+
+		fmt.Fprintln(ios.Out, "\nContexts:")
+		for _, ctx := range contexts {
+			activeMarker := " "
+			if ctx.Active {
+				activeMarker = "*"
+			}
+			fmt.Fprintf(ios.Out, "  %s %s (host: %s)\n", activeMarker, ctx.Name, ctx.Host)
+			if ctx.ProjectKey != "" {
+				fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey)
+			}
+			if ctx.Workspace != "" {
+				fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace)
+			}
+			if ctx.DefaultRepo != "" {
+				fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo)
+			}
+		}
 		return nil
-	}
-
-	fmt.Fprintln(ios.Out, "Hosts:")
-	for _, h := range hosts {
-		fmt.Fprintf(ios.Out, "  %s (%s)\n", h.BaseURL, h.Kind)
-		if h.Username != "" {
-			fmt.Fprintf(ios.Out, "    user: %s\n", h.Username)
-		}
-	}
-
-	if len(contexts) == 0 {
-		fmt.Fprintf(ios.Out, "\nNo contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
-		return nil
-	}
-
-	fmt.Fprintln(ios.Out, "\nContexts:")
-	for _, ctx := range contexts {
-		activeMarker := " "
-		if ctx.Active {
-			activeMarker = "*"
-		}
-		fmt.Fprintf(ios.Out, "  %s %s (host: %s)\n", activeMarker, ctx.Name, ctx.Host)
-		if ctx.ProjectKey != "" {
-			fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey)
-		}
-		if ctx.Workspace != "" {
-			fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace)
-		}
-		if ctx.DefaultRepo != "" {
-			fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo)
-		}
-	}
-
-	return nil
+	})
 }
 
 type logoutOptions struct {

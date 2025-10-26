@@ -12,7 +12,6 @@ import (
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCmdStatus exposes commit and PR status commands.
@@ -24,6 +23,8 @@ func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.AddCommand(newCommitCmd(f))
 	cmd.AddCommand(newPullRequestCmd(f))
+	cmd.AddCommand(newCloudPipelineCmd(f))
+	cmd.AddCommand(newRateLimitCmd(f))
 
 	return cmd
 }
@@ -171,11 +172,6 @@ func runPullRequest(cmd *cobra.Command, f *cmdutil.Factory, prID int, opts *prOp
 }
 
 func renderStatuses(cmd *cobra.Command, f *cmdutil.Factory, out io.Writer, commit string, statuses []bbdc.CommitStatus, metadata map[string]any) error {
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
-	}
-
 	type statusSummary struct {
 		State       string `json:"state"`
 		Key         string `json:"key"`
@@ -195,41 +191,40 @@ func renderStatuses(cmd *cobra.Command, f *cmdutil.Factory, out io.Writer, commi
 		})
 	}
 
-	if formatOpt != "" {
-		payload := map[string]any{
-			"commit":   commit,
-			"statuses": summaries,
-		}
-		for k, v := range metadata {
-			payload[k] = v
-		}
-		return format.Write(out, formatOpt, payload, nil)
+	payload := map[string]any{
+		"commit":   commit,
+		"statuses": summaries,
+	}
+	for k, v := range metadata {
+		payload[k] = v
 	}
 
-	if metadata != nil {
-		if pr, ok := metadata["pull_request"].(map[string]any); ok {
-			fmt.Fprintf(out, "Pull request #%d: %s\n", pr["id"], pr["title"])
+	return cmdutil.WriteOutput(cmd, out, payload, func() error {
+		if metadata != nil {
+			if pr, ok := metadata["pull_request"].(map[string]any); ok {
+				fmt.Fprintf(out, "Pull request #%d: %s\n", pr["id"], pr["title"])
+			}
+			if ctx, ok := metadata["context"].(map[string]any); ok {
+				fmt.Fprintf(out, "Project %s / Repo %s\n", ctx["project"], ctx["repo"])
+			}
 		}
-		if ctx, ok := metadata["context"].(map[string]any); ok {
-			fmt.Fprintf(out, "Project %s / Repo %s\n", ctx["project"], ctx["repo"])
-		}
-	}
 
-	fmt.Fprintf(out, "Commit %s\n", commit)
-	if len(summaries) == 0 {
-		fmt.Fprintln(out, "No statuses reported.")
+		fmt.Fprintf(out, "Commit %s\n", commit)
+		if len(summaries) == 0 {
+			fmt.Fprintln(out, "No statuses reported.")
+			return nil
+		}
+
+		for _, s := range summaries {
+			line := fmt.Sprintf("%-10s %-20s %s", s.State, s.Key, s.Name)
+			if s.Description != "" {
+				line = fmt.Sprintf("%s — %s", line, s.Description)
+			}
+			fmt.Fprintln(out, line)
+			if s.URL != "" {
+				fmt.Fprintf(out, "    %s\n", s.URL)
+			}
+		}
 		return nil
-	}
-
-	for _, s := range summaries {
-		line := fmt.Sprintf("%-10s %-20s %s", s.State, s.Key, s.Name)
-		if s.Description != "" {
-			line = fmt.Sprintf("%s — %s", line, s.Description)
-		}
-		fmt.Fprintln(out, line)
-		if s.URL != "" {
-			fmt.Fprintf(out, "    %s\n", s.URL)
-		}
-	}
-	return nil
+	})
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCommand manages repository and project permissions.
@@ -192,26 +191,20 @@ func runProjectList(cmd *cobra.Command, f *cmdutil.Factory, opts *projectListOpt
 		return err
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
+	payload := map[string]any{
+		"project":     opts.Project,
+		"permissions": perms,
 	}
 
-	if formatOpt != "" {
-		payload := map[string]any{
-			"project":     opts.Project,
-			"permissions": perms,
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		for _, p := range perms {
+			fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission)
 		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
-	}
-
-	for _, p := range perms {
-		fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission)
-	}
-	if len(perms) == 0 {
-		fmt.Fprintln(ios.Out, "No permissions found.")
-	}
-	return nil
+		if len(perms) == 0 {
+			fmt.Fprintln(ios.Out, "No permissions found.")
+		}
+		return nil
+	})
 }
 
 func runProjectGrant(cmd *cobra.Command, f *cmdutil.Factory, opts *projectGrantOptions) error {
@@ -304,27 +297,21 @@ func runRepoList(cmd *cobra.Command, f *cmdutil.Factory, opts *repoListOptions) 
 		return err
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
+	payload := map[string]any{
+		"project":     opts.Project,
+		"repo":        opts.Repo,
+		"permissions": perms,
 	}
 
-	if formatOpt != "" {
-		payload := map[string]any{
-			"project":     opts.Project,
-			"repo":        opts.Repo,
-			"permissions": perms,
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		for _, p := range perms {
+			fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission)
 		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
-	}
-
-	for _, p := range perms {
-		fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission)
-	}
-	if len(perms) == 0 {
-		fmt.Fprintln(ios.Out, "No permissions found.")
-	}
-	return nil
+		if len(perms) == 0 {
+			fmt.Fprintln(ios.Out, "No permissions found.")
+		}
+		return nil
+	})
 }
 
 func runRepoGrant(cmd *cobra.Command, f *cmdutil.Factory, opts *repoGrantOptions) error {

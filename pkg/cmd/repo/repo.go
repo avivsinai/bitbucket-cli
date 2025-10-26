@@ -11,7 +11,6 @@ import (
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCmdRepo wires repository subcommands.
@@ -103,11 +102,6 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		return err
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
-	}
-
 	type repoSummary struct {
 		Project string   `json:"project"`
 		Slug    string   `json:"slug"`
@@ -129,32 +123,31 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		})
 	}
 
-	if formatOpt != "" {
-		payload := struct {
-			Project string        `json:"project"`
-			Repos   []repoSummary `json:"repositories"`
-		}{
-			Project: projectKey,
-			Repos:   summaries,
-		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
+	payload := struct {
+		Project string        `json:"project"`
+		Repos   []repoSummary `json:"repositories"`
+	}{
+		Project: projectKey,
+		Repos:   summaries,
 	}
 
-	if len(summaries) == 0 {
-		fmt.Fprintf(ios.Out, "No repositories found in project %s.\n", projectKey)
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(summaries) == 0 {
+			fmt.Fprintf(ios.Out, "No repositories found in project %s.\n", projectKey)
+			return nil
+		}
+
+		for _, r := range summaries {
+			fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, r.Name)
+			if r.WebURL != "" {
+				fmt.Fprintf(ios.Out, "    web:   %s\n", r.WebURL)
+			}
+			if len(r.Clone) > 0 {
+				fmt.Fprintf(ios.Out, "    clone: %s\n", strings.Join(r.Clone, ", "))
+			}
+		}
 		return nil
-	}
-
-	for _, r := range summaries {
-		fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, r.Name)
-		if r.WebURL != "" {
-			fmt.Fprintf(ios.Out, "    web:   %s\n", r.WebURL)
-		}
-		if len(r.Clone) > 0 {
-			fmt.Fprintf(ios.Out, "    clone: %s\n", strings.Join(r.Clone, ", "))
-		}
-	}
-	return nil
+	})
 }
 
 type viewOptions struct {
@@ -237,11 +230,6 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		return err
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
-	}
-
 	type repoDetails struct {
 		Project string   `json:"project"`
 		Slug    string   `json:"slug"`
@@ -260,21 +248,19 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		Clone:   cloneLinks(*repo),
 	}
 
-	if formatOpt != "" {
-		return format.Write(ios.Out, formatOpt, details, nil)
-	}
-
-	fmt.Fprintf(ios.Out, "%s/%s (%d)\n", details.Project, details.Slug, details.ID)
-	fmt.Fprintf(ios.Out, "Name: %s\n", details.Name)
-	if details.WebURL != "" {
-		fmt.Fprintf(ios.Out, "Web:  %s\n", details.WebURL)
-	}
-	if len(details.Clone) > 0 {
-		for _, url := range details.Clone {
-			fmt.Fprintf(ios.Out, "Clone: %s\n", url)
+	return cmdutil.WriteOutput(cmd, ios.Out, details, func() error {
+		fmt.Fprintf(ios.Out, "%s/%s (%d)\n", details.Project, details.Slug, details.ID)
+		fmt.Fprintf(ios.Out, "Name: %s\n", details.Name)
+		if details.WebURL != "" {
+			fmt.Fprintf(ios.Out, "Web:  %s\n", details.WebURL)
 		}
-	}
-	return nil
+		if len(details.Clone) > 0 {
+			for _, url := range details.Clone {
+				fmt.Fprintf(ios.Out, "Clone: %s\n", url)
+			}
+		}
+		return nil
+	})
 }
 
 func runClone(cmd *cobra.Command, f *cmdutil.Factory, opts *cloneOptions) error {

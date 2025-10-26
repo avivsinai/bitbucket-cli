@@ -9,7 +9,6 @@ import (
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCmdContext returns the context management command tree.
@@ -184,11 +183,6 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory) error {
 		return err
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
-	}
-
 	type summary struct {
 		Name        string `json:"name"`
 		Host        string `json:"host"`
@@ -217,39 +211,38 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory) error {
 		})
 	}
 
-	if formatOpt != "" {
-		payload := struct {
-			Active   string    `json:"active_context,omitempty"`
-			Contexts []summary `json:"contexts"`
-		}{
-			Active:   cfg.ActiveContext,
-			Contexts: contexts,
-		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
+	payload := struct {
+		Active   string    `json:"active_context,omitempty"`
+		Contexts []summary `json:"contexts"`
+	}{
+		Active:   cfg.ActiveContext,
+		Contexts: contexts,
 	}
 
-	if len(contexts) == 0 {
-		fmt.Fprintf(ios.Out, "No contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(contexts) == 0 {
+			fmt.Fprintf(ios.Out, "No contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
+			return nil
+		}
+
+		for _, ctx := range contexts {
+			marker := " "
+			if ctx.Active {
+				marker = "*"
+			}
+			fmt.Fprintf(ios.Out, "%s %s (host: %s)\n", marker, ctx.Name, ctx.Host)
+			if ctx.ProjectKey != "" {
+				fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey)
+			}
+			if ctx.Workspace != "" {
+				fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace)
+			}
+			if ctx.DefaultRepo != "" {
+				fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo)
+			}
+		}
 		return nil
-	}
-
-	for _, ctx := range contexts {
-		marker := " "
-		if ctx.Active {
-			marker = "*"
-		}
-		fmt.Fprintf(ios.Out, "%s %s (host: %s)\n", marker, ctx.Name, ctx.Host)
-		if ctx.ProjectKey != "" {
-			fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey)
-		}
-		if ctx.Workspace != "" {
-			fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace)
-		}
-		if ctx.DefaultRepo != "" {
-			fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo)
-		}
-	}
-	return nil
+	})
 }
 
 func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {

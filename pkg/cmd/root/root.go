@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/admin"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/api"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/auth"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/branch"
@@ -46,15 +47,18 @@ Common flows:
 	root.PersistentFlags().StringP("context", "c", "", "Active Bitbucket context name")
 	root.PersistentFlags().Bool("json", false, "Output in JSON format when supported")
 	root.PersistentFlags().Bool("yaml", false, "Output in YAML format when supported")
+	root.PersistentFlags().String("jq", "", "Apply a jq expression to JSON output (requires --json)")
+	root.PersistentFlags().String("template", "", "Render output using Go templates")
 
 	root.AddCommand(
+		admin.NewCmdAdmin(f),
 		auth.NewCmdAuth(f),
 		contextcmd.NewCmdContext(f),
 		repo.NewCmdRepo(f),
 		pr.NewCmdPR(f),
 		branch.NewCmdBranch(f),
-        perms.NewCommand(f),
-        webhook.NewCommand(f),
+		perms.NewCommand(f),
+		webhook.NewCommand(f),
 		status.NewCmdStatus(f),
 		pipeline.NewCmdPipeline(f),
 		api.NewCmdAPI(f),

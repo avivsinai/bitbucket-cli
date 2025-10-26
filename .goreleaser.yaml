@@ -1,0 +1,56 @@
+project_name: bkt
+
+release:
+  prerelease: false
+  changelog:
+    use: git
+    sort: asc
+
+builds:
+  - id: bkt
+    main: ./cmd/bkt
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/avivsinai/bitbucket-cli/internal/build.Version={{.Version}}
+    mod_timestamp: '{{ .CommitDate }}'
+
+archives:
+  - format: tar.gz
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: 'bkt_{{ .Version }}_checksums.txt'
+
+sboms:
+  - id: syft-json
+    artifacts: archive
+    cmd: syft dir:${{dir}} -o cyclonedx-json={{ .Name }}.sbom.json
+
+brews:
+  - name: bkt
+    tap:
+      owner: avivsinai
+      name: homebrew-tap
+    folder: Formula
+    description: Bitbucket CLI with gh-style ergonomics
+    homepage: https://github.com/avivsinai/bitbucket-cli
+    license: MIT
+    test: |
+      system "#{bin}/bkt", "--version"
+
+nfpms:
+  - id: deb
+    package_name: bkt
+    file_name_template: 'bkt_{{ .Version }}_{{ .Arch }}'
+    formats: [deb]
+    maintainer: Aviv Sinai <opensource@avivsinai.dev>
+    description: Bitbucket CLI
+    homepage: https://github.com/avivsinai/bitbucket-cli
+    license: MIT

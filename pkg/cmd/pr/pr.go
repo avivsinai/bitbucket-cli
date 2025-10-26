@@ -13,7 +13,6 @@ import (
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCmdPR returns the pull request command tree.
@@ -31,6 +30,11 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newApproveCmd(f))
 	cmd.AddCommand(newMergeCmd(f))
 	cmd.AddCommand(newCommentCmd(f))
+	cmd.AddCommand(newReviewerGroupCmd(f))
+	cmd.AddCommand(newAutoMergeCmd(f))
+	cmd.AddCommand(newTaskCmd(f))
+	cmd.AddCommand(newReactionCmd(f))
+	cmd.AddCommand(newSuggestionCmd(f))
 
 	return cmd
 }
@@ -109,37 +113,32 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		prs = filtered
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
+	payload := map[string]any{
+		"project":       projectKey,
+		"repo":          repoSlug,
+		"pull_requests": prs,
 	}
 
-	if formatOpt != "" {
-		payload := map[string]any{
-			"project":       projectKey,
-			"repo":          repoSlug,
-			"pull_requests": prs,
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(prs) == 0 {
+			fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+			return nil
 		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
-	}
 
-	if len(prs) == 0 {
-		fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+		for _, pr := range prs {
+			author := firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+			fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title)
+			fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author)
+		}
 		return nil
-	}
-
-	for _, pr := range prs {
-		author := firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
-		fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title)
-		fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author)
-	}
-	return nil
+	})
 }
 
 type viewOptions struct {
 	Project string
 	Repo    string
 	ID      int
+	Web     bool
 }
 
 func newViewCmd(f *cmdutil.Factory) *cobra.Command {
@@ -160,6 +159,7 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().BoolVar(&opts.Web, "web", false, "Open the pull request in your browser")
 
 	return cmd
 }
@@ -198,35 +198,54 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		return err
 	}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
+	payload := map[string]any{
+		"project":      projectKey,
+		"repo":         repoSlug,
+		"pull_request": pr,
 	}
 
-	if formatOpt != "" {
-		payload := map[string]any{
-			"project":      projectKey,
-			"repo":         repoSlug,
-			"pull_request": pr,
-		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
-	}
-
-	fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title)
-	fmt.Fprintf(ios.Out, "State: %s\n", pr.State)
-	fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name))
-	fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID)
-	if strings.TrimSpace(pr.Description) != "" {
-		fmt.Fprintf(ios.Out, "\n%s\n", pr.Description)
-	}
-
-	if len(pr.Reviewers) > 0 {
-		fmt.Fprintln(ios.Out, "\nReviewers:")
-		for _, reviewer := range pr.Reviewers {
-			fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name))
+	if opts.Web {
+		if link := firstPRLink(pr, "self"); link != "" {
+			if err := f.BrowserOpener().Open(link); err != nil {
+				return fmt.Errorf("open browser: %w", err)
+			}
+		} else {
+			return fmt.Errorf("pull request does not expose a web URL")
 		}
 	}
-	return nil
+
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title)
+		fmt.Fprintf(ios.Out, "State: %s\n", pr.State)
+		fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name))
+		fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID)
+		if strings.TrimSpace(pr.Description) != "" {
+			fmt.Fprintf(ios.Out, "\n%s\n", pr.Description)
+		}
+
+		if len(pr.Reviewers) > 0 {
+			fmt.Fprintln(ios.Out, "\nReviewers:")
+			for _, reviewer := range pr.Reviewers {
+				fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name))
+			}
+		}
+		return nil
+	})
+}
+
+func firstPRLink(pr *bbdc.PullRequest, kind string) string {
+	if pr == nil {
+		return ""
+	}
+	switch kind {
+	case "self":
+		for _, link := range pr.Links.Self {
+			if strings.TrimSpace(link.Href) != "" {
+				return link.Href
+			}
+		}
+	}
+	return ""
 }
 
 type createOptions struct {
@@ -380,6 +399,7 @@ type diffOptions struct {
 	Project string
 	Repo    string
 	ID      int
+	Stat    bool
 }
 
 func newDiffCmd(f *cmdutil.Factory) *cobra.Command {
@@ -400,6 +420,7 @@ func newDiffCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().BoolVar(&opts.Stat, "stat", false, "Show diff statistics instead of full patch")
 
 	return cmd
 }
@@ -432,6 +453,32 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 	defer cancel()
+
+	if opts.Stat {
+		stat, err := client.PullRequestDiffStat(ctx, projectKey, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+		payload := map[string]any{
+			"project":      projectKey,
+			"repo":         repoSlug,
+			"pull_request": opts.ID,
+			"stats":        stat,
+		}
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			fmt.Fprintf(ios.Out, "Files: %d\nAdditions: %d\nDeletions: %d\n", stat.Files, stat.Additions, stat.Deletions)
+			return nil
+		})
+	}
+
+	pager := f.PagerManager()
+	if pager.Enabled() {
+		w, err := pager.Start()
+		if err == nil {
+			defer pager.Stop()
+			return client.PullRequestDiff(ctx, projectKey, repoSlug, opts.ID, w)
+		}
+	}
 
 	return client.PullRequestDiff(ctx, projectKey, repoSlug, opts.ID, ios.Out)
 }

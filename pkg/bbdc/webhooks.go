@@ -84,3 +84,16 @@ func (c *Client) DeleteWebhook(ctx context.Context, projectKey, repoSlug string,
 	}
 	return c.http.Do(req, nil)
 }
+
+// TestWebhook triggers a test delivery for the webhook.
+func (c *Client) TestWebhook(ctx context.Context, projectKey, repoSlug string, id int) error {
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("project key and repository slug are required")
+	}
+	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/webhooks/%d/test",
+		url.PathEscape(projectKey), url.PathEscape(repoSlug), id), nil)
+	if err != nil {
+		return err
+	}
+	return c.http.Do(req, nil)
+}

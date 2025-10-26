@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // NewCommand returns the webhook command.
@@ -30,8 +30,9 @@ func NewCommand(f *cmdutil.Factory) *cobra.Command {
 }
 
 type listOptions struct {
-	Project string
-	Repo    string
+	Project   string
+	Workspace string
+	Repo      string
 }
 
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
@@ -44,7 +45,8 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 			return runList(cmd, f, opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override (Data Center)")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	return cmd
 }
@@ -60,65 +62,102 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("webhook list currently supports Data Center contexts only")
-	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
 
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
 
-	hooks, err := client.ListWebhooks(ctx, projectKey, repoSlug)
-	if err != nil {
-		return err
-	}
+		hooks, err := client.ListWebhooks(ctx, projectKey, repoSlug)
+		if err != nil {
+			return err
+		}
 
-	formatOpt, err := cmdutil.OutputFormat(cmd)
-	if err != nil {
-		return err
-	}
-
-	if formatOpt != "" {
 		payload := map[string]any{
 			"project":  projectKey,
 			"repo":     repoSlug,
 			"webhooks": hooks,
 		}
-		return format.Write(ios.Out, formatOpt, payload, nil)
-	}
 
-	if len(hooks) == 0 {
-		fmt.Fprintln(ios.Out, "No webhooks configured.")
-		return nil
-	}
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			if len(hooks) == 0 {
+				fmt.Fprintln(ios.Out, "No webhooks configured.")
+				return nil
+			}
 
-	for _, hook := range hooks {
-		status := "disabled"
-		if hook.Active {
-			status = "active"
+			for _, hook := range hooks {
+				status := "disabled"
+				if hook.Active {
+					status = "active"
+				}
+				fmt.Fprintf(ios.Out, "%d\t%s\t%s (%s)\n", hook.ID, status, hook.Name, hook.URL)
+			}
+			return nil
+		})
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
-		fmt.Fprintf(ios.Out, "%d\t%s\t%s (%s)\n", hook.ID, status, hook.Name, hook.URL)
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		hooks, err := client.ListWebhooks(ctx, workspace, repoSlug)
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"workspace": workspace,
+			"repo":      repoSlug,
+			"webhooks":  hooks,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			if len(hooks) == 0 {
+				fmt.Fprintln(ios.Out, "No webhooks configured.")
+				return nil
+			}
+			for _, hook := range hooks {
+				status := "disabled"
+				if hook.Active {
+					status = "active"
+				}
+				fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", hook.UUID, status, hook.URL)
+			}
+			return nil
+		})
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
-	return nil
 }
 
 type createOptions struct {
-	Project string
-	Repo    string
-	Name    string
-	URL     string
-	Events  []string
-	Active  bool
+	Project   string
+	Workspace string
+	Repo      string
+	Name      string
+	URL       string
+	Events    []string
+	Active    bool
 }
 
 func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
@@ -131,7 +170,8 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override (Data Center)")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Name, "name", "", "Webhook name (required)")
 	cmd.Flags().StringVar(&opts.URL, "url", "", "Webhook callback URL (required)")
@@ -156,62 +196,95 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("webhook create currently supports Data Center contexts only")
+
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		hook, err := client.CreateWebhook(ctx, projectKey, repoSlug, bbdc.CreateWebhookInput{
+			Name:   opts.Name,
+			URL:    opts.URL,
+			Events: opts.Events,
+			Active: opts.Active,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprintf(ios.Out, "✓ Created webhook #%d (%s)\n", hook.ID, hook.Name)
+		return nil
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		hook, err := client.CreateWebhook(ctx, workspace, repoSlug, bbcloud.WebhookInput{
+			Description: opts.Name,
+			URL:         opts.URL,
+			Events:      opts.Events,
+			Active:      opts.Active,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprintf(ios.Out, "✓ Created webhook %s\n", hook.UUID)
+		return nil
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
-
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
-
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-	defer cancel()
-
-	hook, err := client.CreateWebhook(ctx, projectKey, repoSlug, bbdc.CreateWebhookInput{
-		Name:   opts.Name,
-		URL:    opts.URL,
-		Events: opts.Events,
-		Active: opts.Active,
-	})
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(ios.Out, "✓ Created webhook #%d (%s)\n", hook.ID, hook.Name)
-	return nil
 }
 
 type deleteOptions struct {
+	Project    string
+	Workspace  string
+	Repo       string
+	Identifier string
+}
+
+type testOptions struct {
 	Project string
 	Repo    string
-	ID      int
+	ID      string
 }
 
 func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &deleteOptions{}
 	cmd := &cobra.Command{
-		Use:     "delete <id>",
+		Use:     "delete <id|uuid>",
 		Aliases: []string{"rm"},
 		Short:   "Delete a webhook",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid webhook id %q", args[0])
-			}
-			opts.ID = id
+			opts.Identifier = args[0]
 			return runDelete(cmd, f, opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override (Data Center)")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 
 	return cmd
@@ -228,14 +301,102 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, opts *deleteOptions) erro
 	if err != nil {
 		return err
 	}
+
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		id, err := strconv.Atoi(opts.Identifier)
+		if err != nil {
+			return fmt.Errorf("invalid webhook id %q", opts.Identifier)
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		if err := client.DeleteWebhook(ctx, projectKey, repoSlug, id); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(ios.Out, "✓ Deleted webhook #%d\n", id)
+		return nil
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		if err := client.DeleteWebhook(ctx, workspace, repoSlug, opts.Identifier); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(ios.Out, "✓ Deleted webhook %s\n", opts.Identifier)
+		return nil
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}
+
+func newTestCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &testOptions{}
+	cmd := &cobra.Command{
+		Use:   "test <id>",
+		Short: "Trigger a webhook test delivery",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.ID = args[0]
+			return runTest(cmd, f, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+
+	return cmd
+}
+
+func runTest(cmd *cobra.Command, f *cmdutil.Factory, opts *testOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
 	if host.Kind != "dc" {
-		return fmt.Errorf("webhook delete currently supports Data Center contexts only")
+		return fmt.Errorf("webhook test is supported for Data Center contexts only")
 	}
 
 	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
 	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+	}
+
+	id, err := strconv.Atoi(opts.ID)
+	if err != nil {
+		return fmt.Errorf("invalid webhook id %q", opts.ID)
 	}
 
 	client, err := cmdutil.NewDCClient(host)
@@ -246,24 +407,12 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, opts *deleteOptions) erro
 	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 	defer cancel()
 
-	if err := client.DeleteWebhook(ctx, projectKey, repoSlug, opts.ID); err != nil {
+	if err := client.TestWebhook(ctx, projectKey, repoSlug, id); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Deleted webhook #%d\n", opts.ID)
+	fmt.Fprintf(ios.Out, "✓ Triggered test delivery for webhook #%d\n", id)
 	return nil
-}
-
-func newTestCmd(f *cmdutil.Factory) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "test <id>",
-		Short: "Trigger a webhook test delivery",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("webhook test is not yet implemented")
-		},
-	}
-	return cmd
 }
 
 func firstNonEmpty(values ...string) string {
