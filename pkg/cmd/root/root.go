@@ -12,6 +12,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/perms"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pipeline"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pr"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/project"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/repo"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/status"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/webhook"
@@ -51,6 +52,7 @@ Common flows:
 		auth.NewCmdAuth(f),
 		contextcmd.NewCmdContext(f),
 		repo.NewCmdRepo(f),
+		project.NewCmdProject(f),
 		pr.NewCmdPR(f),
 		branch.NewCmdBranch(f),
 		perms.NewCommand(f),

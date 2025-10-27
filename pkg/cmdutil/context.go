@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -48,6 +49,71 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 	applyRemoteDefaults(ctx, host)
 
 	return contextName, ctx, host, nil
+}
+
+// ResolveHost locates a host configuration using optional context or host overrides.
+// When neither override is provided it falls back to the active context, then to a
+// single configured host. This enables commands to function prior to context setup.
+func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *config.Host, error) {
+	cfg, err := f.ResolveConfig()
+	if err != nil {
+		return "", nil, err
+	}
+
+	hostIdentifier := strings.TrimSpace(hostOverride)
+	if hostIdentifier != "" {
+		if host, ok := cfg.Hosts[hostIdentifier]; ok {
+			return hostIdentifier, host, nil
+		}
+
+		baseURL, err := NormalizeBaseURL(hostIdentifier)
+		if err == nil {
+			if key, err := HostKeyFromURL(baseURL); err == nil {
+				if host, ok := cfg.Hosts[key]; ok {
+					return key, host, nil
+				}
+			}
+		}
+
+		return "", nil, fmt.Errorf("host %q not found; run `%s auth login` first", hostIdentifier, f.ExecutableName)
+	}
+
+	contextName := strings.TrimSpace(contextOverride)
+	if contextName == "" {
+		contextName = cfg.ActiveContext
+	}
+	if contextName != "" {
+		ctx, err := cfg.Context(contextName)
+		if err != nil {
+			return "", nil, err
+		}
+		if ctx.Host == "" {
+			return "", nil, fmt.Errorf("context %q has no host configured", contextName)
+		}
+		host, err := cfg.Host(ctx.Host)
+		if err != nil {
+			return "", nil, err
+		}
+		return ctx.Host, host, nil
+	}
+
+	switch len(cfg.Hosts) {
+	case 0:
+		return "", nil, fmt.Errorf("no hosts configured; run `%s auth login` first", f.ExecutableName)
+	case 1:
+		for key, host := range cfg.Hosts {
+			return key, host, nil
+		}
+	default:
+		var keys []string
+		for key := range cfg.Hosts {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		return "", nil, fmt.Errorf("multiple hosts configured (%s); specify --host or --context", strings.Join(keys, ", "))
+	}
+
+	return "", nil, fmt.Errorf("failed to resolve host configuration")
 }
 
 // FlagValue returns the value for the named flag if it exists.
