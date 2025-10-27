@@ -768,16 +768,22 @@ func cloneLinksCloud(repo bbcloud.Repository) []string {
 }
 
 func selectCloneURLDC(repo bbdc.Repository, useSSH bool) (string, error) {
-	desired := "http"
 	if useSSH {
-		desired = "ssh"
+		for _, link := range repo.Links.Clone {
+			if strings.EqualFold(link.Name, "ssh") {
+				return link.Href, nil
+			}
+		}
+		return "", fmt.Errorf("no ssh clone URL available")
 	}
+
 	for _, link := range repo.Links.Clone {
-		if strings.EqualFold(link.Name, desired) {
+		name := strings.ToLower(strings.TrimSpace(link.Name))
+		if name == "https" || name == "http" {
 			return link.Href, nil
 		}
 	}
-	return "", fmt.Errorf("no %s clone URL available", desired)
+	return "", fmt.Errorf("no https clone URL available")
 }
 
 func selectCloneURLCloud(repo bbcloud.Repository, useSSH bool) (string, error) {

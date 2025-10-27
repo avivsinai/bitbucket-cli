@@ -1,8 +1,6 @@
 package root
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/admin"
@@ -41,8 +39,6 @@ Common flows:
 			_ = cmd.Help()
 		},
 	}
-
-	root.SetContext(context.Background())
 
 	root.PersistentFlags().StringP("context", "c", "", "Active Bitbucket context name")
 	root.PersistentFlags().Bool("json", false, "Output in JSON format when supported")

@@ -21,10 +21,10 @@ type noopSpinner struct {
 	ios *iostreams.IOStreams
 }
 
-// NewSpinner constructs a terminal spinner when stdout is a TTY. Otherwise a
+// NewSpinner constructs a terminal spinner when stderr is a TTY. Otherwise a
 // newline-based fallback is returned.
 func NewSpinner(ios *iostreams.IOStreams) Spinner {
-	if ios != nil && ios.IsStdoutTTY() {
+	if ios != nil && ios.IsStderrTTY() {
 		return newTTYSpinner(ios)
 	}
 	return &noopSpinner{ios: ios}
@@ -38,7 +38,7 @@ func (s *noopSpinner) write(msg string) {
 	if s.ios == nil || msg == "" {
 		return
 	}
-	fmt.Fprintln(s.ios.Out, msg)
+	fmt.Fprintln(s.ios.ErrOut, msg)
 }
 
 type ttySpinner struct {
@@ -71,7 +71,7 @@ func (s *ttySpinner) Start(msg string) {
 			case <-stop:
 				return
 			case <-ticker.C:
-				fmt.Fprintf(s.ios.Out, "\r%c %s", frames[idx], msg)
+				fmt.Fprintf(s.ios.ErrOut, "\r%c %s", frames[idx], msg)
 				idx = (idx + 1) % len(frames)
 			}
 		}
@@ -97,5 +97,5 @@ func (s *ttySpinner) endWithPrefix(prefix, msg string) {
 	if msg == "" {
 		return
 	}
-	fmt.Fprintf(s.ios.Out, "\r%s %s\n", prefix, msg)
+	fmt.Fprintf(s.ios.ErrOut, "\r%s %s\n", prefix, msg)
 }

@@ -1,9 +1,12 @@
 package bktcmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/avivsinai/bitbucket-cli/internal/build"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/factory"
@@ -13,6 +16,9 @@ import (
 
 // Main initialises CLI dependencies and executes the root command.
 func Main() int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	f, err := factory.New(build.Version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialise factory: %v\n", err)
@@ -30,8 +36,9 @@ func Main() int {
 		_, _ = fmt.Fprintf(ios.ErrOut, "failed to create root command: %v\n", err)
 		return 1
 	}
+	rootCmd.SetContext(ctx)
 
-	if err := rootCmd.Execute(); err != nil {
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		var exitErr *cmdutil.ExitError
 		if errors.As(err, &exitErr) {
 			if exitErr.Msg != "" {
