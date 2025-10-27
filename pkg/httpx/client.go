@@ -127,11 +127,33 @@ func New(opts Options) (*Client, error) {
 // NewRequest builds an HTTP request relative to the base URL. Body values are
 // JSON encoded when non-nil.
 func (c *Client) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("path is required")
 	}
 
-	u := c.baseURL.ResolveReference(&url.URL{Path: path})
+	var rel *url.URL
+	var err error
+
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		rel, err = url.Parse(path)
+		if err != nil {
+			return nil, fmt.Errorf("parse request URL: %w", err)
+		}
+	} else {
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		rel, err = url.Parse(path)
+		if err != nil {
+			return nil, fmt.Errorf("parse request path: %w", err)
+		}
+	}
+
+	if rel.Path == "" {
+		rel.Path = "/"
+	}
+
+	u := c.baseURL.ResolveReference(rel)
 
 	var payload []byte
 	if body != nil {
@@ -202,7 +224,11 @@ func (c *Client) Do(req *http.Request, v any) error {
 				return err
 			}
 			attempts++
-			if !c.backoff(attempts, resp) {
+			continueRetry, waitErr := c.backoff(req.Context(), attempts, resp)
+			if waitErr != nil {
+				return waitErr
+			}
+			if !continueRetry {
 				if c.debug {
 					fmt.Fprintf(os.Stderr, "<-- retry abort after error: %v\n", err)
 				}
@@ -236,7 +262,11 @@ func (c *Client) Do(req *http.Request, v any) error {
 				return decodeError(resp)
 			}
 			attempts++
-			if !c.backoff(attempts, resp) {
+			continueRetry, waitErr := c.backoff(req.Context(), attempts, resp)
+			if waitErr != nil {
+				return waitErr
+			}
+			if !continueRetry {
 				if len(bodyBytes) > 0 {
 					resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 				}
@@ -337,9 +367,9 @@ func (c *Client) shouldRetry(attempts int, status int) bool {
 	return attempts+1 < c.retry.MaxAttempts
 }
 
-func (c *Client) backoff(attempts int, resp *http.Response) bool {
+func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response) (bool, error) {
 	if attempts >= c.retry.MaxAttempts {
-		return false
+		return false, nil
 	}
 
 	delay := c.retry.InitialBackoff
@@ -358,8 +388,24 @@ func (c *Client) backoff(attempts int, resp *http.Response) bool {
 		}
 	}
 
-	time.Sleep(delay)
-	return true
+	if delay <= 0 {
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		default:
+			return true, nil
+		}
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-timer.C:
+		return true, nil
+	}
 }
 
 func (c *Client) cacheKey(req *http.Request) string {

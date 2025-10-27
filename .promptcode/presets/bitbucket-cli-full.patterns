@@ -1,0 +1,9 @@
+# bitbucket-cli-full preset
+# Generated: 2025-10-27T07:14:50.243Z
+# Source: patterns preserved (1)
+# Patterns preserved as provided: 1
+
+**/*
+!**/node_modules/**
+!**/dist/**
+!**/build/**

@@ -73,24 +73,25 @@ func (p *system) Confirm(prompt string, defaultYes bool) (bool, error) {
 		suffix = "[y/N]"
 	}
 
-	if _, err := fmt.Fprintf(p.ios.Out, "%s %s: ", prompt, suffix); err != nil {
-		return false, err
-	}
+	for {
+		if _, err := fmt.Fprintf(p.ios.Out, "%s %s: ", prompt, suffix); err != nil {
+			return false, err
+		}
 
-	line, err := r.ReadString('\n')
-	if err != nil {
-		return false, err
-	}
+		line, err := r.ReadString('\n')
+		if err != nil {
+			return false, err
+		}
 
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true, nil
-	case "n", "no":
-		return false, nil
-	case "":
-		return defaultYes, nil
-	default:
-		fmt.Fprintln(p.ios.ErrOut, "Please respond with 'y' or 'n'.")
-		return p.Confirm(prompt, defaultYes)
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		case "":
+			return defaultYes, nil
+		default:
+			fmt.Fprintln(p.ios.ErrOut, "Please respond with 'y' or 'n'.")
+		}
 	}
 }

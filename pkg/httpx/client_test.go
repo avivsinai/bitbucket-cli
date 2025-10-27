@@ -3,8 +3,10 @@ package httpx
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -112,5 +114,89 @@ func TestClientRetriesOnServerError(t *testing.T) {
 
 	if hits != 2 {
 		t.Fatalf("expected 2 attempts, got %d", hits)
+	}
+}
+
+func TestClientNewRequestPreservesQuery(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com/api"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/rest/projects?limit=25&start=0", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	if got := req.URL.String(); got != "https://example.com/rest/projects?limit=25&start=0" {
+		t.Fatalf("unexpected URL: %s", got)
+	}
+	if req.URL.RawQuery != "limit=25&start=0" {
+		t.Fatalf("expected raw query preserved, got %q", req.URL.RawQuery)
+	}
+}
+
+func TestClientNewRequestHandlesRelativeWithoutSlash(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com/api"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "rest/repos", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	if got := req.URL.String(); got != "https://example.com/rest/repos" {
+		t.Fatalf("unexpected URL: %s", got)
+	}
+}
+
+func TestClientBackoffRespectsContextCancellation(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		Retry: RetryPolicy{
+			MaxAttempts:    3,
+			InitialBackoff: 500 * time.Millisecond,
+			MaxBackoff:     time.Second,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := client.NewRequest(ctx, http.MethodGet, "/fail", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	var once sync.Once
+	time.AfterFunc(50*time.Millisecond, func() {
+		once.Do(cancel)
+	})
+
+	start := time.Now()
+	err = client.Do(req, nil)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatalf("expected error from cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context cancellation error, got %v", err)
+	}
+	if elapsed >= 400*time.Millisecond {
+		t.Fatalf("expected cancellation to interrupt backoff, took %v", elapsed)
+	}
+	if hits != 1 {
+		t.Fatalf("expected single request, got %d", hits)
 	}
 }

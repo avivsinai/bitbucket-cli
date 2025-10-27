@@ -139,17 +139,46 @@ func (c *Client) ListPipelines(ctx context.Context, workspace, repoSlug string, 
 		pageLen,
 	)
 
-	req, err := c.http.NewRequest(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
+	var pipelines []Pipeline
+
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var page PipelinePage
+		if err := c.http.Do(req, &page); err != nil {
+			return nil, err
+		}
+
+		pipelines = append(pipelines, page.Values...)
+
+		if limit > 0 && len(pipelines) >= limit {
+			pipelines = pipelines[:limit]
+			break
+		}
+
+		if page.Next == "" {
+			break
+		}
+
+		nextURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		if nextURL.IsAbs() {
+			if uri := nextURL.RequestURI(); uri != "" {
+				path = uri
+			} else {
+				path = nextURL.String()
+			}
+		} else {
+			path = nextURL.String()
+		}
 	}
 
-	var page PipelinePage
-	if err := c.http.Do(req, &page); err != nil {
-		return nil, err
-	}
-
-	return page.Values, nil
+	return pipelines, nil
 }
 
 // RepositoryListPage encapsulates paginated repository responses.
