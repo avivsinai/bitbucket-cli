@@ -1,32 +1,109 @@
+version: 2
 project_name: bkt
 
-release:
-  prerelease: false
-  changelog:
-    use: git
-    sort: asc
+before:
+  hooks:
+    - go mod tidy
 
 builds:
   - id: bkt
     main: ./cmd/bkt
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
+    binary: bkt
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED={{- if eq .Os "darwin" }}1{{- else }}0{{- end }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
     ldflags:
-      - -s -w -X github.com/avivsinai/bitbucket-cli/internal/build.Version={{.Version}}
+      - -s -w
+      - -X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags={{.Version}}
+      - -X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags={{.Commit}}
+      - -X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags={{.Date}}
     mod_timestamp: '{{ .CommitDate }}'
 
 archives:
-  - format: tar.gz
-    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - id: bkt-archive
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
     files:
       - README.md
       - LICENSE
       - CHANGELOG.md
 
 checksum:
-  name_template: 'bkt_{{ .Version }}_checksums.txt'
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: '🚀 Features'
+      regexp: '^feat(\(.+\))?:'
+      order: 0
+    - title: '🐛 Bug Fixes'
+      regexp: '^fix(\(.+\))?:'
+      order: 1
+    - title: '📦 Dependencies'
+      regexp: '^deps(\(.+\))?:'
+      order: 2
+    - title: '🔧 Other Changes'
+      order: 999
+
+release:
+  github:
+    owner: avivsinai
+    name: bitbucket-cli
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## bkt {{ .Tag }} ({{ .Date }})
+
+    Thanks for trying the Bitbucket CLI!
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/avivsinai/bitbucket-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ### Go Install
+    ```bash
+    go install github.com/avivsinai/bitbucket-cli/cmd/bkt@{{ .Tag }}
+    ```
+
+    ### Binary Downloads
+    Pick the archive for your platform from the assets below.
 
 sboms:
   - id: syft-json
