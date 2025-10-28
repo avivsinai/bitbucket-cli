@@ -15,6 +15,8 @@
 go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest
 ```
 
+This installs `bkt` to `$GOPATH/bin` (or `$HOME/go/bin` by default). Ensure the directory is in your `$PATH`.
+
 Or download pre-built binaries from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
 
 ## Project layout
@@ -117,7 +119,7 @@ bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
 
 ## Support
 
-- **Questions / Ideas**: Open a [GitHub Discussion](https://github.com/avivsinai/bitbucket-cli/discussions)
+- **Questions / Ideas**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=feature_request.md)
 - **Bug Reports**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=bug_report.md)
 - **Security Reports**: Email [security@avivsinai.dev](mailto:security@avivsinai.dev)
 
