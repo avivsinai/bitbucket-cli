@@ -2,6 +2,7 @@
 /bkt
 dist/
 sbom.cdx.json
+tmp
 
 # Go
 bin/
