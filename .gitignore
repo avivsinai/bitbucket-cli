@@ -1,6 +1,7 @@
 # Build artifacts
 /bkt
 dist/
+sbom.cdx.json
 
 # Go
 bin/

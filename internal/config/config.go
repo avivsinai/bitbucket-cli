@@ -47,7 +47,7 @@ type Host struct {
 }
 
 // Load retrieves configuration from disk, returning default values when the
-// file does not exist. Supports config.yml and config.yaml filenames.
+// file does not exist. The config file is named config.yml.
 func Load() (*Config, error) {
 	path, err := resolvePath()
 	if err != nil {

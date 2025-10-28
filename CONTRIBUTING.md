@@ -50,11 +50,10 @@ See [README](README.md#project-layout) for the code layout. In short:
 
 The detailed steps live in [`docs/RELEASE.md`](docs/RELEASE.md). In short:
 
-1. Bump versions in `internal/build/version.go` (via ldflags) and update
-   `CHANGELOG.md`.
+1. Update `CHANGELOG.md` with the release notes.
 2. Tag the release (`git tag vX.Y.Z && git push --tags`).
-3. GitHub Actions runs [GoReleaser](goreleaser.yaml) to publish binaries and
-   build SBOMs via Syft.
+3. GitHub Actions runs [GoReleaser](.goreleaser.yaml) to publish binaries and
+   build SBOMs via Syft. Version, commit, and date are injected via ldflags.
 
 ## Community roles
 
