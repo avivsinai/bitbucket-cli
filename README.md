@@ -125,7 +125,6 @@ bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
 
 - **Questions / Ideas**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=feature_request.md)
 - **Bug Reports**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=bug_report.md)
-- **Security Reports**: Email [security@avivsinai.dev](mailto:security@avivsinai.dev)
 
 ## Roadmap highlights
 
