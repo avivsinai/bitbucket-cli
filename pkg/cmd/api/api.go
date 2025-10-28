@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -126,11 +127,39 @@ func runAPI(cmd *cobra.Command, f *cmdutil.Factory, opts *apiOptions, path strin
 		return err
 	}
 
-	if err := httpClient.Do(req, ios.Out); err != nil {
+	settings, err := cmdutil.ResolveOutputSettings(cmd)
+	if err != nil {
 		return err
 	}
 
-	return nil
+	// If no structured output flags are set, stream directly to avoid buffering large responses
+	needsStructuredOutput := settings.Format != "" || settings.JQ != "" || settings.Template != ""
+	if !needsStructuredOutput {
+		return httpClient.Do(req, ios.Out)
+	}
+
+	// Buffer the response for structured output processing
+	var buf bytes.Buffer
+	if err := httpClient.Do(req, &buf); err != nil {
+		return err
+	}
+
+	var data any
+	if buf.Len() > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(buf.Bytes()))
+		decoder.UseNumber()
+		if err := decoder.Decode(&data); err != nil {
+			return fmt.Errorf("response is not valid JSON: %w", err)
+		}
+	}
+
+	return cmdutil.WriteOutput(cmd, ios.Out, data, func() error {
+		if buf.Len() == 0 {
+			return nil
+		}
+		_, err := ios.Out.Write(buf.Bytes())
+		return err
+	})
 }
 
 func parseKeyValue(input string) (string, string, error) {

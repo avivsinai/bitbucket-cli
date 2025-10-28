@@ -66,6 +66,7 @@ bkt repo list --limit 20
 bkt repo list --workspace myteam --limit 10   # Cloud workspace override
 bkt repo view platform-api
 bkt repo create data-pipeline --description "Data ingestion" --project DATA
+bkt repo browse --project DATA --repo platform-api
 bkt repo clone platform-api --project DATA --ssh
 ```
 

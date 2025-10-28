@@ -499,7 +499,7 @@ func runClone(cmd *cobra.Command, f *cmdutil.Factory, opts *cloneOptions) error 
 	}
 }
 
-func runBrowse(cmd *cobra.Command, f *cmdutil.Factory) error {
+func runBrowse(cmd *cobra.Command, f *cmdutil.Factory, opts *browseOptions) error {
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -513,10 +513,20 @@ func runBrowse(cmd *cobra.Command, f *cmdutil.Factory) error {
 
 	switch host.Kind {
 	case "dc":
-		projectKey := ctxCfg.ProjectKey
-		repoSlug := ctxCfg.DefaultRepo
-		if projectKey == "" || repoSlug == "" {
-			return fmt.Errorf("context must define project and default repo")
+		projectKey := strings.ToUpper(strings.TrimSpace(opts.Project))
+		if projectKey == "" {
+			projectKey = strings.ToUpper(strings.TrimSpace(ctxCfg.ProjectKey))
+		}
+		if projectKey == "" {
+			return fmt.Errorf("project key required; set with --project or configure the context default")
+		}
+
+		repoSlug := strings.TrimSpace(opts.Repo)
+		if repoSlug == "" {
+			repoSlug = strings.TrimSpace(ctxCfg.DefaultRepo)
+		}
+		if repoSlug == "" {
+			return fmt.Errorf("repository required; pass --repo or configure the context default")
 		}
 
 		client, err := cmdutil.NewDCClient(host)
@@ -539,10 +549,20 @@ func runBrowse(cmd *cobra.Command, f *cmdutil.Factory) error {
 		return fmt.Errorf("repository does not expose a web URL")
 
 	case "cloud":
-		workspace := ctxCfg.Workspace
-		repoSlug := ctxCfg.DefaultRepo
-		if workspace == "" || repoSlug == "" {
-			return fmt.Errorf("context must define workspace and default repo")
+		workspace := strings.TrimSpace(opts.Workspace)
+		if workspace == "" {
+			workspace = strings.TrimSpace(ctxCfg.Workspace)
+		}
+		if workspace == "" {
+			return fmt.Errorf("workspace required; set --workspace or configure the context default")
+		}
+
+		repoSlug := strings.TrimSpace(opts.Repo)
+		if repoSlug == "" {
+			repoSlug = strings.TrimSpace(ctxCfg.DefaultRepo)
+		}
+		if repoSlug == "" {
+			return fmt.Errorf("repository required; pass --repo or configure the context default")
 		}
 
 		client, err := cmdutil.NewCloudClient(host)
@@ -708,15 +728,43 @@ func newCloneCmd(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
+type browseOptions struct {
+	Project   string
+	Workspace string
+	Repo      string
+}
+
 func newBrowseCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &browseOptions{}
 	cmd := &cobra.Command{
-		Use:   "browse",
+		Use:   "browse [<repository>]",
 		Short: "Print the repository web URL",
-		Args:  cobra.NoArgs,
+		Long: `Print the repository web URL using the active context defaults.
+
+Override the target repository with an argument or --repo flag. Set --project
+for Bitbucket Data Center hosts or --workspace for Bitbucket Cloud hosts when
+the context does not define defaults.`,
+		Example: `  # open the active context default repository
+  bkt repo browse
+
+  # override the repository slug
+  bkt repo browse platform-api
+
+  # override both project and repo for Bitbucket Data Center
+  bkt repo browse --project DATA --repo pipeline-api`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBrowse(cmd, f)
+			if len(args) > 0 {
+				opts.Repo = args[0]
+			}
+			return runBrowse(cmd, f, opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override (Data Center)")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
+
 	return cmd
 }
 

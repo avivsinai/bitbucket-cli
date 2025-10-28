@@ -1,6 +1,7 @@
 package format
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +71,11 @@ func Write(w io.Writer, opts Options, data any, fallback func() error) error {
 }
 
 func applyJQ(expression string, value any) (any, error) {
+	normalised, err := normaliseForJQ(value)
+	if err != nil {
+		return nil, err
+	}
+
 	query, err := gojq.Parse(expression)
 	if err != nil {
 		return nil, fmt.Errorf("parse jq expression: %w", err)
@@ -79,7 +85,7 @@ func applyJQ(expression string, value any) (any, error) {
 		return nil, fmt.Errorf("compile jq expression: %w", err)
 	}
 
-	iter := code.Run(value)
+	iter := code.Run(normalised)
 	var results []any
 	for {
 		v, ok := iter.Next()
@@ -102,4 +108,45 @@ func applyJQ(expression string, value any) (any, error) {
 		return results[0], nil
 	}
 	return results, nil
+}
+
+func normaliseForJQ(value any) (any, error) {
+	switch v := value.(type) {
+	case nil,
+		string,
+		bool,
+		json.Number,
+		float64,
+		int,
+		int64,
+		uint,
+		uint64:
+		return value, nil
+	case []byte:
+		var out any
+		if len(v) == 0 {
+			return nil, nil
+		}
+		decoder := json.NewDecoder(bytes.NewReader(v))
+		decoder.UseNumber()
+		if err := decoder.Decode(&out); err != nil {
+			return nil, fmt.Errorf("prepare jq input: %w", err)
+		}
+		return out, nil
+	default:
+		data, err := json.Marshal(value)
+		if err != nil {
+			return nil, fmt.Errorf("prepare jq input: %w", err)
+		}
+		var out any
+		if len(data) == 0 {
+			return nil, nil
+		}
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.UseNumber()
+		if err := decoder.Decode(&out); err != nil {
+			return nil, fmt.Errorf("prepare jq input: %w", err)
+		}
+		return out, nil
+	}
 }
