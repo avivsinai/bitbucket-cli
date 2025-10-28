@@ -1,5 +1,5 @@
 # Build artifacts
-bkt
+/bkt
 dist/
 
 # Go
