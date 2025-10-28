@@ -1,11 +1,11 @@
 # bkt – Bitbucket CLI
 
 [![CI](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/avivsinai/bitbucket-cli)](https://github.com/avivsinai/bitbucket-cli/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/avivsinai/bitbucket-cli)](https://goreportcard.com/report/github.com/avivsinai/bitbucket-cli)
-[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/avivsinai/bitbucket-cli?label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/avivsinai/bitbucket-cli)
+[![Release](https://img.shields.io/github/v/release/avivsinai/bitbucket-cli?cache=none)](https://github.com/avivsinai/bitbucket-cli/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/avivsinai/bitbucket-cli?cache=none)](https://goreportcard.com/report/github.com/avivsinai/bitbucket-cli)
+[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/avivsinai/bitbucket-cli?label=openssf%20scorecard&cache=none)](https://scorecard.dev/viewer/?uri=github.com/avivsinai/bitbucket-cli)
 [![Go Reference](https://pkg.go.dev/badge/github.com/avivsinai/bitbucket-cli.svg)](https://pkg.go.dev/github.com/avivsinai/bitbucket-cli)
-[![License](https://img.shields.io/github/license/avivsinai/bitbucket-cli)](LICENSE)
+[![License](https://img.shields.io/github/license/avivsinai/bitbucket-cli?cache=none)](LICENSE)
 
 `bkt` is a stand-alone Bitbucket command-line interface that targets Bitbucket Data Center **and** Bitbucket Cloud. It mirrors the ergonomics of `gh` while remaining provider-pure (no Jenkins coupling) and delivers a consistent JSON/YAML contract for automation.
 
