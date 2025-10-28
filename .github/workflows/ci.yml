@@ -48,6 +48,7 @@ jobs:
 
   scorecard:
     runs-on: ubuntu-latest
+    if: ${{ !github.event.repository.private }}
     permissions:
       id-token: write
       contents: read
