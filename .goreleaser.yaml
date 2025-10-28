@@ -3,7 +3,7 @@ project_name: bkt
 
 builds:
   - id: bkt
-    main: cmd/bkt
+    main: ./cmd/bkt/main.go
     binary: bkt
     env:
       - CGO_ENABLED={{- if eq .Os "darwin" }}1{{- else }}0{{- end }}
