@@ -41,15 +41,10 @@ jobs:
         run: go build ./cmd/bkt
 
       - name: Generate SBOM
-        uses: anchore/syft-action@v0
+        uses: anchore/sbom-action@v0
         with:
-          args: dir:. -o cyclonedx-json=sbom.cdx.json
-
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: sbom
-          path: sbom.cdx.json
+          output-file: sbom.cdx.json
+          format: cyclonedx-json
 
   scorecard:
     runs-on: ubuntu-latest
@@ -59,7 +54,7 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v5
-      - uses: ossf/scorecard-action@v2
+      - uses: ossf/scorecard-action@v2.4.3
         with:
           results_file: results.sarif
           results_format: sarif
