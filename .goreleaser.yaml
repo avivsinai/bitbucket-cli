@@ -1,10 +1,6 @@
 version: 2
 project_name: bkt
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - id: bkt
     main: ./cmd/bkt
