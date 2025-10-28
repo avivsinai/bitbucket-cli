@@ -253,6 +253,7 @@ func (c *Client) Do(req *http.Request, v any) error {
 		}
 
 		if shouldRetryStatus(resp.StatusCode) {
+			// Read body for retry logic; errors are intentionally ignored as we'll retry anyway
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if !c.shouldRetry(attempts, resp.StatusCode) {
@@ -281,6 +282,7 @@ func (c *Client) Do(req *http.Request, v any) error {
 		}
 
 		if v == nil {
+			// Drain and discard response body when caller doesn't need it; errors are intentionally ignored
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			if c.enableCache && attemptReq.Method == http.MethodGet {
@@ -326,6 +328,7 @@ func decodeError(resp *http.Response) error {
 	var payload apiErr
 	data, err := io.ReadAll(resp.Body)
 	if err == nil && len(data) > 0 {
+		// Attempt to parse structured error; intentionally ignore unmarshal errors and fall back to raw text
 		_ = json.Unmarshal(data, &payload)
 	}
 

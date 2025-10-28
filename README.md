@@ -1,10 +1,21 @@
 # bkt – Bitbucket CLI
 
 [![CI](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/avivsinai/bitbucket-cli)](https://github.com/avivsinai/bitbucket-cli/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/avivsinai/bitbucket-cli)](https://goreportcard.com/report/github.com/avivsinai/bitbucket-cli)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/avivsinai/bitbucket-cli?label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/avivsinai/bitbucket-cli)
 [![Go Reference](https://pkg.go.dev/badge/github.com/avivsinai/bitbucket-cli.svg)](https://pkg.go.dev/github.com/avivsinai/bitbucket-cli)
+[![License](https://img.shields.io/github/license/avivsinai/bitbucket-cli)](LICENSE)
 
 `bkt` is a stand-alone Bitbucket command-line interface that targets Bitbucket Data Center **and** Bitbucket Cloud. It mirrors the ergonomics of `gh` while remaining provider-pure (no Jenkins coupling) and delivers a consistent JSON/YAML contract for automation.
+
+## Installation
+
+```bash
+go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest
+```
+
+Or download pre-built binaries from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
 
 ## Project layout
 
@@ -99,9 +110,15 @@ bkt api /rest/api/1.0/projects --param limit=100 --json
 bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
 ```
 
+## Testing
+
+`go test ./...` runs fast smoke coverage that wires the CLI against an in-memory Bitbucket mock (see `pkg/cmd/smoke/cli_smoke_test.go`). Extend that harness as new regression scenarios emerge.
+
 ## Support
 
-See [SUPPORT.md](SUPPORT.md) for available support channels and response times.
+- **Questions / Ideas**: Open a [GitHub Discussion](https://github.com/avivsinai/bitbucket-cli/discussions)
+- **Bug Reports**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=bug_report.md)
+- **Security Reports**: Email [security@avivsinai.dev](mailto:security@avivsinai.dev)
 
 ## Roadmap highlights
 

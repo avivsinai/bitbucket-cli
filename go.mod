@@ -1,6 +1,6 @@
 module github.com/avivsinai/bitbucket-cli
 
-go 1.25.3
+go 1.24.0
 
 require (
 	github.com/itchyny/gojq v0.12.17

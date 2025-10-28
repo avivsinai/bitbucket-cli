@@ -28,11 +28,10 @@ builds:
       - -X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags={{.Version}}
       - -X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags={{.Commit}}
       - -X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags={{.Date}}
-    mod_timestamp: '{{ .CommitDate }}'
+    mod_timestamp: '{{ .CommitTimestamp }}'
 
 archives:
   - id: bkt-archive
-    format: tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -41,20 +40,22 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
+    builds:
+      - bkt
     files:
       - README.md
       - LICENSE
       - CHANGELOG.md
+    format_overrides:
+      - goos: windows
+        format: zip
 
 checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
+  version_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
 
 changelog:
   sort: asc
@@ -108,19 +109,11 @@ release:
 sboms:
   - id: syft-json
     artifacts: archive
-    cmd: syft dir:${{dir}} -o cyclonedx-json={{ .Name }}.sbom.json
-
-brews:
-  - name: bkt
-    tap:
-      owner: avivsinai
-      name: homebrew-tap
-    folder: Formula
-    description: Bitbucket CLI with gh-style ergonomics
-    homepage: https://github.com/avivsinai/bitbucket-cli
-    license: MIT
-    test: |
-      system "#{bin}/bkt", "--version"
+    cmd: syft
+    args:
+      - "dir:$artifact"
+      - "-o"
+      - "cyclonedx-json=$document"
 
 nfpms:
   - id: deb

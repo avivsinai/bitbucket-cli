@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // ErrNoGitRemote indicates that the repository does not contain a Bitbucket
@@ -96,7 +98,11 @@ func listGitRemotes(repoPath string) (map[string][]string, error) {
 		args = append([]string{"-C", "."}, args...)
 	}
 
-	cmd := exec.Command("git", args...)
+	// Add timeout to prevent hanging on corrupted repos or network mounts
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 
 	out, err := cmd.Output()

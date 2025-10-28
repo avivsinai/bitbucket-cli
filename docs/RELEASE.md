@@ -1,7 +1,7 @@
 # Release handbook
 
 1. **Prepare**
-   - Ensure `main` is green.
+   - Ensure `master` is green.
    - Update `CHANGELOG.md` with the upcoming version under "Unreleased".
    - Run `make fmt test build`.
    - Regenerate the SBOM locally if possible: `make sbom`.
