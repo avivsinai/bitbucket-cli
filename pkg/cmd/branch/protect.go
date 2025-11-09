@@ -136,11 +136,13 @@ func runProtectList(cmd *cobra.Command, f *cmdutil.Factory, opts *protectOptions
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(restrictions) == 0 {
-			fmt.Fprintln(ios.Out, "No branch restrictions configured.")
-			return nil
+			_, err := fmt.Fprintln(ios.Out, "No branch restrictions configured.")
+			return err
 		}
 		for _, res := range restrictions {
-			fmt.Fprintf(ios.Out, "%d	%s	%s\n", res.ID, res.Type, res.Matcher.DisplayID)
+			if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", res.ID, res.Type, res.Matcher.DisplayID); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -190,7 +192,9 @@ func runProtectAdd(cmd *cobra.Command, f *cmdutil.Factory, opts *protectOptions)
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Added restriction %d (%s) on %s\n", restriction.ID, restriction.Type, restriction.Matcher.DisplayID)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Added restriction %d (%s) on %s\n", restriction.ID, restriction.Type, restriction.Matcher.DisplayID); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -226,7 +230,9 @@ func runProtectRemove(cmd *cobra.Command, f *cmdutil.Factory, opts *protectOptio
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Removed restriction %d\n", opts.ID)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Removed restriction %d\n", opts.ID); err != nil {
+		return err
+	}
 	return nil
 }
 

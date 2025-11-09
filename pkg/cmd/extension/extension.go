@@ -109,16 +109,21 @@ func runExtensionInstall(cmd *cobra.Command, f *cmdutil.Factory, repo string) er
 	if err := gitCmd.Run(); err != nil {
 		return fmt.Errorf("git clone failed: %w", err)
 	}
-
 	execPath, err := findExtensionExecutable(destination, name)
 	if err != nil {
-		fmt.Fprintf(ios.ErrOut, "warning: %v\n", err)
+		if _, warnErr := fmt.Fprintf(ios.ErrOut, "warning: %v\n", err); warnErr != nil {
+			return warnErr
+		}
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Installed extension %s\n", name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Installed extension %s\n", name); err != nil {
+		return err
+	}
 	if execPath != "" {
 		rel, _ := filepath.Rel(root, execPath)
-		fmt.Fprintf(ios.Out, "  binary: %s\n", rel)
+		if _, err := fmt.Fprintf(ios.Out, "  binary: %s\n", rel); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -176,15 +181,17 @@ func runExtensionList(cmd *cobra.Command, f *cmdutil.Factory) error {
 
 	return cmdutil.WriteOutput(cmd, ios.Out, data, func() error {
 		if len(summaries) == 0 {
-			fmt.Fprintln(ios.Out, "No extensions installed. Use `bkt extension install <repository>` to add one.")
-			return nil
+			_, err := fmt.Fprintln(ios.Out, "No extensions installed. Use `bkt extension install <repository>` to add one.")
+			return err
 		}
 		for _, ext := range summaries {
 			line := ext.Name
 			if ext.Executable != "" {
 				line = fmt.Sprintf("%s\t%s", ext.Name, ext.Executable)
 			}
-			fmt.Fprintln(ios.Out, line)
+			if _, err := fmt.Fprintln(ios.Out, line); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -212,7 +219,9 @@ func runExtensionRemove(cmd *cobra.Command, f *cmdutil.Factory, name string) err
 		return fmt.Errorf("remove extension: %w", err)
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Removed extension %s\n", name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Removed extension %s\n", name); err != nil {
+		return err
+	}
 	return nil
 }
 

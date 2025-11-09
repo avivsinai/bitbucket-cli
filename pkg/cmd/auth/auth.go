@@ -14,6 +14,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/secret"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
@@ -36,10 +37,11 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 }
 
 type loginOptions struct {
-	Kind     string
-	Host     string
-	Username string
-	Token    string
+	Kind               string
+	Host               string
+	Username           string
+	Token              string
+	AllowInsecureStore bool
 }
 
 func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
@@ -62,6 +64,7 @@ func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Kind, "kind", opts.Kind, "Bitbucket deployment kind (dc or cloud)")
 	cmd.Flags().StringVar(&opts.Username, "username", "", "Username for authentication (PAT owner or x-token-auth for HTTP tokens)")
 	cmd.Flags().StringVar(&opts.Token, "token", "", "Personal access token or HTTP access token")
+	cmd.Flags().BoolVar(&opts.AllowInsecureStore, "allow-insecure-store", false, "Allow encrypted fallback secret storage when no OS keychain is available")
 
 	return cmd
 }
@@ -144,18 +147,24 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			return fmt.Errorf("verify credentials: %w", err)
 		}
 
+		if err := storeHostToken(hostKey, opts.Token, opts.AllowInsecureStore); err != nil {
+			return fmt.Errorf("store token: %w", err)
+		}
+
 		cfg.SetHost(hostKey, &config.Host{
-			Kind:     "dc",
-			BaseURL:  baseURL,
-			Username: opts.Username,
-			Token:    opts.Token,
+			Kind:               "dc",
+			BaseURL:            baseURL,
+			Username:           opts.Username,
+			AllowInsecureStore: opts.AllowInsecureStore,
 		})
 
 		if err := cfg.Save(); err != nil {
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Logged in to %s as %s (%s)\n", baseURL, user.FullName, user.Name)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to %s as %s (%s)\n", baseURL, user.FullName, user.Name); err != nil {
+			return err
+		}
 	case "cloud":
 		if opts.Username == "" {
 			if !isTerminal(ios.In) {
@@ -210,18 +219,24 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			return fmt.Errorf("verify credentials: %w", err)
 		}
 
+		if err := storeHostToken(hostKey, opts.Token, opts.AllowInsecureStore); err != nil {
+			return fmt.Errorf("store token: %w", err)
+		}
+
 		cfg.SetHost(hostKey, &config.Host{
-			Kind:     "cloud",
-			BaseURL:  apiURL,
-			Username: opts.Username,
-			Token:    opts.Token,
+			Kind:               "cloud",
+			BaseURL:            apiURL,
+			Username:           opts.Username,
+			AllowInsecureStore: opts.AllowInsecureStore,
 		})
 
 		if err := cfg.Save(); err != nil {
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Logged in to Bitbucket Cloud as %s (%s)\n", user.Display, user.Username)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to Bitbucket Cloud as %s (%s)\n", user.Display, user.Username); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported deployment kind %q", opts.Kind)
 	}
@@ -315,38 +330,56 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(hosts) == 0 {
-			fmt.Fprintln(ios.Out, "No hosts configured. Run `bkt auth login` to add one.")
+			if _, err := fmt.Fprintln(ios.Out, "No hosts configured. Run `bkt auth login` to add one."); err != nil {
+				return err
+			}
 			return nil
 		}
 
-		fmt.Fprintln(ios.Out, "Hosts:")
+		if _, err := fmt.Fprintln(ios.Out, "Hosts:"); err != nil {
+			return err
+		}
 		for _, h := range hosts {
-			fmt.Fprintf(ios.Out, "  %s (%s)\n", h.BaseURL, h.Kind)
+			if _, err := fmt.Fprintf(ios.Out, "  %s (%s)\n", h.BaseURL, h.Kind); err != nil {
+				return err
+			}
 			if h.Username != "" {
-				fmt.Fprintf(ios.Out, "    user: %s\n", h.Username)
+				if _, err := fmt.Fprintf(ios.Out, "    user: %s\n", h.Username); err != nil {
+					return err
+				}
 			}
 		}
 
 		if len(contexts) == 0 {
-			fmt.Fprintf(ios.Out, "\nNo contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "\nNo contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
+			return err
 		}
 
-		fmt.Fprintln(ios.Out, "\nContexts:")
+		if _, err := fmt.Fprintln(ios.Out, "\nContexts:"); err != nil {
+			return err
+		}
 		for _, ctx := range contexts {
 			activeMarker := " "
 			if ctx.Active {
 				activeMarker = "*"
 			}
-			fmt.Fprintf(ios.Out, "  %s %s (host: %s)\n", activeMarker, ctx.Name, ctx.Host)
+			if _, err := fmt.Fprintf(ios.Out, "  %s %s (host: %s)\n", activeMarker, ctx.Name, ctx.Host); err != nil {
+				return err
+			}
 			if ctx.ProjectKey != "" {
-				fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey)
+				if _, err := fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey); err != nil {
+					return err
+				}
 			}
 			if ctx.Workspace != "" {
-				fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace)
+				if _, err := fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace); err != nil {
+					return err
+				}
 			}
 			if ctx.DefaultRepo != "" {
-				fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo)
+				if _, err := fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -408,6 +441,11 @@ func runLogout(cmd *cobra.Command, f *cmdutil.Factory, opts *logoutOptions) erro
 		}
 	}
 
+	host := cfg.Hosts[key]
+	if err := deleteHostToken(key, host); err != nil {
+		return fmt.Errorf("delete credentials: %w", err)
+	}
+
 	cfg.DeleteHost(key)
 
 	for name, ctx := range cfg.Contexts {
@@ -420,12 +458,52 @@ func runLogout(cmd *cobra.Command, f *cmdutil.Factory, opts *logoutOptions) erro
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Removed credentials for %s\n", key)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Removed credentials for %s\n", key); err != nil {
+		return err
+	}
+	return nil
+}
+
+func storeHostToken(hostKey, token string, allowInsecure bool) error {
+	opts := []secret.Option{}
+	if allowInsecure {
+		opts = append(opts, secret.WithAllowFileFallback(true))
+	}
+
+	store, err := secret.Open(opts...)
+	if err != nil {
+		return err
+	}
+
+	return store.Set(secret.TokenKey(hostKey), token)
+}
+
+func deleteHostToken(hostKey string, host *config.Host) error {
+	if host == nil {
+		return fmt.Errorf("host %q not configured", hostKey)
+	}
+
+	opts := []secret.Option{}
+	if host.AllowInsecureStore {
+		opts = append(opts, secret.WithAllowFileFallback(true))
+	}
+
+	store, err := secret.Open(opts...)
+	if err != nil {
+		return err
+	}
+
+	if err := store.Delete(secret.TokenKey(hostKey)); err != nil {
+		return err
+	}
+	host.Token = ""
 	return nil
 }
 
 func promptString(reader *bufio.Reader, out io.Writer, label string) (string, error) {
-	fmt.Fprintf(out, "%s: ", label)
+	if _, err := fmt.Fprintf(out, "%s: ", label); err != nil {
+		return "", err
+	}
 	value, err := reader.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -436,9 +514,13 @@ func promptString(reader *bufio.Reader, out io.Writer, label string) (string, er
 func promptSecret(ios *iostreams.IOStreams, label string) (string, error) {
 	file, ok := ios.In.(*os.File)
 	if ok && term.IsTerminal(int(file.Fd())) {
-		fmt.Fprintf(ios.Out, "%s: ", label)
+		if _, err := fmt.Fprintf(ios.Out, "%s: ", label); err != nil {
+			return "", err
+		}
 		bytes, err := term.ReadPassword(int(file.Fd()))
-		fmt.Fprintln(ios.Out)
+		if _, ferr := fmt.Fprintln(ios.Out); ferr != nil {
+			return "", ferr
+		}
 		if err != nil {
 			return "", err
 		}

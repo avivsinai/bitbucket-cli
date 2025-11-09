@@ -1,6 +1,7 @@
 package cmdutil
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/internal/remote"
+	"github.com/avivsinai/bitbucket-cli/internal/secret"
 )
 
 // ResolveContext fetches the context and host configuration given an optional
@@ -46,6 +48,10 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 		return "", nil, nil, err
 	}
 
+	if err := loadHostToken(f.ExecutableName, ctx.Host, host); err != nil {
+		return "", nil, nil, err
+	}
+
 	applyRemoteDefaults(ctx, host)
 
 	return contextName, ctx, host, nil
@@ -63,6 +69,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 	hostIdentifier := strings.TrimSpace(hostOverride)
 	if hostIdentifier != "" {
 		if host, ok := cfg.Hosts[hostIdentifier]; ok {
+			if err := loadHostToken(f.ExecutableName, hostIdentifier, host); err != nil {
+				return "", nil, err
+			}
 			return hostIdentifier, host, nil
 		}
 
@@ -70,6 +79,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 		if err == nil {
 			if key, err := HostKeyFromURL(baseURL); err == nil {
 				if host, ok := cfg.Hosts[key]; ok {
+					if err := loadHostToken(f.ExecutableName, key, host); err != nil {
+						return "", nil, err
+					}
 					return key, host, nil
 				}
 			}
@@ -94,6 +106,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 		if err != nil {
 			return "", nil, err
 		}
+		if err := loadHostToken(f.ExecutableName, ctx.Host, host); err != nil {
+			return "", nil, err
+		}
 		return ctx.Host, host, nil
 	}
 
@@ -102,6 +117,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 		return "", nil, fmt.Errorf("no hosts configured; run `%s auth login` first", f.ExecutableName)
 	case 1:
 		for key, host := range cfg.Hosts {
+			if err := loadHostToken(f.ExecutableName, key, host); err != nil {
+				return "", nil, err
+			}
 			return key, host, nil
 		}
 	default:
@@ -123,6 +141,44 @@ func FlagValue(cmd *cobra.Command, name string) string {
 		return ""
 	}
 	return flag.Value.String()
+}
+
+func loadHostToken(executable, hostKey string, host *config.Host) error {
+	if host == nil {
+		return fmt.Errorf("host %q not configured", hostKey)
+	}
+
+	if host.Token != "" {
+		return nil
+	}
+
+	opts := []secret.Option{}
+	if host.AllowInsecureStore {
+		opts = append(opts, secret.WithAllowFileFallback(true))
+	}
+
+	store, err := secret.Open(opts...)
+	if err != nil {
+		if secret.IsNoKeyringError(err) {
+			return fmt.Errorf("no OS keychain backend available for host %q; rerun `%s auth login %s --allow-insecure-store` or set BKT_ALLOW_INSECURE_STORE=1: %w", hostKey, executable, hostKey, err)
+		}
+		return err
+	}
+
+	token, err := store.Get(secret.TokenKey(hostKey))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			target := host.BaseURL
+			if target == "" {
+				target = hostKey
+			}
+			return fmt.Errorf("credentials for host %q not found; run `%s auth login %s`", hostKey, executable, target)
+		}
+		return err
+	}
+
+	host.Token = token
+	return nil
 }
 
 func applyRemoteDefaults(ctx *config.Context, host *config.Host) {

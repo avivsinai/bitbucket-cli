@@ -154,11 +154,13 @@ func runReactionList(cmd *cobra.Command, f *cmdutil.Factory, opts *reactionOptio
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(reactions) == 0 {
-			fmt.Fprintf(ios.Out, "No reactions for comment %d\n", opts.Comment)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "No reactions for comment %d\n", opts.Comment)
+			return err
 		}
 		for _, reaction := range reactions {
-			fmt.Fprintf(ios.Out, "%s x%d\n", reaction.Emoji, reaction.Count)
+			if _, err := fmt.Fprintf(ios.Out, "%s x%d\n", reaction.Emoji, reaction.Count); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -195,7 +197,9 @@ func runReactionAdd(cmd *cobra.Command, f *cmdutil.Factory, opts *reactionOption
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(ios.Out, "✓ Added %s to comment %d\n", opts.Emoji, opts.Comment)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Added %s to comment %d\n", opts.Emoji, opts.Comment); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -230,6 +234,8 @@ func runReactionRemove(cmd *cobra.Command, f *cmdutil.Factory, opts *reactionOpt
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(ios.Out, "✓ Removed %s from comment %d\n", opts.Emoji, opts.Comment)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Removed %s from comment %d\n", opts.Emoji, opts.Comment); err != nil {
+		return err
+	}
 	return nil
 }

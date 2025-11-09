@@ -12,8 +12,6 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 )
 
-type rateLimitOptions struct{}
-
 func newRateLimitCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rate-limit",
@@ -74,13 +72,21 @@ func renderRateLimit(cmd *cobra.Command, out io.Writer, rl httpx.RateLimit) erro
 	}
 
 	return cmdutil.WriteOutput(cmd, out, payload, func() error {
-		fmt.Fprintf(out, "Limit: %d\n", rl.Limit)
-		fmt.Fprintf(out, "Remaining: %d\n", rl.Remaining)
+		if _, err := fmt.Fprintf(out, "Limit: %d\n", rl.Limit); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "Remaining: %d\n", rl.Remaining); err != nil {
+			return err
+		}
 		if !rl.Reset.IsZero() {
-			fmt.Fprintf(out, "Resets At: %s\n", rl.Reset.Format(time.RFC3339))
+			if _, err := fmt.Fprintf(out, "Resets At: %s\n", rl.Reset.Format(time.RFC3339)); err != nil {
+				return err
+			}
 		}
 		if rl.Source != "" {
-			fmt.Fprintf(out, "Source: %s\n", rl.Source)
+			if _, err := fmt.Fprintf(out, "Source: %s\n", rl.Source); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

@@ -40,10 +40,22 @@ type Context struct {
 
 // Host stores connection and credential details for a Bitbucket instance.
 type Host struct {
-	Kind     string `yaml:"kind"` // dc | cloud
-	BaseURL  string `yaml:"base_url"`
-	Username string `yaml:"username,omitempty"`
-	Token    string `yaml:"token,omitempty"`
+	Kind               string `yaml:"kind"` // dc | cloud
+	BaseURL            string `yaml:"base_url"`
+	Username           string `yaml:"username,omitempty"`
+	Token              string `yaml:"token,omitempty"`
+	AllowInsecureStore bool   `yaml:"allow_insecure_store,omitempty"`
+}
+
+// MarshalYAML strips the token field so credentials are never written to disk.
+func (h *Host) MarshalYAML() (any, error) {
+	if h == nil {
+		return nil, nil
+	}
+	type alias Host
+	safe := alias(*h)
+	safe.Token = ""
+	return safe, nil
 }
 
 // Load retrieves configuration from disk, returning default values when the

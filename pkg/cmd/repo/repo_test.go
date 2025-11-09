@@ -94,6 +94,7 @@ func TestBrowseWithoutRepoDefaults(t *testing.T) {
 			"main": {
 				Kind:    "dc",
 				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
 			},
 		},
 	}

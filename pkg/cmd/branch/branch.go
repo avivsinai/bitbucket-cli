@@ -99,8 +99,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(branches) == 0 {
-				fmt.Fprintln(ios.Out, "No branches found.")
-				return nil
+				_, err := fmt.Fprintln(ios.Out, "No branches found.")
+				return err
 			}
 
 			for _, branch := range branches {
@@ -108,7 +108,9 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 				if branch.IsDefault {
 					marker = "*"
 				}
-				fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.DisplayID, branch.LatestCommit)
+				if _, err := fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.DisplayID, branch.LatestCommit); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -141,8 +143,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(branches) == 0 {
-				fmt.Fprintln(ios.Out, "No branches found.")
-				return nil
+				_, err := fmt.Fprintln(ios.Out, "No branches found.")
+				return err
 			}
 
 			for _, branch := range branches {
@@ -154,7 +156,9 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 				if len(hash) > 12 {
 					hash = hash[:12]
 				}
-				fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.Name, hash)
+				if _, err := fmt.Fprintf(ios.Out, "%s %s\t%s\n", marker, branch.Name, hash); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -229,7 +233,9 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *create
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Created branch %s (%s)\n", branch.DisplayID, branch.LatestCommit)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Created branch %s (%s)\n", branch.DisplayID, branch.LatestCommit); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -295,7 +301,9 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *delete
 	if opts.DryRun {
 		action = "Validated"
 	}
-	fmt.Fprintf(ios.Out, "✓ %s branch %s\n", action, name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ %s branch %s\n", action, name); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -344,7 +352,9 @@ func runSetDefault(cmd *cobra.Command, f *cmdutil.Factory, name string) error {
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Set default branch to %s\n", name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Set default branch to %s\n", name); err != nil {
+		return err
+	}
 	return nil
 }
 

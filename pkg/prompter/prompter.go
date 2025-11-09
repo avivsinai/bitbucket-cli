@@ -91,7 +91,9 @@ func (p *system) Confirm(prompt string, defaultYes bool) (bool, error) {
 		case "":
 			return defaultYes, nil
 		default:
-			fmt.Fprintln(p.ios.ErrOut, "Please respond with 'y' or 'n'.")
+			if _, err := fmt.Fprintln(p.ios.ErrOut, "Please respond with 'y' or 'n'."); err != nil {
+				return false, err
+			}
 		}
 	}
 }

@@ -116,19 +116,29 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(summaries) == 0 {
-			fmt.Fprintf(ios.Out, "No projects visible on host %s.\n", baseURL)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "No projects visible on host %s.\n", baseURL)
+			return err
 		}
 
-		fmt.Fprintf(ios.Out, "Projects on %s:\n", baseURL)
+		if _, err := fmt.Fprintf(ios.Out, "Projects on %s:\n", baseURL); err != nil {
+			return err
+		}
 		for _, p := range summaries {
-			fmt.Fprintf(ios.Out, "%s\t%s\n", p.Key, p.Name)
-			fmt.Fprintf(ios.Out, "    link: %s\n", p.WebURL)
+			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", p.Key, p.Name); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "    link: %s\n", p.WebURL); err != nil {
+				return err
+			}
 			if p.Description != "" {
-				fmt.Fprintf(ios.Out, "    desc: %s\n", p.Description)
+				if _, err := fmt.Fprintf(ios.Out, "    desc: %s\n", p.Description); err != nil {
+					return err
+				}
 			}
 			if p.Public {
-				fmt.Fprintf(ios.Out, "    visibility: public\n")
+				if _, err := fmt.Fprintln(ios.Out, "    visibility: public"); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

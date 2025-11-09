@@ -123,14 +123,18 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(prs) == 0 {
-				fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
-				return nil
+				_, err := fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+				return err
 			}
 
 			for _, pr := range prs {
 				author := firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
-				fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title)
-				fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author)
+				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -172,14 +176,18 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(prs) == 0 {
-				fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
-				return nil
+				_, err := fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+				return err
 			}
 
 			for _, pr := range prs {
 				author := firstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
-				fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title)
-				fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name, author)
+				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name, author); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -271,18 +279,32 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		}
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-			fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title)
-			fmt.Fprintf(ios.Out, "State: %s\n", pr.State)
-			fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name))
-			fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID)
+			if _, err := fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "State: %s\n", pr.State); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID); err != nil {
+				return err
+			}
 			if strings.TrimSpace(pr.Description) != "" {
-				fmt.Fprintf(ios.Out, "\n%s\n", pr.Description)
+				if _, err := fmt.Fprintf(ios.Out, "\n%s\n", pr.Description); err != nil {
+					return err
+				}
 			}
 
 			if len(pr.Reviewers) > 0 {
-				fmt.Fprintln(ios.Out, "\nReviewers:")
+				if _, err := fmt.Fprintln(ios.Out, "\nReviewers:"); err != nil {
+					return err
+				}
 				for _, reviewer := range pr.Reviewers {
-					fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name))
+					if _, err := fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name)); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -325,12 +347,22 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		}
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-			fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title)
-			fmt.Fprintf(ios.Out, "State: %s\n", pr.State)
-			fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.DisplayName, pr.Author.Username))
-			fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name)
+			if _, err := fmt.Fprintf(ios.Out, "Pull Request #%d: %s\n", pr.ID, pr.Title); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "State: %s\n", pr.State); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.DisplayName, pr.Author.Username)); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name); err != nil {
+				return err
+			}
 			if strings.TrimSpace(pr.Summary.Raw) != "" {
-				fmt.Fprintf(ios.Out, "\n%s\n", pr.Summary.Raw)
+				if _, err := fmt.Fprintf(ios.Out, "\n%s\n", pr.Summary.Raw); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -444,7 +476,9 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID); err != nil {
+			return err
+		}
 		return nil
 
 	case "cloud":
@@ -474,7 +508,9 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID); err != nil {
+			return err
+		}
 		return nil
 
 	default:
@@ -618,8 +654,8 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 			"stats":        stat,
 		}
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-			fmt.Fprintf(ios.Out, "Files: %d\nAdditions: %d\nDeletions: %d\n", stat.Files, stat.Additions, stat.Deletions)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "Files: %d\nAdditions: %d\nDeletions: %d\n", stat.Files, stat.Additions, stat.Deletions)
+			return err
 		})
 	}
 
@@ -627,7 +663,7 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 	if pager.Enabled() {
 		w, err := pager.Start()
 		if err == nil {
-			defer pager.Stop()
+			defer func() { _ = pager.Stop() }()
 			return client.PullRequestDiff(ctx, projectKey, repoSlug, opts.ID, w)
 		}
 	}
@@ -684,7 +720,9 @@ func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int) error {
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", id)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", id); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -762,7 +800,9 @@ func runMerge(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *mergeOptions
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Merged pull request #%d\n", id)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Merged pull request #%d\n", id); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -828,7 +868,9 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Commented on pull request #%d\n", id)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Commented on pull request #%d\n", id); err != nil {
+		return err
+	}
 	return nil
 }
 

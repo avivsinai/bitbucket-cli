@@ -198,10 +198,14 @@ func runProjectList(cmd *cobra.Command, f *cmdutil.Factory, opts *projectListOpt
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		for _, p := range perms {
-			fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission)
+			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission); err != nil {
+				return err
+			}
 		}
 		if len(perms) == 0 {
-			fmt.Fprintln(ios.Out, "No permissions found.")
+			if _, err := fmt.Fprintln(ios.Out, "No permissions found."); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -234,7 +238,9 @@ func runProjectGrant(cmd *cobra.Command, f *cmdutil.Factory, opts *projectGrantO
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Granted %s on project %s to %s\n", strings.ToUpper(opts.Permission), opts.Project, opts.Username)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Granted %s on project %s to %s\n", strings.ToUpper(opts.Permission), opts.Project, opts.Username); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -265,7 +271,9 @@ func runProjectRevoke(cmd *cobra.Command, f *cmdutil.Factory, opts *projectRevok
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Revoked project permission for %s on %s\n", opts.Username, opts.Project)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Revoked project permission for %s on %s\n", opts.Username, opts.Project); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -305,10 +313,14 @@ func runRepoList(cmd *cobra.Command, f *cmdutil.Factory, opts *repoListOptions) 
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		for _, p := range perms {
-			fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission)
+			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission); err != nil {
+				return err
+			}
 		}
 		if len(perms) == 0 {
-			fmt.Fprintln(ios.Out, "No permissions found.")
+			if _, err := fmt.Fprintln(ios.Out, "No permissions found."); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -341,7 +353,9 @@ func runRepoGrant(cmd *cobra.Command, f *cmdutil.Factory, opts *repoGrantOptions
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Granted %s on %s/%s to %s\n", strings.ToUpper(opts.Permission), opts.Project, opts.Repo, opts.Username)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Granted %s on %s/%s to %s\n", strings.ToUpper(opts.Permission), opts.Project, opts.Repo, opts.Username); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -372,7 +386,9 @@ func runRepoRevoke(cmd *cobra.Command, f *cmdutil.Factory, opts *repoRevokeOptio
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Revoked repository permission for %s on %s/%s\n", opts.Username, opts.Project, opts.Repo)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Revoked repository permission for %s on %s/%s\n", opts.Username, opts.Project, opts.Repo); err != nil {
+		return err
+	}
 	return nil
 }
 

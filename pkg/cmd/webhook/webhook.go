@@ -92,8 +92,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(hooks) == 0 {
-				fmt.Fprintln(ios.Out, "No webhooks configured.")
-				return nil
+				_, err := fmt.Fprintln(ios.Out, "No webhooks configured.")
+				return err
 			}
 
 			for _, hook := range hooks {
@@ -101,7 +101,9 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 				if hook.Active {
 					status = "active"
 				}
-				fmt.Fprintf(ios.Out, "%d\t%s\t%s (%s)\n", hook.ID, status, hook.Name, hook.URL)
+				if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s (%s)\n", hook.ID, status, hook.Name, hook.URL); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -133,15 +135,17 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(hooks) == 0 {
-				fmt.Fprintln(ios.Out, "No webhooks configured.")
-				return nil
+				_, err := fmt.Fprintln(ios.Out, "No webhooks configured.")
+				return err
 			}
 			for _, hook := range hooks {
 				status := "disabled"
 				if hook.Active {
 					status = "active"
 				}
-				fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", hook.UUID, status, hook.URL)
+				if _, err := fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", hook.UUID, status, hook.URL); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -223,7 +227,9 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Created webhook #%d (%s)\n", hook.ID, hook.Name)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created webhook #%d (%s)\n", hook.ID, hook.Name); err != nil {
+			return err
+		}
 		return nil
 	case "cloud":
 		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
@@ -250,7 +256,9 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Created webhook %s\n", hook.UUID)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created webhook %s\n", hook.UUID); err != nil {
+			return err
+		}
 		return nil
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
@@ -327,7 +335,9 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, opts *deleteOptions) erro
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Deleted webhook #%d\n", id)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Deleted webhook #%d\n", id); err != nil {
+			return err
+		}
 		return nil
 	case "cloud":
 		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
@@ -348,7 +358,9 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, opts *deleteOptions) erro
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Deleted webhook %s\n", opts.Identifier)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Deleted webhook %s\n", opts.Identifier); err != nil {
+			return err
+		}
 		return nil
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
@@ -411,7 +423,9 @@ func runTest(cmd *cobra.Command, f *cmdutil.Factory, opts *testOptions) error {
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Triggered test delivery for webhook #%d\n", id)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Triggered test delivery for webhook #%d\n", id); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -245,7 +245,7 @@ func (c *Client) Do(req *http.Request, v any) error {
 		}
 
 		if resp.StatusCode == http.StatusNotModified && c.enableCache && attemptReq.Method == http.MethodGet {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if err := c.applyCachedResponse(attemptReq, v); err != nil {
 				return err
 			}
@@ -255,7 +255,7 @@ func (c *Client) Do(req *http.Request, v any) error {
 		if shouldRetryStatus(resp.StatusCode) {
 			// Read body for retry logic; errors are intentionally ignored as we'll retry anyway
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if !c.shouldRetry(attempts, resp.StatusCode) {
 				if len(bodyBytes) > 0 {
 					resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -277,14 +277,16 @@ func (c *Client) Do(req *http.Request, v any) error {
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 			return decodeError(resp)
 		}
 
 		if v == nil {
 			// Drain and discard response body when caller doesn't need it; errors are intentionally ignored
 			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if c.enableCache && attemptReq.Method == http.MethodGet {
 				c.storeCache(attemptReq, nil, resp.Header.Get("ETag"))
 			}
@@ -293,12 +295,12 @@ func (c *Client) Do(req *http.Request, v any) error {
 
 		if writer, ok := v.(io.Writer); ok {
 			_, err := io.Copy(writer, resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return err
 		}
 
 		bodyBytes, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return err
 		}

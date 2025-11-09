@@ -137,17 +137,23 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(summaries) == 0 {
-				fmt.Fprintf(ios.Out, "No repositories found in project %s.\n", projectKey)
-				return nil
+				_, err := fmt.Fprintf(ios.Out, "No repositories found in project %s.\n", projectKey)
+				return err
 			}
 
 			for _, r := range summaries {
-				fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, r.Name)
+				if _, err := fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, r.Name); err != nil {
+					return err
+				}
 				if r.WebURL != "" {
-					fmt.Fprintf(ios.Out, "    web:   %s\n", r.WebURL)
+					if _, err := fmt.Fprintf(ios.Out, "    web:   %s\n", r.WebURL); err != nil {
+						return err
+					}
 				}
 				if len(r.Clone) > 0 {
-					fmt.Fprintf(ios.Out, "    clone: %s\n", strings.Join(r.Clone, ", "))
+					if _, err := fmt.Fprintf(ios.Out, "    clone: %s\n", strings.Join(r.Clone, ", ")); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -206,17 +212,23 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(summaries) == 0 {
-				fmt.Fprintf(ios.Out, "No repositories found in workspace %s.\n", workspace)
-				return nil
+				_, err := fmt.Fprintf(ios.Out, "No repositories found in workspace %s.\n", workspace)
+				return err
 			}
 
 			for _, r := range summaries {
-				fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Workspace, r.Slug, r.Name)
+				if _, err := fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Workspace, r.Slug, r.Name); err != nil {
+					return err
+				}
 				if r.WebURL != "" {
-					fmt.Fprintf(ios.Out, "    web:   %s\n", r.WebURL)
+					if _, err := fmt.Fprintf(ios.Out, "    web:   %s\n", r.WebURL); err != nil {
+						return err
+					}
 				}
 				if len(r.Clone) > 0 {
-					fmt.Fprintf(ios.Out, "    clone: %s\n", strings.Join(r.Clone, ", "))
+					if _, err := fmt.Fprintf(ios.Out, "    clone: %s\n", strings.Join(r.Clone, ", ")); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -327,14 +339,22 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		}
 
 		return cmdutil.WriteOutput(cmd, ios.Out, details, func() error {
-			fmt.Fprintf(ios.Out, "%s/%s (%d)\n", details.Project, details.Slug, details.ID)
-			fmt.Fprintf(ios.Out, "Name: %s\n", details.Name)
+			if _, err := fmt.Fprintf(ios.Out, "%s/%s (%d)\n", details.Project, details.Slug, details.ID); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "Name: %s\n", details.Name); err != nil {
+				return err
+			}
 			if details.WebURL != "" {
-				fmt.Fprintf(ios.Out, "Web:  %s\n", details.WebURL)
+				if _, err := fmt.Fprintf(ios.Out, "Web:  %s\n", details.WebURL); err != nil {
+					return err
+				}
 			}
 			if len(details.Clone) > 0 {
 				for _, url := range details.Clone {
-					fmt.Fprintf(ios.Out, "Clone: %s\n", url)
+					if _, err := fmt.Fprintf(ios.Out, "Clone: %s\n", url); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -389,14 +409,22 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		}
 
 		return cmdutil.WriteOutput(cmd, ios.Out, details, func() error {
-			fmt.Fprintf(ios.Out, "%s/%s (%s)\n", details.Workspace, details.Slug, details.UUID)
-			fmt.Fprintf(ios.Out, "Name: %s\n", details.Name)
+			if _, err := fmt.Fprintf(ios.Out, "%s/%s (%s)\n", details.Workspace, details.Slug, details.UUID); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "Name: %s\n", details.Name); err != nil {
+				return err
+			}
 			if details.WebURL != "" {
-				fmt.Fprintf(ios.Out, "Web:  %s\n", details.WebURL)
+				if _, err := fmt.Fprintf(ios.Out, "Web:  %s\n", details.WebURL); err != nil {
+					return err
+				}
 			}
 			if len(details.Clone) > 0 {
 				for _, url := range details.Clone {
-					fmt.Fprintf(ios.Out, "Clone: %s\n", url)
+					if _, err := fmt.Fprintf(ios.Out, "Clone: %s\n", url); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -542,8 +570,8 @@ func runBrowse(cmd *cobra.Command, f *cmdutil.Factory, opts *browseOptions) erro
 		}
 
 		if link := firstLinkDC(*repo, "web"); link != "" {
-			fmt.Fprintln(ios.Out, link)
-			return nil
+			_, err := fmt.Fprintln(ios.Out, link)
+			return err
 		}
 
 		return fmt.Errorf("repository does not expose a web URL")
@@ -578,8 +606,8 @@ func runBrowse(cmd *cobra.Command, f *cmdutil.Factory, opts *browseOptions) erro
 		}
 
 		if link := firstLinkCloud(*repo); link != "" {
-			fmt.Fprintln(ios.Out, link)
-			return nil
+			_, err := fmt.Fprintln(ios.Out, link)
+			return err
 		}
 
 		return fmt.Errorf("repository does not expose a web URL")
@@ -658,12 +686,18 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, slug string, opts createO
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Created %s/%s\n", repo.Project.Key, repo.Slug)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created %s/%s\n", repo.Project.Key, repo.Slug); err != nil {
+			return err
+		}
 		if repo.DefaultBranch != "" {
-			fmt.Fprintf(ios.Out, "  default branch: %s\n", repo.DefaultBranch)
+			if _, err := fmt.Fprintf(ios.Out, "  default branch: %s\n", repo.DefaultBranch); err != nil {
+				return err
+			}
 		}
 		for _, clone := range cloneLinksDC(*repo) {
-			fmt.Fprintf(ios.Out, "  clone: %s\n", clone)
+			if _, err := fmt.Fprintf(ios.Out, "  clone: %s\n", clone); err != nil {
+				return err
+			}
 		}
 		return nil
 
@@ -697,9 +731,13 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, slug string, opts createO
 			return err
 		}
 
-		fmt.Fprintf(ios.Out, "✓ Created %s/%s\n", workspace, repo.Slug)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created %s/%s\n", workspace, repo.Slug); err != nil {
+			return err
+		}
 		for _, clone := range cloneLinksCloud(*repo) {
-			fmt.Fprintf(ios.Out, "  clone: %s\n", clone)
+			if _, err := fmt.Fprintf(ios.Out, "  clone: %s\n", clone); err != nil {
+				return err
+			}
 		}
 		return nil
 

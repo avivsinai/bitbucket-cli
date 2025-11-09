@@ -202,17 +202,23 @@ func renderStatuses(cmd *cobra.Command, f *cmdutil.Factory, out io.Writer, commi
 	return cmdutil.WriteOutput(cmd, out, payload, func() error {
 		if metadata != nil {
 			if pr, ok := metadata["pull_request"].(map[string]any); ok {
-				fmt.Fprintf(out, "Pull request #%d: %s\n", pr["id"], pr["title"])
+				if _, err := fmt.Fprintf(out, "Pull request #%d: %s\n", pr["id"], pr["title"]); err != nil {
+					return err
+				}
 			}
 			if ctx, ok := metadata["context"].(map[string]any); ok {
-				fmt.Fprintf(out, "Project %s / Repo %s\n", ctx["project"], ctx["repo"])
+				if _, err := fmt.Fprintf(out, "Project %s / Repo %s\n", ctx["project"], ctx["repo"]); err != nil {
+					return err
+				}
 			}
 		}
 
-		fmt.Fprintf(out, "Commit %s\n", commit)
+		if _, err := fmt.Fprintf(out, "Commit %s\n", commit); err != nil {
+			return err
+		}
 		if len(summaries) == 0 {
-			fmt.Fprintln(out, "No statuses reported.")
-			return nil
+			_, err := fmt.Fprintln(out, "No statuses reported.")
+			return err
 		}
 
 		for _, s := range summaries {
@@ -220,9 +226,13 @@ func renderStatuses(cmd *cobra.Command, f *cmdutil.Factory, out io.Writer, commi
 			if s.Description != "" {
 				line = fmt.Sprintf("%s — %s", line, s.Description)
 			}
-			fmt.Fprintln(out, line)
+			if _, err := fmt.Fprintln(out, line); err != nil {
+				return err
+			}
 			if s.URL != "" {
-				fmt.Fprintf(out, "    %s\n", s.URL)
+				if _, err := fmt.Fprintf(out, "    %s\n", s.URL); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

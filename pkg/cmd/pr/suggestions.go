@@ -94,8 +94,8 @@ func runSuggestion(cmd *cobra.Command, f *cmdutil.Factory, opts *suggestionOptio
 		}
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-			fmt.Fprintf(ios.Out, "%s\n", suggestion.Text)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "%s\n", suggestion.Text)
+			return err
 		})
 	}
 
@@ -103,6 +103,8 @@ func runSuggestion(cmd *cobra.Command, f *cmdutil.Factory, opts *suggestionOptio
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Applied suggestion %d\n", opts.SuggestionID)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Applied suggestion %d\n", opts.SuggestionID); err != nil {
+		return err
+	}
 	return nil
 }

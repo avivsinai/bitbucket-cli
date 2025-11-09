@@ -118,9 +118,13 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *create
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Created context %q (host: %s)\n", name, hostKey)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Created context %q (host: %s)\n", name, hostKey); err != nil {
+		return err
+	}
 	if cfg.ActiveContext == name {
-		fmt.Fprintf(ios.Out, "✓ Context %q is now active\n", name)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Context %q is now active\n", name); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -156,7 +160,9 @@ func runUse(cmd *cobra.Command, f *cmdutil.Factory, name string) error {
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Activated context %q\n", name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Activated context %q\n", name); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -221,8 +227,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory) error {
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(contexts) == 0 {
-			fmt.Fprintf(ios.Out, "No contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "No contexts configured. Use `%s context create` to add one.\n", f.ExecutableName)
+			return err
 		}
 
 		for _, ctx := range contexts {
@@ -230,15 +236,23 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory) error {
 			if ctx.Active {
 				marker = "*"
 			}
-			fmt.Fprintf(ios.Out, "%s %s (host: %s)\n", marker, ctx.Name, ctx.Host)
+			if _, err := fmt.Fprintf(ios.Out, "%s %s (host: %s)\n", marker, ctx.Name, ctx.Host); err != nil {
+				return err
+			}
 			if ctx.ProjectKey != "" {
-				fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey)
+				if _, err := fmt.Fprintf(ios.Out, "    project: %s\n", ctx.ProjectKey); err != nil {
+					return err
+				}
 			}
 			if ctx.Workspace != "" {
-				fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace)
+				if _, err := fmt.Fprintf(ios.Out, "    workspace: %s\n", ctx.Workspace); err != nil {
+					return err
+				}
 			}
 			if ctx.DefaultRepo != "" {
-				fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo)
+				if _, err := fmt.Fprintf(ios.Out, "    repo: %s\n", ctx.DefaultRepo); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -279,6 +293,8 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, name string) error {
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Deleted context %q\n", name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Deleted context %q\n", name); err != nil {
+		return err
+	}
 	return nil
 }

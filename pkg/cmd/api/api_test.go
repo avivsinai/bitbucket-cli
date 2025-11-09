@@ -26,6 +26,7 @@ func newFactoryWithServer(t *testing.T, handler http.HandlerFunc) (*cmdutil.Fact
 			"main": {
 				Kind:    "dc",
 				BaseURL: server.URL,
+				Token:   "test-token",
 			},
 		},
 	}

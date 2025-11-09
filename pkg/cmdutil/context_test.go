@@ -22,6 +22,7 @@ func TestResolveHostWithHostKey(t *testing.T) {
 			"bitbucket.example.com": {
 				Kind:    "dc",
 				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
 			},
 		},
 	}
@@ -45,6 +46,7 @@ func TestResolveHostWithHostURL(t *testing.T) {
 			"bitbucket.example.com": {
 				Kind:    "dc",
 				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
 			},
 		},
 	}
@@ -74,6 +76,7 @@ func TestResolveHostWithContext(t *testing.T) {
 			"bitbucket.example.com": {
 				Kind:    "dc",
 				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
 			},
 		},
 	}
@@ -97,6 +100,7 @@ func TestResolveHostSingleHostFallback(t *testing.T) {
 			"bitbucket.example.com": {
 				Kind:    "dc",
 				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
 			},
 		},
 	}
@@ -120,10 +124,12 @@ func TestResolveHostMultipleHostsError(t *testing.T) {
 			"one.example.com": {
 				Kind:    "dc",
 				BaseURL: "https://one.example.com",
+				Token:   "test-token",
 			},
 			"two.example.com": {
 				Kind:    "dc",
 				BaseURL: "https://two.example.com",
+				Token:   "test-token",
 			},
 		},
 	}

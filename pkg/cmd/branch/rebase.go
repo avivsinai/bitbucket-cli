@@ -63,6 +63,8 @@ func runRebase(cmd *cobra.Command, f *cmdutil.Factory, opts *rebaseOptions) erro
 		return fmt.Errorf("git rebase: %w", err)
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Rebasing onto %s complete\n", opts.Onto)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Rebasing onto %s complete\n", opts.Onto); err != nil {
+		return err
+	}
 	return nil
 }

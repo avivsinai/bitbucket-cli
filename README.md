@@ -53,8 +53,12 @@ go build ./cmd/bkt
 bkt auth login https://bitbucket.mycorp.example --username alice --token <PAT>
 ```
 
-Add `--kind cloud` when targeting Bitbucket Cloud. Credentials are stored in
-`$XDG_CONFIG_HOME/bkt/config.yml`.
+Add `--kind cloud` when targeting Bitbucket Cloud. Access tokens are stored in
+your OS keychain (Keychain Access on macOS, Windows Credential Manager, or
+Secret Service/KWallet on Linux) while host metadata lives in
+`$XDG_CONFIG_HOME/bkt/config.yml`. Pass `--allow-insecure-store` (or set
+`BKT_ALLOW_INSECURE_STORE=1`) to permit the encrypted file backend on systems
+without a native keychain.
 
 ### 2. Create and activate a context
 

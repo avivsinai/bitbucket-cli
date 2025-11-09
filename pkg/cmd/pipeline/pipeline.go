@@ -165,7 +165,9 @@ func runPipelineRun(cmd *cobra.Command, f *cmdutil.Factory, opts *runOptions) er
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Triggered pipeline %s on %s/%s (%s)\n", pipeline.UUID, workspace, repo, pipeline.State.Name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Triggered pipeline %s on %s/%s (%s)\n", pipeline.UUID, workspace, repo, pipeline.State.Name); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -201,11 +203,13 @@ func runPipelineList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) 
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(pipelines) == 0 {
-			fmt.Fprintln(ios.Out, "No pipelines found.")
-			return nil
+			_, err := fmt.Fprintln(ios.Out, "No pipelines found.")
+			return err
 		}
 		for _, p := range pipelines {
-			fmt.Fprintf(ios.Out, "%s\t%-12s\t%s\t%s\n", p.UUID, p.State.Name, p.Target.Ref.Name, p.State.Result.Name)
+			if _, err := fmt.Fprintf(ios.Out, "%s\t%-12s\t%s\t%s\n", p.UUID, p.State.Name, p.Target.Ref.Name, p.State.Result.Name); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -246,11 +250,17 @@ func runPipelineView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) 
 	}
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-		fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", pipeline.UUID, pipeline.State.Name, pipeline.State.Result.Name)
+		if _, err := fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", pipeline.UUID, pipeline.State.Name, pipeline.State.Result.Name); err != nil {
+			return err
+		}
 		if len(steps) > 0 {
-			fmt.Fprintln(ios.Out, "Steps:")
+			if _, err := fmt.Fprintln(ios.Out, "Steps:"); err != nil {
+				return err
+			}
 			for _, step := range steps {
-				fmt.Fprintf(ios.Out, "  %s\t%s\t%s\n", step.UUID, step.Name, step.Result.Name)
+				if _, err := fmt.Fprintf(ios.Out, "  %s\t%s\t%s\n", step.UUID, step.Name, step.Result.Name); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

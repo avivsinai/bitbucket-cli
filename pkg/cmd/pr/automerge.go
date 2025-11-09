@@ -138,7 +138,9 @@ func runAutoMergeEnable(cmd *cobra.Command, f *cmdutil.Factory, opts *autoMergeO
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Auto-merge enabled for pull request #%d\n", opts.ID)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Auto-merge enabled for pull request #%d\n", opts.ID); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -174,7 +176,9 @@ func runAutoMergeDisable(cmd *cobra.Command, f *cmdutil.Factory, opts *autoMerge
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Auto-merge disabled for pull request #%d\n", opts.ID)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Auto-merge disabled for pull request #%d\n", opts.ID); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -220,14 +224,20 @@ func runAutoMergeStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *autoMergeO
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if settings == nil || !settings.Enabled {
-			fmt.Fprintf(ios.Out, "Auto-merge disabled for pull request #%d\n", opts.ID)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "Auto-merge disabled for pull request #%d\n", opts.ID)
+			return err
 		}
-		fmt.Fprintf(ios.Out, "Auto-merge enabled using strategy %s\n", settings.StrategyID)
+		if _, err := fmt.Fprintf(ios.Out, "Auto-merge enabled using strategy %s\n", settings.StrategyID); err != nil {
+			return err
+		}
 		if settings.CommitMessage != "" {
-			fmt.Fprintf(ios.Out, "Message: %s\n", settings.CommitMessage)
+			if _, err := fmt.Fprintf(ios.Out, "Message: %s\n", settings.CommitMessage); err != nil {
+				return err
+			}
 		}
-		fmt.Fprintf(ios.Out, "Close source branch: %t\n", settings.CloseSource)
+		if _, err := fmt.Fprintf(ios.Out, "Close source branch: %t\n", settings.CloseSource); err != nil {
+			return err
+		}
 		return nil
 	})
 }

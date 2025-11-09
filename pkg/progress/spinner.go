@@ -38,7 +38,7 @@ func (s *noopSpinner) write(msg string) {
 	if s.ios == nil || msg == "" {
 		return
 	}
-	fmt.Fprintln(s.ios.ErrOut, msg)
+	_, _ = fmt.Fprintln(s.ios.ErrOut, msg)
 }
 
 type ttySpinner struct {
@@ -71,7 +71,7 @@ func (s *ttySpinner) Start(msg string) {
 			case <-stop:
 				return
 			case <-ticker.C:
-				fmt.Fprintf(s.ios.ErrOut, "\r%c %s", frames[idx], msg)
+				_, _ = fmt.Fprintf(s.ios.ErrOut, "\r%c %s", frames[idx], msg)
 				idx = (idx + 1) % len(frames)
 			}
 		}
@@ -97,5 +97,5 @@ func (s *ttySpinner) endWithPrefix(prefix, msg string) {
 	if msg == "" {
 		return
 	}
-	fmt.Fprintf(s.ios.ErrOut, "\r%s %s\n", prefix, msg)
+	_, _ = fmt.Fprintf(s.ios.ErrOut, "\r%s %s\n", prefix, msg)
 }

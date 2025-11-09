@@ -76,7 +76,9 @@ func runSecretsRotate(cmd *cobra.Command, f *cmdutil.Factory) error {
 	}
 	spinner.Stop("secret rotation complete")
 
-	fmt.Fprintf(ios.Out, "✓ Secrets rotated successfully\n")
+	if _, err := fmt.Fprintf(ios.Out, "✓ Secrets rotated successfully\n"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -151,8 +153,8 @@ func runLoggingGet(cmd *cobra.Command, f *cmdutil.Factory) error {
 	}
 
 	return cmdutil.WriteOutput(cmd, ios.Out, cfg, func() error {
-		fmt.Fprintf(ios.Out, "Level: %s\nAsync: %t\n", cfg.Level, cfg.Async)
-		return nil
+		_, err := fmt.Fprintf(ios.Out, "Level: %s\nAsync: %t\n", cfg.Level, cfg.Async)
+		return err
 	})
 }
 
@@ -190,6 +192,8 @@ func runLoggingSet(cmd *cobra.Command, f *cmdutil.Factory, opts *struct {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(ios.Out, "✓ Updated logging configuration\n")
+	if _, err := fmt.Fprintf(ios.Out, "✓ Updated logging configuration\n"); err != nil {
+		return err
+	}
 	return nil
 }

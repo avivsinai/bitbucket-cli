@@ -116,11 +116,13 @@ func runReviewerGroupList(cmd *cobra.Command, f *cmdutil.Factory, opts *reviewer
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(groups) == 0 {
-			fmt.Fprintln(ios.Out, "No reviewer groups configured.")
-			return nil
+			_, err := fmt.Fprintln(ios.Out, "No reviewer groups configured.")
+			return err
 		}
 		for _, g := range groups {
-			fmt.Fprintf(ios.Out, "%s\n", g.Name)
+			if _, err := fmt.Fprintf(ios.Out, "%s\n", g.Name); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -157,7 +159,9 @@ func runReviewerGroupAdd(cmd *cobra.Command, f *cmdutil.Factory, opts *reviewerG
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Added reviewer group %s\n", opts.Name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Added reviewer group %s\n", opts.Name); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -192,6 +196,8 @@ func runReviewerGroupRemove(cmd *cobra.Command, f *cmdutil.Factory, opts *review
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Removed reviewer group %s\n", opts.Name)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Removed reviewer group %s\n", opts.Name); err != nil {
+		return err
+	}
 	return nil
 }

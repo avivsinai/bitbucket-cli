@@ -170,11 +170,13 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if len(tasks) == 0 {
-			fmt.Fprintf(ios.Out, "No tasks on pull request #%d\n", opts.ID)
-			return nil
+			_, err := fmt.Fprintf(ios.Out, "No tasks on pull request #%d\n", opts.ID)
+			return err
 		}
 		for _, task := range tasks {
-			fmt.Fprintf(ios.Out, "[%s] %d %s\n", strings.ToUpper(task.State), task.ID, task.Text)
+			if _, err := fmt.Fprintf(ios.Out, "[%s] %d %s\n", strings.ToUpper(task.State), task.ID, task.Text); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -213,7 +215,9 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		return err
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Created task %d\n", task.ID)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Created task %d\n", task.ID); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -257,13 +261,17 @@ func toggleTaskState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 		if err := client.CompletePullRequestTask(ctx, projectKey, repoSlug, opts.ID, opts.TaskID); err != nil {
 			return err
 		}
-		fmt.Fprintf(ios.Out, "✓ Completed task %d\n", opts.TaskID)
+		if _, err := fmt.Fprintf(ios.Out, "✓ Completed task %d\n", opts.TaskID); err != nil {
+			return err
+		}
 		return nil
 	}
 
 	if err := client.ReopenPullRequestTask(ctx, projectKey, repoSlug, opts.ID, opts.TaskID); err != nil {
 		return err
 	}
-	fmt.Fprintf(ios.Out, "✓ Reopened task %d\n", opts.TaskID)
+	if _, err := fmt.Fprintf(ios.Out, "✓ Reopened task %d\n", opts.TaskID); err != nil {
+		return err
+	}
 	return nil
 }

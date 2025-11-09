@@ -71,18 +71,30 @@ func runCloudPipelineStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *cloudS
 	}
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-		fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", pipeline.UUID, pipeline.State.Name, pipeline.State.Result.Name)
-		fmt.Fprintf(ios.Out, "Ref: %s\n", pipeline.Target.Ref.Name)
+		if _, err := fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", pipeline.UUID, pipeline.State.Name, pipeline.State.Result.Name); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(ios.Out, "Ref: %s\n", pipeline.Target.Ref.Name); err != nil {
+			return err
+		}
 		if pipeline.CreatedOn != "" {
-			fmt.Fprintf(ios.Out, "Created: %s\n", pipeline.CreatedOn)
+			if _, err := fmt.Fprintf(ios.Out, "Created: %s\n", pipeline.CreatedOn); err != nil {
+				return err
+			}
 		}
 		if pipeline.CompletedOn != "" {
-			fmt.Fprintf(ios.Out, "Completed: %s\n", pipeline.CompletedOn)
+			if _, err := fmt.Fprintf(ios.Out, "Completed: %s\n", pipeline.CompletedOn); err != nil {
+				return err
+			}
 		}
 		if len(steps) > 0 {
-			fmt.Fprintln(ios.Out, "Steps:")
+			if _, err := fmt.Fprintln(ios.Out, "Steps:"); err != nil {
+				return err
+			}
 			for _, step := range steps {
-				fmt.Fprintf(ios.Out, "  %s\t%s\t%s\n", step.UUID, step.Name, step.Result.Name)
+				if _, err := fmt.Fprintf(ios.Out, "  %s\t%s\t%s\n", step.UUID, step.Name, step.Result.Name); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
