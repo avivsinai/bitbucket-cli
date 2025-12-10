@@ -106,7 +106,7 @@ sboms:
     artifacts: archive
     cmd: syft
     args:
-      - "dir:$artifact"
+      - "$artifact"
       - "-o"
       - "cyclonedx-json=$document"
 
