@@ -9,7 +9,6 @@ builds:
       - CGO_ENABLED={{- if eq .Os "darwin" }}1{{- else }}0{{- end }}
     goos:
       - linux
-      - darwin
       - windows
     goarch:
       - amd64
