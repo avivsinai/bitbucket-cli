@@ -6,6 +6,17 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- New `bkt pr checks` command to display build/CI status for pull requests.
+  - Supports both Bitbucket Data Center and Cloud APIs.
+  - Color-coded output: green for success, red for failure, yellow for in-progress.
+  - `--wait` flag polls until all builds complete (useful for CI automation).
+  - `--timeout` flag sets maximum wait time (default: 30 minutes).
+  - `--interval` flag configures polling frequency (default: 10 seconds).
+  - Graceful handling of Ctrl-C interruption during polling.
+  - Returns non-zero exit code when builds fail (for scripting).
+- Shared `CommitStatus` type in `pkg/types` for consistency between API clients.
+
 ## [0.2.1] - 2025-11-09
 
 ### Security

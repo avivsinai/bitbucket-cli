@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
 // Options configure the Bitbucket Data Center client.
@@ -121,13 +122,8 @@ type Ref struct {
 }
 
 // CommitStatus describes build status for a commit.
-type CommitStatus struct {
-	State       string `json:"state"`
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	URL         string `json:"url"`
-	Description string `json:"description"`
-}
+// Type alias to shared types.CommitStatus for backward compatibility.
+type CommitStatus = types.CommitStatus
 
 type paged[T any] struct {
 	Size          int  `json:"size"`

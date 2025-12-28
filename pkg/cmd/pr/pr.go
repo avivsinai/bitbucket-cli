@@ -2,11 +2,14 @@ package pr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,6 +17,8 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
 // NewCmdPR returns the pull request command tree.
@@ -36,6 +41,7 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newTaskCmd(f))
 	cmd.AddCommand(newReactionCmd(f))
 	cmd.AddCommand(newSuggestionCmd(f))
+	cmd.AddCommand(newChecksCmd(f))
 
 	return cmd
 }
@@ -872,6 +878,393 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 		return err
 	}
 	return nil
+}
+
+type checksOptions struct {
+	Project   string
+	Workspace string
+	Repo      string
+	ID        int
+	Web       bool
+	Wait      bool
+	Interval  time.Duration
+	Timeout   time.Duration
+}
+
+func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &checksOptions{}
+	cmd := &cobra.Command{
+		Use:     "checks <id>",
+		Aliases: []string{"builds"},
+		Short:   "Show build/CI status for a pull request",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid pull request id %q", args[0])
+			}
+			opts.ID = id
+			return runChecks(cmd, f, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().BoolVar(&opts.Web, "web", false, "Open the build URL in your browser (first build)")
+	cmd.Flags().BoolVar(&opts.Wait, "wait", false, "Wait for all builds to complete")
+	cmd.Flags().DurationVar(&opts.Interval, "interval", 10*time.Second, "Polling interval when using --wait")
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 30*time.Minute, "Maximum time to wait for builds (0 for no timeout)")
+
+	return cmd
+}
+
+func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+
+	colorEnabled := ios.ColorEnabled()
+
+	// Set up context with signal handling for graceful cancellation
+	ctx := cmd.Context()
+	if opts.Wait {
+		var stop context.CancelFunc
+		ctx, stop = signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
+		// Apply timeout if specified
+		if opts.Timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+			defer cancel()
+		}
+	}
+
+	switch host.Kind {
+	case "dc":
+		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer fetchCancel()
+
+		pr, err := client.GetPullRequest(fetchCtx, projectKey, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		commitSHA := pr.FromRef.LatestCommit
+		if commitSHA == "" {
+			return fmt.Errorf("pull request has no source commit")
+		}
+
+		// Fetch function for polling
+		fetchStatuses := func() ([]types.CommitStatus, error) {
+			statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
+			defer statusCancel()
+			return client.CommitStatuses(statusCtx, commitSHA)
+		}
+
+		var statuses []types.CommitStatus
+		if opts.Wait {
+			statuses, err = pollUntilComplete(ctx, ios, opts, fetchStatuses, colorEnabled, commitSHA)
+			// Handle cancellation gracefully
+			if errors.Is(err, context.Canceled) {
+				fmt.Fprintln(ios.ErrOut, "\nOperation cancelled")
+				return nil
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				fmt.Fprintln(ios.ErrOut, "\nTimeout waiting for builds to complete")
+				return err
+			}
+		} else {
+			statuses, err = fetchStatuses()
+		}
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"project":      projectKey,
+			"repo":         repoSlug,
+			"pull_request": opts.ID,
+			"commit":       commitSHA,
+			"statuses":     statuses,
+		}
+
+		if opts.Web && len(statuses) > 0 {
+			if link := statuses[0].URL; link != "" {
+				if err := f.BrowserOpener().Open(link); err != nil {
+					return fmt.Errorf("open browser: %w", err)
+				}
+			}
+		}
+
+		writeErr := cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			return printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled)
+		})
+		if writeErr != nil {
+			return writeErr
+		}
+
+		// Return error if any build failed (useful for CI scripts)
+		if opts.Wait && anyBuildFailed(statuses) {
+			return fmt.Errorf("one or more builds failed")
+		}
+		return nil
+
+	case "cloud":
+		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer fetchCancel()
+
+		pr, err := client.GetPullRequest(fetchCtx, workspace, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		commitSHA := pr.Source.Commit.Hash
+		if commitSHA == "" {
+			return fmt.Errorf("pull request has no source commit")
+		}
+
+		// Fetch function for polling
+		fetchStatuses := func() ([]types.CommitStatus, error) {
+			statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
+			defer statusCancel()
+			return client.CommitStatuses(statusCtx, workspace, repoSlug, commitSHA)
+		}
+
+		var statuses []types.CommitStatus
+		if opts.Wait {
+			statuses, err = pollUntilComplete(ctx, ios, opts, fetchStatuses, colorEnabled, commitSHA)
+			// Handle cancellation gracefully
+			if errors.Is(err, context.Canceled) {
+				fmt.Fprintln(ios.ErrOut, "\nOperation cancelled")
+				return nil
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				fmt.Fprintln(ios.ErrOut, "\nTimeout waiting for builds to complete")
+				return err
+			}
+		} else {
+			statuses, err = fetchStatuses()
+		}
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"workspace":    workspace,
+			"repo":         repoSlug,
+			"pull_request": opts.ID,
+			"commit":       commitSHA,
+			"statuses":     statuses,
+		}
+
+		if opts.Web && len(statuses) > 0 {
+			if link := statuses[0].URL; link != "" {
+				if err := f.BrowserOpener().Open(link); err != nil {
+					return fmt.Errorf("open browser: %w", err)
+				}
+			}
+		}
+
+		writeErr := cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			return printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled)
+		})
+		if writeErr != nil {
+			return writeErr
+		}
+
+		// Return error if any build failed (useful for CI scripts)
+		if opts.Wait && anyBuildFailed(statuses) {
+			return fmt.Errorf("one or more builds failed")
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}
+
+// pollUntilComplete polls for build statuses until all are complete or context is cancelled
+func pollUntilComplete(
+	ctx context.Context,
+	ios *iostreams.IOStreams,
+	opts *checksOptions,
+	fetch func() ([]types.CommitStatus, error),
+	colorEnabled bool,
+	commitSHA string,
+) ([]types.CommitStatus, error) {
+	ticker := time.NewTicker(opts.Interval)
+	defer ticker.Stop()
+
+	iteration := 0
+	for {
+		statuses, err := fetch()
+		if err != nil {
+			return nil, err
+		}
+
+		// Print current status
+		if iteration > 0 {
+			// Clear previous output with a separator for subsequent iterations
+			fmt.Fprintln(ios.Out, "\n---")
+		}
+		if err := printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled); err != nil {
+			return nil, err
+		}
+
+		if allBuildsComplete(statuses) {
+			return statuses, nil
+		}
+
+		// Show waiting message
+		inProgress := 0
+		for _, s := range statuses {
+			if !isTerminalState(s.State) {
+				inProgress++
+			}
+		}
+		waitMsg := fmt.Sprintf("\n  Waiting for %d build(s) to complete... (polling every %s, Ctrl-C to cancel)", inProgress, opts.Interval)
+		fmt.Fprintln(ios.Out, waitMsg)
+
+		iteration++
+
+		select {
+		case <-ctx.Done():
+			return statuses, ctx.Err()
+		case <-ticker.C:
+			continue
+		}
+	}
+}
+
+// printStatuses prints build statuses with optional color coding
+func printStatuses(ios *iostreams.IOStreams, prID int, commitSHA string, statuses []types.CommitStatus, colorEnabled bool) error {
+	if _, err := fmt.Fprintf(ios.Out, "Build Status for PR #%d (commit %s):\n", prID, commitSHA[:min(12, len(commitSHA))]); err != nil {
+		return err
+	}
+
+	if len(statuses) == 0 {
+		_, err := fmt.Fprintln(ios.Out, "  No builds found.")
+		return err
+	}
+
+	for _, s := range statuses {
+		name := firstNonEmpty(s.Name, s.Key)
+		icon := stateIcon(s.State)
+		colorPrefix, colorSuffix := stateColor(s.State, colorEnabled)
+		if _, err := fmt.Fprintf(ios.Out, "  %s%s %s: %s%s\n", colorPrefix, icon, name, s.State, colorSuffix); err != nil {
+			return err
+		}
+		if s.URL != "" {
+			if _, err := fmt.Fprintf(ios.Out, "      %s\n", s.URL); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func stateIcon(state string) string {
+	switch strings.ToUpper(state) {
+	case "SUCCESSFUL", "SUCCESS":
+		return "✓"
+	case "FAILED", "FAILURE":
+		return "✗"
+	case "INPROGRESS", "IN_PROGRESS", "PENDING":
+		return "○"
+	case "STOPPED":
+		return "■"
+	default:
+		return "?"
+	}
+}
+
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+)
+
+func stateColor(state string, colorEnabled bool) (prefix, suffix string) {
+	if !colorEnabled {
+		return "", ""
+	}
+	switch strings.ToUpper(state) {
+	case "SUCCESSFUL", "SUCCESS":
+		return colorGreen, colorReset
+	case "FAILED", "FAILURE":
+		return colorRed, colorReset
+	case "INPROGRESS", "IN_PROGRESS", "PENDING":
+		return colorYellow, colorReset
+	default:
+		return "", ""
+	}
+}
+
+// isTerminalState returns true if the build state is final (not in progress)
+func isTerminalState(state string) bool {
+	switch strings.ToUpper(state) {
+	case "SUCCESSFUL", "SUCCESS", "FAILED", "FAILURE", "STOPPED":
+		return true
+	default:
+		return false
+	}
+}
+
+// allBuildsComplete returns true if all statuses are in a terminal state
+func allBuildsComplete(statuses []types.CommitStatus) bool {
+	if len(statuses) == 0 {
+		return false // No builds means we should keep waiting
+	}
+	for _, s := range statuses {
+		if !isTerminalState(s.State) {
+			return false
+		}
+	}
+	return true
+}
+
+// anyBuildFailed returns true if any build has failed
+func anyBuildFailed(statuses []types.CommitStatus) bool {
+	for _, s := range statuses {
+		switch strings.ToUpper(s.State) {
+		case "FAILED", "FAILURE":
+			return true
+		}
+	}
+	return false
 }
 
 func runGit(ctx context.Context, args ...string) error {
