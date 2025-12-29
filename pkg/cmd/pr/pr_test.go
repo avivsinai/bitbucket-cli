@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 )
 
 func TestStateIcon(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		state    string
@@ -193,7 +195,7 @@ func TestRunChecksDataCenter(t *testing.T) {
 				},
 			},
 			expectError:   true,
-			errorContains: "pull request has no source commit",
+			errorContains: ErrNoSourceCommit.Error(),
 		},
 		{
 			name: "status with fallback to key when name missing",
@@ -375,7 +377,7 @@ func TestRunChecksCloud(t *testing.T) {
 				return pr
 			}(),
 			expectError:   true,
-			errorContains: "pull request has no source commit",
+			errorContains: ErrNoSourceCommit.Error(),
 		},
 	}
 
@@ -715,6 +717,7 @@ func TestChecksCommandValidation(t *testing.T) {
 }
 
 func TestStateColor(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		state        string
@@ -815,6 +818,7 @@ func TestStateColor(t *testing.T) {
 }
 
 func TestIsTerminalState(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		state    string
 		expected bool
@@ -846,6 +850,7 @@ func TestIsTerminalState(t *testing.T) {
 }
 
 func TestAllBuildsComplete(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		statuses []types.CommitStatus
@@ -910,6 +915,7 @@ func TestAllBuildsComplete(t *testing.T) {
 }
 
 func TestAnyBuildFailed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		statuses []types.CommitStatus
@@ -965,6 +971,7 @@ func TestAnyBuildFailed(t *testing.T) {
 }
 
 func TestCalculatePollInterval(t *testing.T) {
+	t.Parallel()
 	baseInterval := 10 * time.Second
 	maxInterval := 2 * time.Minute
 
@@ -1023,6 +1030,7 @@ func TestCalculatePollInterval(t *testing.T) {
 }
 
 func TestCalculatePollIntervalCapsAtMax(t *testing.T) {
+	t.Parallel()
 	baseInterval := 10 * time.Second
 	maxInterval := 30 * time.Second
 
@@ -1037,6 +1045,7 @@ func TestCalculatePollIntervalCapsAtMax(t *testing.T) {
 }
 
 func TestAddJitter(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		duration time.Duration
@@ -1075,6 +1084,7 @@ func TestAddJitter(t *testing.T) {
 }
 
 func TestAddJitterMinimum(t *testing.T) {
+	t.Parallel()
 	// Very small durations should not go below 1 second
 	got := addJitter(500 * time.Millisecond)
 	if got < time.Second {
@@ -1083,6 +1093,7 @@ func TestAddJitterMinimum(t *testing.T) {
 }
 
 func TestAddJitterZeroAndNegative(t *testing.T) {
+	t.Parallel()
 	// Zero duration should return zero
 	if got := addJitter(0); got != 0 {
 		t.Errorf("addJitter(0) = %v, want 0", got)
@@ -1096,6 +1107,7 @@ func TestAddJitterZeroAndNegative(t *testing.T) {
 }
 
 func TestBackoffProgression(t *testing.T) {
+	t.Parallel()
 	// Verify the backoff progression is monotonically increasing (before hitting cap)
 	baseInterval := 10 * time.Second
 	maxInterval := 5 * time.Minute
@@ -1388,4 +1400,26 @@ func TestPollUntilComplete_ErrorResetOnSuccess(t *testing.T) {
 	if fetcher.calls != 6 {
 		t.Errorf("expected 6 fetch calls, got %d", fetcher.calls)
 	}
+}
+
+func TestSentinelErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ErrNoSourceCommit", func(t *testing.T) {
+		t.Parallel()
+		// Verify the sentinel error can be checked with errors.Is
+		err := fmt.Errorf("context: %w", ErrNoSourceCommit)
+		if !errors.Is(err, ErrNoSourceCommit) {
+			t.Error("errors.Is should match wrapped ErrNoSourceCommit")
+		}
+	})
+
+	t.Run("ErrBuildsFailed", func(t *testing.T) {
+		t.Parallel()
+		// Verify the sentinel error can be checked with errors.Is
+		err := fmt.Errorf("context: %w", ErrBuildsFailed)
+		if !errors.Is(err, ErrBuildsFailed) {
+			t.Error("errors.Is should match wrapped ErrBuildsFailed")
+		}
+	})
 }

@@ -23,6 +23,12 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
+// Sentinel errors for checks command
+var (
+	ErrNoSourceCommit = errors.New("pull request has no source commit")
+	ErrBuildsFailed   = errors.New("one or more builds failed")
+)
+
 // NewCmdPR returns the pull request command tree.
 func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -975,7 +981,7 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 
 		commitSHA := pr.FromRef.LatestCommit
 		if commitSHA == "" {
-			return fmt.Errorf("pull request has no source commit")
+			return ErrNoSourceCommit
 		}
 
 		return executeStatusCheck(&checksResult{
@@ -1021,7 +1027,7 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 
 		commitSHA := pr.Source.Commit.Hash
 		if commitSHA == "" {
-			return fmt.Errorf("pull request has no source commit")
+			return ErrNoSourceCommit
 		}
 
 		return executeStatusCheck(&checksResult{
@@ -1106,7 +1112,7 @@ func executeStatusCheck(r *checksResult) error {
 
 	// Return error if any build failed (useful for CI scripts)
 	if r.opts.Wait && anyBuildFailed(statuses) {
-		return fmt.Errorf("one or more builds failed")
+		return ErrBuildsFailed
 	}
 	return nil
 }
