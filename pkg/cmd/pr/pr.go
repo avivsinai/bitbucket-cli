@@ -895,6 +895,7 @@ type checksOptions struct {
 	ID          int
 	Web         bool
 	Wait        bool
+	FailFast    bool
 	Interval    time.Duration
 	MaxInterval time.Duration
 	Timeout     time.Duration
@@ -913,6 +914,23 @@ func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
 				return fmt.Errorf("invalid pull request id %q", args[0])
 			}
 			opts.ID = id
+
+			// Validate flag combinations: polling flags require --wait
+			if !opts.Wait {
+				if cmd.Flags().Changed("interval") {
+					return fmt.Errorf("--interval requires --wait")
+				}
+				if cmd.Flags().Changed("max-interval") {
+					return fmt.Errorf("--max-interval requires --wait")
+				}
+				if cmd.Flags().Changed("timeout") {
+					return fmt.Errorf("--timeout requires --wait")
+				}
+				if opts.FailFast {
+					return fmt.Errorf("--fail-fast requires --wait")
+				}
+			}
+
 			return runChecks(cmd, f, opts)
 		},
 	}
@@ -922,6 +940,7 @@ func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().BoolVar(&opts.Web, "web", false, "Open the build URL in your browser (first build)")
 	cmd.Flags().BoolVar(&opts.Wait, "wait", false, "Wait for all builds to complete")
+	cmd.Flags().BoolVar(&opts.FailFast, "fail-fast", false, "Exit immediately when a check fails (requires --wait)")
 	cmd.Flags().DurationVar(&opts.Interval, "interval", 10*time.Second, "Initial polling interval when using --wait")
 	cmd.Flags().DurationVar(&opts.MaxInterval, "max-interval", 2*time.Minute, "Maximum polling interval (backoff cap)")
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 30*time.Minute, "Maximum time to wait for builds (0 for no timeout)")
@@ -1110,9 +1129,10 @@ func executeStatusCheck(r *checksResult) error {
 		return writeErr
 	}
 
-	// Return error if any build failed (useful for CI scripts)
+	// Return silent error if any build failed (exit code 1 for CI scripts)
+	// The failure details are already visible in the status output
 	if r.opts.Wait && anyBuildFailed(statuses) {
-		return ErrBuildsFailed
+		return cmdutil.ErrSilent
 	}
 	return nil
 }
@@ -1161,7 +1181,17 @@ func pollUntilComplete(
 			return nil, err
 		}
 
+		// On first iteration, if no builds exist, exit immediately (don't poll forever)
+		if iteration == 0 && len(statuses) == 0 {
+			return statuses, nil
+		}
+
 		if allBuildsComplete(statuses) {
+			return statuses, nil
+		}
+
+		// Exit early on first failure if --fail-fast is set
+		if opts.FailFast && anyBuildFailed(statuses) {
 			return statuses, nil
 		}
 

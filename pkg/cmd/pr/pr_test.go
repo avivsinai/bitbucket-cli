@@ -1423,3 +1423,171 @@ func TestSentinelErrors(t *testing.T) {
 		}
 	})
 }
+
+func TestFlagValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		args          []string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:        "interval with wait is valid",
+			args:        []string{"123", "--wait", "--interval", "5s"},
+			expectError: false,
+		},
+		{
+			name:          "interval without wait errors",
+			args:          []string{"123", "--interval", "5s"},
+			expectError:   true,
+			errorContains: "--interval requires --wait",
+		},
+		{
+			name:          "max-interval without wait errors",
+			args:          []string{"123", "--max-interval", "1m"},
+			expectError:   true,
+			errorContains: "--max-interval requires --wait",
+		},
+		{
+			name:          "timeout without wait errors",
+			args:          []string{"123", "--timeout", "10m"},
+			expectError:   true,
+			errorContains: "--timeout requires --wait",
+		},
+		{
+			name:          "fail-fast without wait errors",
+			args:          []string{"123", "--fail-fast"},
+			expectError:   true,
+			errorContains: "--fail-fast requires --wait",
+		},
+		{
+			name:        "fail-fast with wait is valid",
+			args:        []string{"123", "--wait", "--fail-fast"},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "main",
+						ProjectKey:  "PROJ",
+						DefaultRepo: "repo",
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {
+						Kind:    "dc",
+						BaseURL: "https://bitbucket.example.com",
+						Token:   "test-token",
+					},
+				},
+			}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newChecksCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+
+			err := cmd.Execute()
+
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.errorContains)
+				}
+				if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Fatalf("expected error containing %q, got %q", tt.errorContains, err.Error())
+				}
+			}
+			// Note: valid flag combinations will fail later when connecting to server
+			// We're only testing flag validation here
+		})
+	}
+}
+
+func TestPollUntilComplete_EmptyBuildsExitsEarly(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    10 * time.Millisecond,
+		MaxInterval: 50 * time.Millisecond,
+	}
+
+	// Return empty statuses on first call
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{statuses: []types.CommitStatus{}}, // Empty on first call
+		},
+	}
+
+	ctx := context.Background()
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(statuses) != 0 {
+		t.Errorf("expected 0 statuses, got %d", len(statuses))
+	}
+	// Should exit after first call, not poll forever
+	if fetcher.calls != 1 {
+		t.Errorf("expected 1 fetch call (early exit), got %d", fetcher.calls)
+	}
+}
+
+func TestPollUntilComplete_FailFast(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		FailFast:    true,
+		Interval:    1 * time.Millisecond,
+		MaxInterval: 5 * time.Millisecond,
+	}
+
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{
+				statuses: []types.CommitStatus{
+					{State: "INPROGRESS", Name: "build-1"},
+					{State: "FAILED", Name: "build-2"}, // One failed
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// Should exit immediately due to fail-fast, even though build-1 is still in progress
+	if fetcher.calls != 1 {
+		t.Errorf("expected 1 fetch call (fail-fast exit), got %d", fetcher.calls)
+	}
+	if len(statuses) != 2 {
+		t.Errorf("expected 2 statuses returned, got %d", len(statuses))
+	}
+}
