@@ -1093,9 +1093,14 @@ type checksResult struct {
 func executeStatusCheck(r *checksResult) error {
 	var statuses []types.CommitStatus
 	var err error
+	var timedOutWithPending bool
 
 	if r.opts.Wait {
+		// Use alternate screen buffer for cleaner watch output
+		r.ios.StartAlternateScreenBuffer()
 		statuses, err = pollUntilComplete(r.ctx, r.ios, r.opts, r.fetchFunc, r.colorEnabled, r.commitSHA)
+		r.ios.StopAlternateScreenBuffer()
+
 		// Handle cancellation gracefully
 		if errors.Is(err, context.Canceled) {
 			fmt.Fprintln(r.ios.ErrOut, "\nOperation cancelled")
@@ -1103,12 +1108,13 @@ func executeStatusCheck(r *checksResult) error {
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			fmt.Fprintln(r.ios.ErrOut, "\nTimeout waiting for builds to complete")
-			return err
+			// Check if any builds are still pending
+			timedOutWithPending = !allBuildsComplete(statuses)
 		}
 	} else {
 		statuses, err = r.fetchFunc()
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
 
@@ -1129,10 +1135,16 @@ func executeStatusCheck(r *checksResult) error {
 		return writeErr
 	}
 
-	// Return silent error if any build failed (exit code 1 for CI scripts)
-	// The failure details are already visible in the status output
-	if r.opts.Wait && anyBuildFailed(statuses) {
-		return cmdutil.ErrSilent
+	// Return appropriate exit code based on final state
+	if r.opts.Wait {
+		// Timeout with pending checks: exit code 8
+		if timedOutWithPending {
+			return cmdutil.ErrPending
+		}
+		// Any build failed: exit code 1 (silent - details already visible)
+		if anyBuildFailed(statuses) {
+			return cmdutil.ErrSilent
+		}
 	}
 	return nil
 }
@@ -1172,10 +1184,9 @@ func pollUntilComplete(
 		}
 		consecutiveErrors = 0 // Reset on success
 
-		// Print current status
+		// Print current status (clear screen on updates for cleaner output)
 		if iteration > 0 {
-			// Clear previous output with a separator for subsequent iterations
-			fmt.Fprintln(ios.Out, "\n---")
+			ios.ClearScreen()
 		}
 		if err := printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled); err != nil {
 			return nil, err

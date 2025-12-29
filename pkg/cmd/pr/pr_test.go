@@ -1591,3 +1591,18 @@ func TestPollUntilComplete_FailFast(t *testing.T) {
 		t.Errorf("expected 2 statuses returned, got %d", len(statuses))
 	}
 }
+
+func TestErrPendingExitCode(t *testing.T) {
+	t.Parallel()
+	// Verify ErrPending is distinct from ErrSilent
+	if errors.Is(cmdutil.ErrPending, cmdutil.ErrSilent) {
+		t.Error("ErrPending should not be equal to ErrSilent")
+	}
+	// Both should be sentinel errors
+	if cmdutil.ErrPending == nil {
+		t.Error("ErrPending should not be nil")
+	}
+	if cmdutil.ErrSilent == nil {
+		t.Error("ErrSilent should not be nil")
+	}
+}
