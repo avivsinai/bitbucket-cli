@@ -1,8 +1,10 @@
 package pr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -82,6 +84,16 @@ func TestStateIcon(t *testing.T) {
 			name:     "stopped lowercase",
 			state:    "stopped",
 			expected: "■",
+		},
+		{
+			name:     "cancelled uppercase",
+			state:    "CANCELLED",
+			expected: "⊘",
+		},
+		{
+			name:     "cancelled lowercase",
+			state:    "cancelled",
+			expected: "⊘",
 		},
 		{
 			name:     "unknown state",
@@ -753,6 +765,20 @@ func TestStateColor(t *testing.T) {
 			wantSuffix:   colorReset,
 		},
 		{
+			name:         "cancelled with color",
+			state:        "CANCELLED",
+			colorEnabled: true,
+			wantPrefix:   colorYellow,
+			wantSuffix:   colorReset,
+		},
+		{
+			name:         "stopped with color",
+			state:        "STOPPED",
+			colorEnabled: true,
+			wantPrefix:   colorYellow,
+			wantSuffix:   colorReset,
+		},
+		{
 			name:         "unknown state with color",
 			state:        "UNKNOWN",
 			colorEnabled: true,
@@ -799,6 +825,8 @@ func TestIsTerminalState(t *testing.T) {
 		{"failure", true},
 		{"STOPPED", true},
 		{"stopped", true},
+		{"CANCELLED", true},
+		{"cancelled", true},
 		{"INPROGRESS", false},
 		{"in_progress", false},
 		{"PENDING", false},
@@ -1091,5 +1119,273 @@ func TestBackoffProgression(t *testing.T) {
 		if ratio < 1.3 || ratio > 1.7 {
 			t.Errorf("backoff ratio between iteration %d and %d: got %.2f, want ~1.5", i, i+1, ratio)
 		}
+	}
+}
+
+// mockFetcher creates a fetch function that returns different statuses per call
+type mockFetcher struct {
+	calls    int
+	responses []struct {
+		statuses []types.CommitStatus
+		err      error
+	}
+}
+
+func (m *mockFetcher) fetch() ([]types.CommitStatus, error) {
+	if m.calls >= len(m.responses) {
+		// Return last response if we've exceeded the configured calls
+		return m.responses[len(m.responses)-1].statuses, m.responses[len(m.responses)-1].err
+	}
+	resp := m.responses[m.calls]
+	m.calls++
+	return resp.statuses, resp.err
+}
+
+func TestPollUntilComplete_ImmediateSuccess(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    10 * time.Millisecond,
+		MaxInterval: 100 * time.Millisecond,
+	}
+
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{
+				statuses: []types.CommitStatus{
+					{State: "SUCCESSFUL", Name: "build-1"},
+					{State: "SUCCESS", Name: "build-2"},
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(statuses) != 2 {
+		t.Errorf("expected 2 statuses, got %d", len(statuses))
+	}
+	if fetcher.calls != 1 {
+		t.Errorf("expected 1 fetch call, got %d", fetcher.calls)
+	}
+}
+
+func TestPollUntilComplete_MultipleIterations(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    1 * time.Millisecond,  // Very short for testing
+		MaxInterval: 5 * time.Millisecond,
+	}
+
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "build-1"}}},
+			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "build-1"}}},
+			{statuses: []types.CommitStatus{{State: "SUCCESSFUL", Name: "build-1"}}},
+		},
+	}
+
+	ctx := context.Background()
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(statuses) != 1 {
+		t.Errorf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].State != "SUCCESSFUL" {
+		t.Errorf("expected SUCCESSFUL state, got %s", statuses[0].State)
+	}
+	if fetcher.calls != 3 {
+		t.Errorf("expected 3 fetch calls, got %d", fetcher.calls)
+	}
+}
+
+func TestPollUntilComplete_ContextCancellation(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    50 * time.Millisecond,
+		MaxInterval: 100 * time.Millisecond,
+	}
+
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "build-1"}}},
+			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "build-1"}}},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel after a short delay
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err == nil {
+		t.Fatal("expected context.Canceled error")
+	}
+	if !strings.Contains(err.Error(), "context canceled") {
+		t.Errorf("expected context canceled error, got %v", err)
+	}
+}
+
+func TestPollUntilComplete_Timeout(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    50 * time.Millisecond,
+		MaxInterval: 100 * time.Millisecond,
+	}
+
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "build-1"}}},
+			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "build-1"}}},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err == nil {
+		t.Fatal("expected context.DeadlineExceeded error")
+	}
+	if !strings.Contains(err.Error(), "deadline exceeded") {
+		t.Errorf("expected deadline exceeded error, got %v", err)
+	}
+}
+
+func TestPollUntilComplete_FetchErrorRetry(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    1 * time.Millisecond,
+		MaxInterval: 5 * time.Millisecond,
+	}
+
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{err: fmt.Errorf("temporary network error")},
+			{statuses: []types.CommitStatus{{State: "SUCCESSFUL", Name: "build-1"}}},
+		},
+	}
+
+	ctx := context.Background()
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err != nil {
+		t.Fatalf("expected no error after retry, got %v", err)
+	}
+	if len(statuses) != 1 {
+		t.Errorf("expected 1 status, got %d", len(statuses))
+	}
+	if fetcher.calls != 2 {
+		t.Errorf("expected 2 fetch calls (1 error + 1 success), got %d", fetcher.calls)
+	}
+}
+
+func TestPollUntilComplete_MaxConsecutiveErrors(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    1 * time.Millisecond,
+		MaxInterval: 5 * time.Millisecond,
+	}
+
+	testErr := fmt.Errorf("persistent error")
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{err: testErr},
+			{err: testErr},
+			{err: testErr},
+		},
+	}
+
+	ctx := context.Background()
+	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err == nil {
+		t.Fatal("expected error after max consecutive errors")
+	}
+	if !strings.Contains(err.Error(), "fetch failed after 3 attempts") {
+		t.Errorf("expected 'fetch failed after 3 attempts' error, got %v", err)
+	}
+	if fetcher.calls != 3 {
+		t.Errorf("expected 3 fetch calls, got %d", fetcher.calls)
+	}
+}
+
+func TestPollUntilComplete_ErrorResetOnSuccess(t *testing.T) {
+	ios := &iostreams.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	opts := &checksOptions{
+		ID:          123,
+		Wait:        true,
+		Interval:    1 * time.Millisecond,
+		MaxInterval: 5 * time.Millisecond,
+	}
+
+	testErr := fmt.Errorf("temporary error")
+	fetcher := &mockFetcher{
+		responses: []struct {
+			statuses []types.CommitStatus
+			err      error
+		}{
+			{err: testErr},                                                     // Error 1
+			{err: testErr},                                                     // Error 2
+			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "b"}}}, // Success resets counter
+			{err: testErr},                                                     // Error 1 again
+			{err: testErr},                                                     // Error 2 again
+			{statuses: []types.CommitStatus{{State: "SUCCESSFUL", Name: "b"}}}, // Final success
+		},
+	}
+
+	ctx := context.Background()
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+
+	if err != nil {
+		t.Fatalf("expected no error (error counter should reset), got %v", err)
+	}
+	if len(statuses) != 1 || statuses[0].State != "SUCCESSFUL" {
+		t.Errorf("expected final successful status, got %v", statuses)
+	}
+	if fetcher.calls != 6 {
+		t.Errorf("expected 6 fetch calls, got %d", fetcher.calls)
 	}
 }

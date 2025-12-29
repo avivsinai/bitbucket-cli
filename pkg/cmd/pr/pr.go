@@ -978,60 +978,26 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 			return fmt.Errorf("pull request has no source commit")
 		}
 
-		// Fetch function for polling
-		fetchStatuses := func() ([]types.CommitStatus, error) {
-			statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
-			defer statusCancel()
-			return client.CommitStatuses(statusCtx, commitSHA)
-		}
-
-		var statuses []types.CommitStatus
-		if opts.Wait {
-			statuses, err = pollUntilComplete(ctx, ios, opts, fetchStatuses, colorEnabled, commitSHA)
-			// Handle cancellation gracefully
-			if errors.Is(err, context.Canceled) {
-				fmt.Fprintln(ios.ErrOut, "\nOperation cancelled")
-				return nil
-			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				fmt.Fprintln(ios.ErrOut, "\nTimeout waiting for builds to complete")
-				return err
-			}
-		} else {
-			statuses, err = fetchStatuses()
-		}
-		if err != nil {
-			return err
-		}
-
-		payload := map[string]any{
-			"project":      projectKey,
-			"repo":         repoSlug,
-			"pull_request": opts.ID,
-			"commit":       commitSHA,
-			"statuses":     statuses,
-		}
-
-		if opts.Web && len(statuses) > 0 {
-			if link := statuses[0].URL; link != "" {
-				if err := f.BrowserOpener().Open(link); err != nil {
-					return fmt.Errorf("open browser: %w", err)
-				}
-			}
-		}
-
-		writeErr := cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-			return printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled)
+		return executeStatusCheck(&checksResult{
+			ctx:          ctx,
+			ios:          ios,
+			cmd:          cmd,
+			opts:         opts,
+			colorEnabled: colorEnabled,
+			commitSHA:    commitSHA,
+			browserOpen:  f.BrowserOpener().Open,
+			payload: map[string]any{
+				"project":      projectKey,
+				"repo":         repoSlug,
+				"pull_request": opts.ID,
+				"commit":       commitSHA,
+			},
+			fetchFunc: func() ([]types.CommitStatus, error) {
+				statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
+				defer statusCancel()
+				return client.CommitStatuses(statusCtx, commitSHA)
+			},
 		})
-		if writeErr != nil {
-			return writeErr
-		}
-
-		// Return error if any build failed (useful for CI scripts)
-		if opts.Wait && anyBuildFailed(statuses) {
-			return fmt.Errorf("one or more builds failed")
-		}
-		return nil
 
 	case "cloud":
 		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
@@ -1058,64 +1024,91 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 			return fmt.Errorf("pull request has no source commit")
 		}
 
-		// Fetch function for polling
-		fetchStatuses := func() ([]types.CommitStatus, error) {
-			statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
-			defer statusCancel()
-			return client.CommitStatuses(statusCtx, workspace, repoSlug, commitSHA)
-		}
-
-		var statuses []types.CommitStatus
-		if opts.Wait {
-			statuses, err = pollUntilComplete(ctx, ios, opts, fetchStatuses, colorEnabled, commitSHA)
-			// Handle cancellation gracefully
-			if errors.Is(err, context.Canceled) {
-				fmt.Fprintln(ios.ErrOut, "\nOperation cancelled")
-				return nil
-			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				fmt.Fprintln(ios.ErrOut, "\nTimeout waiting for builds to complete")
-				return err
-			}
-		} else {
-			statuses, err = fetchStatuses()
-		}
-		if err != nil {
-			return err
-		}
-
-		payload := map[string]any{
-			"workspace":    workspace,
-			"repo":         repoSlug,
-			"pull_request": opts.ID,
-			"commit":       commitSHA,
-			"statuses":     statuses,
-		}
-
-		if opts.Web && len(statuses) > 0 {
-			if link := statuses[0].URL; link != "" {
-				if err := f.BrowserOpener().Open(link); err != nil {
-					return fmt.Errorf("open browser: %w", err)
-				}
-			}
-		}
-
-		writeErr := cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-			return printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled)
+		return executeStatusCheck(&checksResult{
+			ctx:          ctx,
+			ios:          ios,
+			cmd:          cmd,
+			opts:         opts,
+			colorEnabled: colorEnabled,
+			commitSHA:    commitSHA,
+			browserOpen:  f.BrowserOpener().Open,
+			payload: map[string]any{
+				"workspace":    workspace,
+				"repo":         repoSlug,
+				"pull_request": opts.ID,
+				"commit":       commitSHA,
+			},
+			fetchFunc: func() ([]types.CommitStatus, error) {
+				statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
+				defer statusCancel()
+				return client.CommitStatuses(statusCtx, workspace, repoSlug, commitSHA)
+			},
 		})
-		if writeErr != nil {
-			return writeErr
-		}
-
-		// Return error if any build failed (useful for CI scripts)
-		if opts.Wait && anyBuildFailed(statuses) {
-			return fmt.Errorf("one or more builds failed")
-		}
-		return nil
 
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
+}
+
+// checksResult holds the parameters for executing status checks after the fetch function is set up
+type checksResult struct {
+	ctx          context.Context
+	ios          *iostreams.IOStreams
+	cmd          *cobra.Command
+	opts         *checksOptions
+	fetchFunc    func() ([]types.CommitStatus, error)
+	colorEnabled bool
+	commitSHA    string
+	payload      map[string]any
+	browserOpen  func(string) error
+}
+
+// executeStatusCheck handles the common logic for both DC and Cloud:
+// polling/fetching, error handling, output, and exit code.
+func executeStatusCheck(r *checksResult) error {
+	var statuses []types.CommitStatus
+	var err error
+
+	if r.opts.Wait {
+		statuses, err = pollUntilComplete(r.ctx, r.ios, r.opts, r.fetchFunc, r.colorEnabled, r.commitSHA)
+		// Handle cancellation gracefully
+		if errors.Is(err, context.Canceled) {
+			fmt.Fprintln(r.ios.ErrOut, "\nOperation cancelled")
+			return nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			fmt.Fprintln(r.ios.ErrOut, "\nTimeout waiting for builds to complete")
+			return err
+		}
+	} else {
+		statuses, err = r.fetchFunc()
+	}
+	if err != nil {
+		return err
+	}
+
+	r.payload["statuses"] = statuses
+
+	if r.opts.Web && len(statuses) > 0 {
+		if link := statuses[0].URL; link != "" {
+			if err := r.browserOpen(link); err != nil {
+				return fmt.Errorf("open browser: %w", err)
+			}
+		}
+	}
+
+	writeErr := cmdutil.WriteOutput(r.cmd, r.ios.Out, r.payload, func() error {
+		return printStatuses(r.ios, r.opts.ID, r.commitSHA, statuses, r.colorEnabled)
+	})
+	if writeErr != nil {
+		return writeErr
+	}
+
+	// Return error if any build failed (useful for CI scripts)
+	if r.opts.Wait && anyBuildFailed(statuses) {
+		return fmt.Errorf("one or more builds failed")
+	}
+	return nil
 }
 
 // pollUntilComplete polls for build statuses until all are complete or context is cancelled.
@@ -1170,13 +1163,19 @@ func pollUntilComplete(
 		nextInterval := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration)
 
 		// Show waiting message with current interval
-		inProgress := 0
-		for _, s := range statuses {
-			if !isTerminalState(s.State) {
-				inProgress++
+		var waitMsg string
+		if len(statuses) == 0 {
+			// No builds found yet - explain we're waiting for them to appear
+			waitMsg = fmt.Sprintf("\n  Waiting for builds to appear... (next poll in %s, Ctrl-C to cancel)", nextInterval.Round(time.Second))
+		} else {
+			inProgress := 0
+			for _, s := range statuses {
+				if !isTerminalState(s.State) {
+					inProgress++
+				}
 			}
+			waitMsg = fmt.Sprintf("\n  Waiting for %d build(s)... (next poll in %s, Ctrl-C to cancel)", inProgress, nextInterval.Round(time.Second))
 		}
-		waitMsg := fmt.Sprintf("\n  Waiting for %d build(s)... (next poll in %s, Ctrl-C to cancel)", inProgress, nextInterval.Round(time.Second))
 		fmt.Fprintln(ios.Out, waitMsg)
 
 		iteration++
@@ -1227,6 +1226,8 @@ func stateIcon(state string) string {
 		return "○"
 	case "STOPPED":
 		return "■"
+	case "CANCELLED":
+		return "⊘"
 	default:
 		return "?"
 	}
@@ -1249,7 +1250,7 @@ func stateColor(state string, colorEnabled bool) (prefix, suffix string) {
 		return colorGreen, colorReset
 	case "FAILED", "FAILURE":
 		return colorRed, colorReset
-	case "INPROGRESS", "IN_PROGRESS", "PENDING":
+	case "INPROGRESS", "IN_PROGRESS", "PENDING", "CANCELLED", "STOPPED":
 		return colorYellow, colorReset
 	default:
 		return "", ""
@@ -1259,7 +1260,7 @@ func stateColor(state string, colorEnabled bool) (prefix, suffix string) {
 // isTerminalState returns true if the build state is final (not in progress)
 func isTerminalState(state string) bool {
 	switch strings.ToUpper(state) {
-	case "SUCCESSFUL", "SUCCESS", "FAILED", "FAILURE", "STOPPED":
+	case "SUCCESSFUL", "SUCCESS", "FAILED", "FAILURE", "STOPPED", "CANCELLED":
 		return true
 	default:
 		return false
