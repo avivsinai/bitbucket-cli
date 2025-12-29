@@ -12,8 +12,12 @@ All notable changes to this project will be documented here. The format follows
   - Color-coded output: green for success, red for failure, yellow for in-progress.
   - `--wait` flag polls until all builds complete (useful for CI automation).
   - `--timeout` flag sets maximum wait time (default: 30 minutes).
-  - `--interval` flag configures polling frequency (default: 10 seconds).
+  - `--interval` flag configures initial polling frequency (default: 10 seconds).
+  - `--max-interval` flag sets backoff cap (default: 2 minutes).
+  - Exponential backoff (1.5x multiplier) to reduce API load during long builds.
+  - Random jitter (±15%) prevents thundering herd when multiple clients poll.
   - Graceful handling of Ctrl-C interruption during polling.
+  - Automatic retry with backoff on transient errors (up to 3 attempts).
   - Returns non-zero exit code when builds fail (for scripting).
 - Shared `CommitStatus` type in `pkg/types` for consistency between API clients.
 

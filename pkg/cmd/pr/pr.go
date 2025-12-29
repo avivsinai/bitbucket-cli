@@ -2,8 +2,10 @@ package pr
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -881,14 +883,15 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 }
 
 type checksOptions struct {
-	Project   string
-	Workspace string
-	Repo      string
-	ID        int
-	Web       bool
-	Wait      bool
-	Interval  time.Duration
-	Timeout   time.Duration
+	Project     string
+	Workspace   string
+	Repo        string
+	ID          int
+	Web         bool
+	Wait        bool
+	Interval    time.Duration
+	MaxInterval time.Duration
+	Timeout     time.Duration
 }
 
 func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
@@ -913,7 +916,8 @@ func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().BoolVar(&opts.Web, "web", false, "Open the build URL in your browser (first build)")
 	cmd.Flags().BoolVar(&opts.Wait, "wait", false, "Wait for all builds to complete")
-	cmd.Flags().DurationVar(&opts.Interval, "interval", 10*time.Second, "Polling interval when using --wait")
+	cmd.Flags().DurationVar(&opts.Interval, "interval", 10*time.Second, "Initial polling interval when using --wait")
+	cmd.Flags().DurationVar(&opts.MaxInterval, "max-interval", 2*time.Minute, "Maximum polling interval (backoff cap)")
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 30*time.Minute, "Maximum time to wait for builds (0 for no timeout)")
 
 	return cmd
@@ -1114,7 +1118,8 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 	}
 }
 
-// pollUntilComplete polls for build statuses until all are complete or context is cancelled
+// pollUntilComplete polls for build statuses until all are complete or context is cancelled.
+// Uses exponential backoff with jitter to avoid overwhelming the API.
 func pollUntilComplete(
 	ctx context.Context,
 	ios *iostreams.IOStreams,
@@ -1123,15 +1128,30 @@ func pollUntilComplete(
 	colorEnabled bool,
 	commitSHA string,
 ) ([]types.CommitStatus, error) {
-	ticker := time.NewTicker(opts.Interval)
-	defer ticker.Stop()
-
 	iteration := 0
+	consecutiveErrors := 0
+	const maxConsecutiveErrors = 3
+
 	for {
 		statuses, err := fetch()
 		if err != nil {
-			return nil, err
+			consecutiveErrors++
+			// After multiple consecutive errors, back off more aggressively
+			if consecutiveErrors >= maxConsecutiveErrors {
+				return nil, fmt.Errorf("fetch failed after %d attempts: %w", consecutiveErrors, err)
+			}
+			// Log error and continue with extended backoff
+			fmt.Fprintf(ios.ErrOut, "  ⚠ Error fetching status (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
+			// Use iteration + consecutiveErrors to back off faster on errors
+			errorBackoff := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration+consecutiveErrors)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(errorBackoff):
+				continue
+			}
 		}
+		consecutiveErrors = 0 // Reset on success
 
 		// Print current status
 		if iteration > 0 {
@@ -1146,14 +1166,17 @@ func pollUntilComplete(
 			return statuses, nil
 		}
 
-		// Show waiting message
+		// Calculate next polling interval with exponential backoff and jitter
+		nextInterval := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration)
+
+		// Show waiting message with current interval
 		inProgress := 0
 		for _, s := range statuses {
 			if !isTerminalState(s.State) {
 				inProgress++
 			}
 		}
-		waitMsg := fmt.Sprintf("\n  Waiting for %d build(s) to complete... (polling every %s, Ctrl-C to cancel)", inProgress, opts.Interval)
+		waitMsg := fmt.Sprintf("\n  Waiting for %d build(s)... (next poll in %s, Ctrl-C to cancel)", inProgress, nextInterval.Round(time.Second))
 		fmt.Fprintln(ios.Out, waitMsg)
 
 		iteration++
@@ -1161,7 +1184,7 @@ func pollUntilComplete(
 		select {
 		case <-ctx.Done():
 			return statuses, ctx.Err()
-		case <-ticker.C:
+		case <-time.After(nextInterval):
 			continue
 		}
 	}
@@ -1265,6 +1288,70 @@ func anyBuildFailed(statuses []types.CommitStatus) bool {
 		}
 	}
 	return false
+}
+
+// backoffMultiplier is the factor by which the polling interval increases each iteration
+const backoffMultiplier = 1.5
+
+// jitterFraction is the maximum random adjustment (±15%) applied to intervals
+const jitterFraction = 0.15
+
+// calculatePollInterval computes the next polling interval using exponential backoff with jitter.
+// The formula is: min(baseInterval * multiplier^iteration, maxInterval) ± jitter
+func calculatePollInterval(baseInterval, maxInterval time.Duration, iteration int) time.Duration {
+	if iteration <= 0 {
+		return addJitter(baseInterval)
+	}
+
+	// Calculate exponential backoff: base * 1.5^iteration
+	interval := float64(baseInterval)
+	for i := 0; i < iteration; i++ {
+		interval *= backoffMultiplier
+		if interval >= float64(maxInterval) {
+			interval = float64(maxInterval)
+			break
+		}
+	}
+
+	// Cap at max interval
+	if interval > float64(maxInterval) {
+		interval = float64(maxInterval)
+	}
+
+	return addJitter(time.Duration(interval))
+}
+
+// addJitter applies ±15% random jitter to a duration to prevent thundering herd.
+// Uses crypto/rand for better randomness distribution.
+func addJitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return d
+	}
+
+	// Calculate jitter range: ±15% of the duration
+	jitterRange := int64(float64(d) * jitterFraction * 2) // Total range is 2x the fraction
+	if jitterRange <= 0 {
+		return d
+	}
+
+	// Generate random value in range [0, jitterRange)
+	n, err := rand.Int(rand.Reader, big.NewInt(jitterRange))
+	if err != nil {
+		// Fallback to no jitter on error
+		return d
+	}
+
+	// Apply jitter: subtract half the range, then add random value
+	// This gives us a value in [-jitterFraction, +jitterFraction]
+	jitter := n.Int64() - (jitterRange / 2)
+	result := time.Duration(int64(d) + jitter)
+
+	// Ensure we don't go below 1 second minimum
+	if result < time.Second {
+		result = time.Second
+	}
+
+	return result
 }
 
 func runGit(ctx context.Context, args ...string) error {

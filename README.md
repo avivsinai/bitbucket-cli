@@ -91,9 +91,10 @@ bkt pr merge 42 --message "merge: feature/cache"
 bkt pr checks 42                              # Show build/CI status
 bkt pr checks 42 --wait                       # Wait for builds to complete
 bkt pr checks 42 --wait --timeout 5m          # Wait with timeout
+bkt pr checks 42 --wait --max-interval 1m     # Custom backoff cap
 ```
 
-The CLI wraps Bitbucket pull-request endpoints for creation, listing, review, and merge operations. The `checks` command displays build status with color-coded output (green for success, red for failure, yellow for in-progress) and supports polling until all builds complete.
+The CLI wraps Bitbucket pull-request endpoints for creation, listing, review, and merge operations. The `checks` command displays build status with color-coded output (green for success, red for failure, yellow for in-progress) and supports polling until all builds complete. Polling uses exponential backoff with jitter to avoid overwhelming the API during long builds.
 
 ### 5. Branch, permission, webhook, pipeline, and extension management
 
