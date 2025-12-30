@@ -1128,7 +1128,14 @@ func executeStatusCheck(r *checksResult) error {
 		}
 	}
 
+	// Skip final print if we used wait mode without TTY (already printed during polling)
+	// With TTY, alternate screen buffer means final print shows on main screen
+	skipFinalPrint := r.opts.Wait && !r.ios.IsStdoutTTY()
+
 	writeErr := cmdutil.WriteOutput(r.cmd, r.ios.Out, r.payload, func() error {
+		if skipFinalPrint {
+			return nil
+		}
 		return printStatuses(r.ios, r.opts.ID, r.commitSHA, statuses, r.colorEnabled)
 	})
 	if writeErr != nil {

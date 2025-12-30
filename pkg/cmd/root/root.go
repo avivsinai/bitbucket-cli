@@ -35,7 +35,8 @@ Common flows:
   bkt auth login https://bitbucket.example.com
   bkt pr list --mine
   bkt status pr 123 --json`,
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
