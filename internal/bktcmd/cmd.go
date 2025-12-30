@@ -46,9 +46,15 @@ func Main() int {
 			}
 			return exitErr.Code
 		}
-		if err != cmdutil.ErrSilent {
-			_, _ = fmt.Fprintf(ios.ErrOut, "Error: %v\n", err)
+		// ErrPending: checks still pending (e.g., timeout hit) - exit code 8
+		if errors.Is(err, cmdutil.ErrPending) {
+			return 8
 		}
+		// ErrSilent: failure without message - exit code 1
+		if errors.Is(err, cmdutil.ErrSilent) {
+			return 1
+		}
+		_, _ = fmt.Fprintf(ios.ErrOut, "Error: %v\n", err)
 		return 1
 	}
 

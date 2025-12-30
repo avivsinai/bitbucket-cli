@@ -84,3 +84,38 @@ func (s *IOStreams) IsStdoutTTY() bool {
 func (s *IOStreams) IsStderrTTY() bool {
 	return s != nil && s.isStderrTTY
 }
+
+// ANSI escape sequences for alternate screen buffer
+const (
+	enterAltScreen = "\x1b[?1049h"
+	exitAltScreen  = "\x1b[?1049l"
+	clearScreen    = "\x1b[2J\x1b[H" // Clear screen and move cursor to top-left
+)
+
+// StartAlternateScreenBuffer switches to the alternate screen buffer.
+// This keeps the terminal clean during watch mode, showing only the final
+// result on the original screen when done. No-op if not a TTY.
+func (s *IOStreams) StartAlternateScreenBuffer() {
+	if s == nil || !s.isStdoutTTY {
+		return
+	}
+	_, _ = io.WriteString(s.Out, enterAltScreen)
+}
+
+// StopAlternateScreenBuffer switches back to the main screen buffer.
+// No-op if not a TTY.
+func (s *IOStreams) StopAlternateScreenBuffer() {
+	if s == nil || !s.isStdoutTTY {
+		return
+	}
+	_, _ = io.WriteString(s.Out, exitAltScreen)
+}
+
+// ClearScreen clears the screen and moves cursor to top-left.
+// Useful for refreshing watch mode output. No-op if not a TTY.
+func (s *IOStreams) ClearScreen() {
+	if s == nil || !s.isStdoutTTY {
+		return
+	}
+	_, _ = io.WriteString(s.Out, clearScreen)
+}

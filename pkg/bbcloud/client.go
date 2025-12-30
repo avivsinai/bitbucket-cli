@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
 // Options configure the Bitbucket Cloud client.
@@ -420,6 +421,10 @@ type PipelineLog struct {
 	Log      string `json:"log"`
 }
 
+// CommitStatus describes build status for a commit.
+// Type alias to shared types.CommitStatus for backward compatibility.
+type CommitStatus = types.CommitStatus
+
 // GetPipelineLogs fetches logs for a pipeline step.
 func (c *Client) GetPipelineLogs(ctx context.Context, workspace, repoSlug, pipelineUUID, stepUUID string) ([]byte, error) {
 	pipelineUUID = strings.Trim(pipelineUUID, "{}")
@@ -442,4 +447,49 @@ func (c *Client) GetPipelineLogs(ctx context.Context, workspace, repoSlug, pipel
 	}
 
 	return []byte(buf.String()), nil
+}
+
+// CommitStatuses returns build statuses for a commit.
+func (c *Client) CommitStatuses(ctx context.Context, workspace, repoSlug, commit string) ([]CommitStatus, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if commit == "" {
+		return nil, fmt.Errorf("commit SHA is required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/commit/%s/statuses",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		url.PathEscape(commit),
+	)
+
+	var statuses []CommitStatus
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp struct {
+			Values []CommitStatus `json:"values"`
+			Next   string         `json:"next"`
+		}
+		if err := c.http.Do(req, &resp); err != nil {
+			return nil, err
+		}
+
+		statuses = append(statuses, resp.Values...)
+
+		if resp.Next == "" {
+			break
+		}
+		nextURL, err := url.Parse(resp.Next)
+		if err != nil {
+			return nil, err
+		}
+		path = nextURL.RequestURI()
+	}
+
+	return statuses, nil
 }
