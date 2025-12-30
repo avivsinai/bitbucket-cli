@@ -1177,7 +1177,7 @@ func TestPollUntilComplete_ImmediateSuccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -1211,7 +1211,7 @@ func TestPollUntilComplete_MultipleIterations(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -1254,7 +1254,7 @@ func TestPollUntilComplete_ContextCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err == nil {
 		t.Fatal("expected context.Canceled error")
@@ -1286,7 +1286,7 @@ func TestPollUntilComplete_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 
-	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err == nil {
 		t.Fatal("expected context.DeadlineExceeded error")
@@ -1316,7 +1316,7 @@ func TestPollUntilComplete_FetchErrorRetry(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err != nil {
 		t.Fatalf("expected no error after retry, got %v", err)
@@ -1351,7 +1351,7 @@ func TestPollUntilComplete_MaxConsecutiveErrors(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	_, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err == nil {
 		t.Fatal("expected error after max consecutive errors")
@@ -1389,7 +1389,7 @@ func TestPollUntilComplete_ErrorResetOnSuccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err != nil {
 		t.Fatalf("expected no error (error counter should reset), got %v", err)
@@ -1414,14 +1414,6 @@ func TestSentinelErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("ErrBuildsFailed", func(t *testing.T) {
-		t.Parallel()
-		// Verify the sentinel error can be checked with errors.Is
-		err := fmt.Errorf("context: %w", ErrBuildsFailed)
-		if !errors.Is(err, ErrBuildsFailed) {
-			t.Error("errors.Is should match wrapped ErrBuildsFailed")
-		}
-	})
 }
 
 func TestFlagValidation(t *testing.T) {
@@ -1466,6 +1458,24 @@ func TestFlagValidation(t *testing.T) {
 			name:        "fail-fast with wait is valid",
 			args:        []string{"123", "--wait", "--fail-fast"},
 			expectError: false,
+		},
+		{
+			name:          "zero interval errors",
+			args:          []string{"123", "--wait", "--interval", "0s"},
+			expectError:   true,
+			errorContains: "--interval must be positive",
+		},
+		{
+			name:          "zero max-interval errors",
+			args:          []string{"123", "--wait", "--max-interval", "0s"},
+			expectError:   true,
+			errorContains: "--max-interval must be positive",
+		},
+		{
+			name:          "max-interval less than interval errors",
+			args:          []string{"123", "--wait", "--interval", "30s", "--max-interval", "10s"},
+			expectError:   true,
+			errorContains: "--max-interval must be >= --interval",
 		},
 	}
 
@@ -1539,7 +1549,7 @@ func TestPollUntilComplete_EmptyBuildsExitsEarly(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -1578,7 +1588,7 @@ func TestPollUntilComplete_FailFast(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123")
+	statuses, err := pollUntilComplete(ctx, ios, opts, fetcher.fetch, false, "abc123", false)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)

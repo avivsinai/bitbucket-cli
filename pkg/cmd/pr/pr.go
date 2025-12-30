@@ -26,7 +26,6 @@ import (
 // Sentinel errors for checks command
 var (
 	ErrNoSourceCommit = errors.New("pull request has no source commit")
-	ErrBuildsFailed   = errors.New("one or more builds failed")
 )
 
 // NewCmdPR returns the pull request command tree.
@@ -931,6 +930,19 @@ func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
 				}
 			}
 
+			// Validate interval values to prevent API hammering
+			if opts.Wait {
+				if opts.Interval <= 0 {
+					return fmt.Errorf("--interval must be positive")
+				}
+				if opts.MaxInterval <= 0 {
+					return fmt.Errorf("--max-interval must be positive")
+				}
+				if opts.MaxInterval < opts.Interval {
+					return fmt.Errorf("--max-interval must be >= --interval")
+				}
+			}
+
 			return runChecks(cmd, f, opts)
 		},
 	}
@@ -961,6 +973,13 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 	}
 
 	colorEnabled := ios.ColorEnabled()
+
+	// Check if structured output is requested (--json/--yaml/--template/--jq)
+	outputSettings, err := cmdutil.ResolveOutputSettings(cmd)
+	if err != nil {
+		return err
+	}
+	quietPoll := outputSettings.Format != "" || outputSettings.Template != "" || outputSettings.JQ != ""
 
 	// Set up context with signal handling for graceful cancellation
 	ctx := cmd.Context()
@@ -1011,6 +1030,7 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 			colorEnabled: colorEnabled,
 			commitSHA:    commitSHA,
 			browserOpen:  f.BrowserOpener().Open,
+			quietPoll:    quietPoll,
 			payload: map[string]any{
 				"project":      projectKey,
 				"repo":         repoSlug,
@@ -1057,6 +1077,7 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 			colorEnabled: colorEnabled,
 			commitSHA:    commitSHA,
 			browserOpen:  f.BrowserOpener().Open,
+			quietPoll:    quietPoll,
 			payload: map[string]any{
 				"workspace":    workspace,
 				"repo":         repoSlug,
@@ -1086,6 +1107,7 @@ type checksResult struct {
 	commitSHA    string
 	payload      map[string]any
 	browserOpen  func(string) error
+	quietPoll    bool // suppress poll output for structured output (--json/--yaml)
 }
 
 // executeStatusCheck handles the common logic for both DC and Cloud:
@@ -1096,10 +1118,14 @@ func executeStatusCheck(r *checksResult) error {
 	var timedOutWithPending bool
 
 	if r.opts.Wait {
-		// Use alternate screen buffer for cleaner watch output
-		r.ios.StartAlternateScreenBuffer()
-		statuses, err = pollUntilComplete(r.ctx, r.ios, r.opts, r.fetchFunc, r.colorEnabled, r.commitSHA)
-		r.ios.StopAlternateScreenBuffer()
+		// Use alternate screen buffer for cleaner watch output (skip for structured output)
+		if !r.quietPoll {
+			r.ios.StartAlternateScreenBuffer()
+		}
+		statuses, err = pollUntilComplete(r.ctx, r.ios, r.opts, r.fetchFunc, r.colorEnabled, r.commitSHA, r.quietPoll)
+		if !r.quietPoll {
+			r.ios.StopAlternateScreenBuffer()
+		}
 
 		// Handle cancellation gracefully
 		if errors.Is(err, context.Canceled) {
@@ -1158,6 +1184,7 @@ func executeStatusCheck(r *checksResult) error {
 
 // pollUntilComplete polls for build statuses until all are complete or context is cancelled.
 // Uses exponential backoff with jitter to avoid overwhelming the API.
+// When quietPoll is true, suppresses all output (for structured output like --json).
 func pollUntilComplete(
 	ctx context.Context,
 	ios *iostreams.IOStreams,
@@ -1165,6 +1192,7 @@ func pollUntilComplete(
 	fetch func() ([]types.CommitStatus, error),
 	colorEnabled bool,
 	commitSHA string,
+	quietPoll bool,
 ) ([]types.CommitStatus, error) {
 	iteration := 0
 	consecutiveErrors := 0
@@ -1178,7 +1206,7 @@ func pollUntilComplete(
 			if consecutiveErrors >= maxConsecutiveErrors {
 				return nil, fmt.Errorf("fetch failed after %d attempts: %w", consecutiveErrors, err)
 			}
-			// Log error and continue with extended backoff
+			// Log error to stderr (doesn't corrupt structured output on stdout)
 			fmt.Fprintf(ios.ErrOut, "  ⚠ Error fetching status (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
 			// Use iteration + consecutiveErrors to back off faster on errors
 			errorBackoff := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration+consecutiveErrors)
@@ -1191,12 +1219,14 @@ func pollUntilComplete(
 		}
 		consecutiveErrors = 0 // Reset on success
 
-		// Print current status (clear screen on updates for cleaner output)
-		if iteration > 0 {
-			ios.ClearScreen()
-		}
-		if err := printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled); err != nil {
-			return nil, err
+		// Print current status (skip for structured output to avoid corrupting JSON/YAML)
+		if !quietPoll {
+			if iteration > 0 {
+				ios.ClearScreen()
+			}
+			if err := printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled); err != nil {
+				return nil, err
+			}
 		}
 
 		// On first iteration, if no builds exist, exit immediately (don't poll forever)
@@ -1216,21 +1246,23 @@ func pollUntilComplete(
 		// Calculate next polling interval with exponential backoff and jitter
 		nextInterval := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration)
 
-		// Show waiting message with current interval
-		var waitMsg string
-		if len(statuses) == 0 {
-			// No builds found yet - explain we're waiting for them to appear
-			waitMsg = fmt.Sprintf("\n  Waiting for builds to appear... (next poll in %s, Ctrl-C to cancel)", nextInterval.Round(time.Second))
-		} else {
-			inProgress := 0
-			for _, s := range statuses {
-				if !isTerminalState(s.State) {
-					inProgress++
+		// Show waiting message (skip for structured output)
+		if !quietPoll {
+			var waitMsg string
+			if len(statuses) == 0 {
+				// No builds found yet - explain we're waiting for them to appear
+				waitMsg = fmt.Sprintf("\n  Waiting for builds to appear... (next poll in %s, Ctrl-C to cancel)", nextInterval.Round(time.Second))
+			} else {
+				inProgress := 0
+				for _, s := range statuses {
+					if !isTerminalState(s.State) {
+						inProgress++
+					}
 				}
+				waitMsg = fmt.Sprintf("\n  Waiting for %d build(s)... (next poll in %s, Ctrl-C to cancel)", inProgress, nextInterval.Round(time.Second))
 			}
-			waitMsg = fmt.Sprintf("\n  Waiting for %d build(s)... (next poll in %s, Ctrl-C to cancel)", inProgress, nextInterval.Round(time.Second))
+			fmt.Fprintln(ios.Out, waitMsg)
 		}
-		fmt.Fprintln(ios.Out, waitMsg)
 
 		iteration++
 
