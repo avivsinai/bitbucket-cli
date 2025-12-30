@@ -254,8 +254,8 @@ func TestRunChecksDataCenter(t *testing.T) {
 				ActiveContext: "default",
 				Contexts: map[string]*config.Context{
 					"default": {
-						Host:       "main",
-						ProjectKey: "PROJ",
+						Host:        "main",
+						ProjectKey:  "PROJ",
 						DefaultRepo: "repo",
 					},
 				},
@@ -497,9 +497,9 @@ func TestChecksCommandArgumentParsing(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name:          "valid pr id",
-			args:          []string{"123"},
-			expectError:   false,
+			name:        "valid pr id",
+			args:        []string{"123"},
+			expectError: false,
 		},
 		{
 			name:          "no arguments",
@@ -529,8 +529,8 @@ func TestChecksCommandArgumentParsing(t *testing.T) {
 				ActiveContext: "default",
 				Contexts: map[string]*config.Context{
 					"default": {
-						Host:       "main",
-						ProjectKey: "PROJ",
+						Host:        "main",
+						ProjectKey:  "PROJ",
 						DefaultRepo: "repo",
 					},
 				},
@@ -1136,7 +1136,7 @@ func TestBackoffProgression(t *testing.T) {
 
 // mockFetcher creates a fetch function that returns different statuses per call
 type mockFetcher struct {
-	calls    int
+	calls     int
 	responses []struct {
 		statuses []types.CommitStatus
 		err      error
@@ -1195,7 +1195,7 @@ func TestPollUntilComplete_MultipleIterations(t *testing.T) {
 	opts := &checksOptions{
 		ID:          123,
 		Wait:        true,
-		Interval:    1 * time.Millisecond,  // Very short for testing
+		Interval:    1 * time.Millisecond, // Very short for testing
 		MaxInterval: 5 * time.Millisecond,
 	}
 
@@ -1379,11 +1379,11 @@ func TestPollUntilComplete_ErrorResetOnSuccess(t *testing.T) {
 			statuses []types.CommitStatus
 			err      error
 		}{
-			{err: testErr},                                                     // Error 1
-			{err: testErr},                                                     // Error 2
+			{err: testErr}, // Error 1
+			{err: testErr}, // Error 2
 			{statuses: []types.CommitStatus{{State: "INPROGRESS", Name: "b"}}}, // Success resets counter
-			{err: testErr},                                                     // Error 1 again
-			{err: testErr},                                                     // Error 2 again
+			{err: testErr}, // Error 1 again
+			{err: testErr}, // Error 2 again
 			{statuses: []types.CommitStatus{{State: "SUCCESSFUL", Name: "b"}}}, // Final success
 		},
 	}

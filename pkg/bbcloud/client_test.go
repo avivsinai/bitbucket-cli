@@ -102,13 +102,13 @@ func TestListPipelinesRespectsLimit(t *testing.T) {
 
 func TestCommitStatuses(t *testing.T) {
 	tests := []struct {
-		name           string
-		workspace      string
-		repoSlug       string
-		commit         string
-		expectError    bool
-		errorContains  string
-		mockResponses  []struct {
+		name          string
+		workspace     string
+		repoSlug      string
+		commit        string
+		expectError   bool
+		errorContains string
+		mockResponses []struct {
 			values []CommitStatus
 			next   string
 		}
@@ -312,4 +312,3 @@ func TestCommitStatusesPathEncoding(t *testing.T) {
 		t.Fatalf("CommitStatuses: %v", err)
 	}
 }
-
