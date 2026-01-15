@@ -143,7 +143,22 @@ bkt pr checks 42 --wait --max-interval 1m     # Custom backoff cap
 
 The CLI wraps Bitbucket pull-request endpoints for creation, listing, review, and merge operations. The `checks` command displays build status with color-coded output (green for success, red for failure, yellow for in-progress) and supports polling until all builds complete. Polling uses exponential backoff with jitter to avoid overwhelming the API during long builds.
 
-### 5. Branch, permission, webhook, pipeline, and extension management
+### 5. Issue tracking (Bitbucket Cloud only)
+
+```bash
+bkt issue list --state open --kind bug           # List open bugs
+bkt issue view 42 --comments                     # View issue with comments
+bkt issue create -t "Login broken" -k bug -p major
+bkt issue edit 42 --assignee alice --priority critical
+bkt issue close 42                               # Close an issue
+bkt issue reopen 42                              # Reopen a closed issue
+bkt issue comment 42 -b "Fixed in v1.2.0"        # Add a comment
+bkt issue status                                 # Show your assigned/created issues
+```
+
+Note: The issue tracker is only available for Bitbucket Cloud. Bitbucket Data Center uses Jira for issue tracking.
+
+### 6. Branch, permission, webhook, pipeline, and extension management
 
 ```bash
 bkt branch list --workspace myteam           # Cloud branch listing

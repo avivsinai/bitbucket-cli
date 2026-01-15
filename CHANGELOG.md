@@ -7,6 +7,17 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- New `bkt issue` command group for Bitbucket Cloud issue tracker (Cloud-only).
+  - `bkt issue list`: List issues with filtering by state, kind, priority, assignee, milestone.
+  - `bkt issue view`: Display issue details with optional comments.
+  - `bkt issue create`: Create new issues with title, body, kind, priority, assignee, etc.
+  - `bkt issue edit`: Update existing issue fields.
+  - `bkt issue close`: Close an issue.
+  - `bkt issue reopen`: Reopen a closed issue.
+  - `bkt issue delete`: Delete an issue with confirmation prompt.
+  - `bkt issue comment`: Add or list comments on an issue.
+  - `bkt issue status`: Show issues assigned to or created by the current user.
+  - All commands support `--json` and `--yaml` output formats.
 - New `bkt pr checks` command to display build/CI status for pull requests.
   - Supports both Bitbucket Data Center and Cloud APIs.
   - Color-coded output: green for success, red for failure, yellow for in-progress.
