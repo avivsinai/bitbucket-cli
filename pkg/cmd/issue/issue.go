@@ -1176,7 +1176,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *statusOptions) erro
 
 	// Fetch issues assigned to user
 	assignedIssues, err := client.ListIssues(ctx, workspace, repoSlug, bbcloud.IssueListOptions{
-		Assignee: user.Username,
+		Assignee: user.UUID,
 		Limit:    10,
 	})
 	if err != nil {
@@ -1185,7 +1185,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *statusOptions) erro
 
 	// Fetch issues created by user
 	createdIssues, err := client.ListIssues(ctx, workspace, repoSlug, bbcloud.IssueListOptions{
-		Reporter: user.Username,
+		Reporter: user.UUID,
 		Limit:    10,
 	})
 	if err != nil {
