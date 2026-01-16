@@ -53,6 +53,7 @@ type listOptions struct {
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &listOptions{
 		Limit: 30,
+		State: "open",
 	}
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -73,7 +74,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug")
-	cmd.Flags().StringVarP(&opts.State, "state", "s", "", "Filter by state (new, open, resolved, on hold, invalid, duplicate, wontfix, closed)")
+	cmd.Flags().StringVarP(&opts.State, "state", "s", opts.State, "Filter by state (new, open, resolved, on hold, invalid, duplicate, wontfix, closed, all); defaults to open")
 	cmd.Flags().StringVarP(&opts.Kind, "kind", "k", "", "Filter by kind (bug, enhancement, proposal, task)")
 	cmd.Flags().StringVarP(&opts.Priority, "priority", "p", "", "Filter by priority (trivial, minor, major, critical, blocker)")
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Filter by assignee (UUID, e.g., {abc-123})")
