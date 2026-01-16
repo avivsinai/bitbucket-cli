@@ -52,6 +52,10 @@ go build ./cmd/bkt
 #### Bitbucket Data Center
 
 ```bash
+# Guided flow: opens browser to create token
+bkt auth login https://bitbucket.mycorp.example --web
+
+# Or provide credentials directly
 bkt auth login https://bitbucket.mycorp.example --username alice --token <PAT>
 ```
 
@@ -64,6 +68,10 @@ Create a **Personal Access Token (PAT)** in Bitbucket Data Center:
 #### Bitbucket Cloud
 
 ```bash
+# Guided flow: opens browser to create token
+bkt auth login https://bitbucket.org --kind cloud --web
+
+# Or provide credentials directly
 bkt auth login https://bitbucket.org --kind cloud --username <email> --token <api-token>
 ```
 
