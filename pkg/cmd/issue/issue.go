@@ -1192,6 +1192,30 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *statusOptions) erro
 		return err
 	}
 
+	// Fetch recently updated issues (excluding those already shown)
+	recentIssues, err := client.ListIssues(ctx, workspace, repoSlug, bbcloud.IssueListOptions{
+		Sort:  "-updated_on", // Most recently updated first
+		Limit: 10,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Filter out issues already shown in assigned/created
+	seen := make(map[int]bool)
+	for _, issue := range assignedIssues {
+		seen[issue.ID] = true
+	}
+	for _, issue := range createdIssues {
+		seen[issue.ID] = true
+	}
+	var filteredRecent []bbcloud.Issue
+	for _, issue := range recentIssues {
+		if !seen[issue.ID] {
+			filteredRecent = append(filteredRecent, issue)
+		}
+	}
+
 	toSummary := func(issues []bbcloud.Issue) []issueSummary {
 		var summaries []issueSummary
 		for _, issue := range issues {
@@ -1207,13 +1231,15 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *statusOptions) erro
 	}
 
 	payload := struct {
-		User     string         `json:"user"`
-		Assigned []issueSummary `json:"assigned"`
-		Created  []issueSummary `json:"created"`
+		User            string         `json:"user"`
+		Assigned        []issueSummary `json:"assigned"`
+		Created         []issueSummary `json:"created"`
+		RecentlyUpdated []issueSummary `json:"recently_updated"`
 	}{
-		User:     user.Username,
-		Assigned: toSummary(assignedIssues),
-		Created:  toSummary(createdIssues),
+		User:            user.Username,
+		Assigned:        toSummary(assignedIssues),
+		Created:         toSummary(createdIssues),
+		RecentlyUpdated: toSummary(filteredRecent),
 	}
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
@@ -1245,6 +1271,21 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *statusOptions) erro
 			}
 		} else {
 			for _, s := range payload.Created {
+				if _, err := fmt.Fprintf(ios.Out, "  #%d\t%s\t[%s]\n", s.ID, s.Title, s.State); err != nil {
+					return err
+				}
+			}
+		}
+
+		if _, err := fmt.Fprintln(ios.Out, "\nRecently updated:"); err != nil {
+			return err
+		}
+		if len(payload.RecentlyUpdated) == 0 {
+			if _, err := fmt.Fprintln(ios.Out, "  No other recently updated issues."); err != nil {
+				return err
+			}
+		} else {
+			for _, s := range payload.RecentlyUpdated {
 				if _, err := fmt.Fprintf(ios.Out, "  #%d\t%s\t[%s]\n", s.ID, s.Title, s.State); err != nil {
 					return err
 				}
