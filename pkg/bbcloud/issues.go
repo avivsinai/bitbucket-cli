@@ -138,10 +138,10 @@ func (c *Client) ListIssues(ctx context.Context, workspace, repoSlug string, opt
 		queryParts = append(queryParts, fmt.Sprintf("priority = \"%s\"", priority))
 	}
 	if assignee := strings.TrimSpace(opts.Assignee); assignee != "" {
-		queryParts = append(queryParts, fmt.Sprintf("assignee.username = \"%s\"", assignee))
+		queryParts = append(queryParts, fmt.Sprintf("assignee.uuid = \"%s\"", assignee))
 	}
 	if reporter := strings.TrimSpace(opts.Reporter); reporter != "" {
-		queryParts = append(queryParts, fmt.Sprintf("reporter.username = \"%s\"", reporter))
+		queryParts = append(queryParts, fmt.Sprintf("reporter.uuid = \"%s\"", reporter))
 	}
 	if milestone := strings.TrimSpace(opts.Milestone); milestone != "" {
 		queryParts = append(queryParts, fmt.Sprintf("milestone.name = \"%s\"", milestone))

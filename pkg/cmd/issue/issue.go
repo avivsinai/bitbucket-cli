@@ -76,7 +76,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.State, "state", "s", "", "Filter by state (new, open, resolved, on hold, invalid, duplicate, wontfix, closed)")
 	cmd.Flags().StringVarP(&opts.Kind, "kind", "k", "", "Filter by kind (bug, enhancement, proposal, task)")
 	cmd.Flags().StringVarP(&opts.Priority, "priority", "p", "", "Filter by priority (trivial, minor, major, critical, blocker)")
-	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Filter by assignee username")
+	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Filter by assignee (UUID, e.g., {abc-123})")
 	cmd.Flags().StringVar(&opts.Milestone, "milestone", "", "Filter by milestone")
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "L", opts.Limit, "Maximum issues to display")
 
