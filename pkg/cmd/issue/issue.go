@@ -417,6 +417,7 @@ type createOptions struct {
 	Assignee  string
 	Milestone string
 	Component string
+	Version   string
 }
 
 func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
@@ -448,6 +449,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Assignee username")
 	cmd.Flags().StringVar(&opts.Milestone, "milestone", "", "Milestone name")
 	cmd.Flags().StringVar(&opts.Component, "component", "", "Component name")
+	cmd.Flags().StringVar(&opts.Version, "version", "", "Version name")
 
 	_ = cmd.MarkFlagRequired("title")
 
@@ -506,6 +508,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		Assignee:  opts.Assignee,
 		Milestone: opts.Milestone,
 		Component: opts.Component,
+		Version:   opts.Version,
 	})
 	if err != nil {
 		return err
@@ -547,6 +550,7 @@ type editOptions struct {
 	Assignee  string
 	Milestone string
 	Component string
+	Version   string
 }
 
 func newEditCmd(f *cmdutil.Factory) *cobra.Command {
@@ -582,6 +586,7 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Update assignee (use empty string to unassign)")
 	cmd.Flags().StringVar(&opts.Milestone, "milestone", "", "Update milestone (use empty string to clear)")
 	cmd.Flags().StringVar(&opts.Component, "component", "", "Update component (use empty string to clear)")
+	cmd.Flags().StringVar(&opts.Version, "version", "", "Update version (use empty string to clear)")
 
 	return cmd
 }
@@ -652,6 +657,10 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions, issueID 
 	}
 	if cmd.Flags().Changed("component") {
 		input.Component = &opts.Component
+		hasUpdates = true
+	}
+	if cmd.Flags().Changed("version") {
+		input.Version = &opts.Version
 		hasUpdates = true
 	}
 
