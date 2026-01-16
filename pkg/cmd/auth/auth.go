@@ -62,8 +62,8 @@ func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&opts.Kind, "kind", opts.Kind, "Bitbucket deployment kind (dc or cloud)")
-	cmd.Flags().StringVar(&opts.Username, "username", "", "Username for authentication (PAT owner or x-token-auth for HTTP tokens)")
-	cmd.Flags().StringVar(&opts.Token, "token", "", "Personal access token or HTTP access token")
+	cmd.Flags().StringVar(&opts.Username, "username", "", "Username (DC: PAT owner, Cloud: Atlassian email for API tokens)")
+	cmd.Flags().StringVar(&opts.Token, "token", "", "Authentication token (DC: PAT, Cloud: API token or app password)")
 	cmd.Flags().BoolVar(&opts.AllowInsecureStore, "allow-insecure-store", false, "Allow encrypted fallback secret storage when no OS keychain is available")
 
 	return cmd
@@ -170,7 +170,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("username is required when not running in a TTY")
 			}
-			opts.Username, err = promptString(reader, ios.Out, "Bitbucket username")
+			opts.Username, err = promptString(reader, ios.Out, "Atlassian account email (for API tokens) or Bitbucket username (for app passwords)")
 			if err != nil {
 				return err
 			}
@@ -180,7 +180,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("token is required when not running in a TTY")
 			}
-			opts.Token, err = promptSecret(ios, "App password")
+			opts.Token, err = promptSecret(ios, "API token (or app password)")
 			if err != nil {
 				return err
 			}

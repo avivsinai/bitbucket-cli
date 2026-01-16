@@ -49,12 +49,51 @@ go build ./cmd/bkt
 
 ### 1. Authenticate against Bitbucket Data Center or Cloud
 
+#### Bitbucket Data Center
+
 ```bash
 bkt auth login https://bitbucket.mycorp.example --username alice --token <PAT>
 ```
 
-Add `--kind cloud` when targeting Bitbucket Cloud. Access tokens are stored in
-your OS keychain (Keychain Access on macOS, Windows Credential Manager, or
+Create a **Personal Access Token (PAT)** in Bitbucket Data Center:
+1. Go to **Profile picture → Manage account → Personal access tokens**
+2. Click **Create a token**
+3. Grant permissions: **Repository Read**, **Repository Write**, **Project Read**
+4. Copy the token (you won't see it again)
+
+#### Bitbucket Cloud
+
+```bash
+bkt auth login https://bitbucket.org --kind cloud --username <email> --token <api-token>
+```
+
+Create an **API token** in Bitbucket Cloud:
+1. Go to **Personal settings → API tokens** ([direct link](https://bitbucket.org/account/settings/api-tokens/))
+2. Click **Create token**
+3. Grant scopes:
+   - **Repositories**: Read (and Write if creating branches)
+   - **Pull requests**: Read, Write
+   - **Account**: Read (for commands that fetch user info)
+4. Copy the generated token
+
+> **Important:** Use your **Atlassian account email** as the username (not your Bitbucket username).
+
+<details>
+<summary>Legacy: App passwords (deprecated)</summary>
+
+App passwords are deprecated. New app passwords cannot be created since September 2025, and existing ones will stop working June 2026. If you have an existing app password:
+
+```bash
+bkt auth login https://bitbucket.org --kind cloud --username <bitbucket-username> --token <app-password>
+```
+
+Note: For app passwords, use your **Bitbucket username** (not email).
+
+</details>
+
+#### Credential storage
+
+Access tokens are stored in your OS keychain (Keychain Access on macOS, Windows Credential Manager, or
 Secret Service/KWallet on Linux) while host metadata lives in
 `$XDG_CONFIG_HOME/bkt/config.yml`. Pass `--allow-insecure-store` (or set
 `BKT_ALLOW_INSECURE_STORE=1`) to permit the encrypted file backend on systems
