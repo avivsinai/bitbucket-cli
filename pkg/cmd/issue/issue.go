@@ -967,8 +967,8 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug")
-	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Comment body")
-	cmd.Flags().BoolVar(&opts.List, "list", false, "List existing comments instead of adding")
+	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Comment body (ignored if --list is specified)")
+	cmd.Flags().BoolVar(&opts.List, "list", false, "List existing comments (takes precedence over --body)")
 
 	return cmd
 }
