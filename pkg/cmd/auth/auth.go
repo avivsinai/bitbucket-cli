@@ -218,12 +218,11 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("username is required when not running in a TTY")
 			}
+			prompt := "Atlassian email (API token) or Bitbucket username (app password)"
 			if opts.Web {
-				if _, err := fmt.Fprintln(ios.Out, "Tip: Use your Atlassian account email as the username."); err != nil {
-					return err
-				}
+				prompt = "Atlassian account email"
 			}
-			opts.Username, err = promptString(reader, ios.Out, "Atlassian account email")
+			opts.Username, err = promptString(reader, ios.Out, prompt)
 			if err != nil {
 				return err
 			}
@@ -233,7 +232,11 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("token is required when not running in a TTY")
 			}
-			opts.Token, err = promptSecret(ios, "API token")
+			prompt := "API token or app password"
+			if opts.Web {
+				prompt = "API token"
+			}
+			opts.Token, err = promptSecret(ios, prompt)
 			if err != nil {
 				return err
 			}
