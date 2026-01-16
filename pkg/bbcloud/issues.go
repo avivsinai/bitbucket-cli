@@ -104,6 +104,7 @@ type IssueListOptions struct {
 	Reporter  string
 	Milestone string
 	Query     string
+	Sort      string // e.g., "-updated_on" for descending by update time
 	Limit     int
 }
 
@@ -152,6 +153,10 @@ func (c *Client) ListIssues(ctx context.Context, workspace, repoSlug string, opt
 
 	if len(queryParts) > 0 {
 		params = append(params, "q="+url.QueryEscape(strings.Join(queryParts, " AND ")))
+	}
+
+	if sort := strings.TrimSpace(opts.Sort); sort != "" {
+		params = append(params, "sort="+url.QueryEscape(sort))
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/issues?%s",
