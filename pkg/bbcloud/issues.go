@@ -260,7 +260,7 @@ func (c *Client) CreateIssue(ctx context.Context, workspace, repoSlug string, in
 	}
 	if input.Assignee != "" {
 		body["assignee"] = map[string]any{
-			"username": input.Assignee,
+			"uuid": input.Assignee,
 		}
 	}
 	if input.Milestone != "" {
@@ -339,7 +339,7 @@ func (c *Client) UpdateIssue(ctx context.Context, workspace, repoSlug string, is
 			body["assignee"] = nil
 		} else {
 			body["assignee"] = map[string]any{
-				"username": *input.Assignee,
+				"uuid": *input.Assignee,
 			}
 		}
 	}
