@@ -97,8 +97,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -120,7 +120,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			filtered := prs[:0]
 			current := strings.ToLower(host.Username)
 			for _, pr := range prs {
-				author := strings.ToLower(firstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
+				author := strings.ToLower(cmdutil.FirstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
 				if author == current {
 					filtered = append(filtered, pr)
 				}
@@ -141,7 +141,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			}
 
 			for _, pr := range prs {
-				author := firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+				author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
 				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
 					return err
 				}
@@ -153,8 +153,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		})
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -194,7 +194,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			}
 
 			for _, pr := range prs {
-				author := firstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
+				author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
 				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
 					return err
 				}
@@ -256,8 +256,8 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -298,7 +298,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 			if _, err := fmt.Fprintf(ios.Out, "State: %s\n", pr.State); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID); err != nil {
@@ -315,7 +315,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 					return err
 				}
 				for _, reviewer := range pr.Reviewers {
-					if _, err := fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name)); err != nil {
+					if _, err := fmt.Fprintf(ios.Out, "  %s\n", cmdutil.FirstNonEmpty(reviewer.User.FullName, reviewer.User.Name)); err != nil {
 						return err
 					}
 				}
@@ -324,8 +324,8 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		})
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -366,7 +366,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 			if _, err := fmt.Fprintf(ios.Out, "State: %s\n", pr.State); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.DisplayName, pr.Author.Username)); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name); err != nil {
@@ -463,8 +463,8 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -495,8 +495,8 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		return nil
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -573,8 +573,8 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 		return fmt.Errorf("pr checkout currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -641,8 +641,8 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 		return fmt.Errorf("pr diff currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -786,8 +786,8 @@ func runMerge(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *mergeOptions
 		return fmt.Errorf("pr merge currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -863,8 +863,8 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 		return fmt.Errorf("pr comment currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -998,8 +998,8 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -1045,8 +1045,8 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 		})
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -1287,7 +1287,7 @@ func printStatuses(ios *iostreams.IOStreams, prID int, commitSHA string, statuse
 	}
 
 	for _, s := range statuses {
-		name := firstNonEmpty(s.Name, s.Key)
+		name := cmdutil.FirstNonEmpty(s.Name, s.Key)
 		icon := stateIcon(s.State)
 		colorPrefix, colorSuffix := stateColor(s.State, colorEnabled)
 		if _, err := fmt.Fprintf(ios.Out, "  %s%s %s: %s%s\n", colorPrefix, icon, name, s.State, colorSuffix); err != nil {
@@ -1447,13 +1447,4 @@ func runGit(ctx context.Context, args ...string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }

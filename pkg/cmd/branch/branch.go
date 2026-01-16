@@ -3,7 +3,6 @@ package branch
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -72,8 +71,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -116,8 +115,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		})
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -210,8 +209,8 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *create
 		return fmt.Errorf("branch create currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -279,8 +278,8 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *delete
 		return fmt.Errorf("branch delete currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -356,13 +355,4 @@ func runSetDefault(cmd *cobra.Command, f *cmdutil.Factory, name string) error {
 		return err
 	}
 	return nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }

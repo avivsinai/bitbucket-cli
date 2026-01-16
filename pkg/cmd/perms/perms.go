@@ -198,7 +198,7 @@ func runProjectList(cmd *cobra.Command, f *cmdutil.Factory, opts *projectListOpt
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		for _, p := range perms {
-			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", cmdutil.FirstNonEmpty(p.User.FullName, p.User.Name), p.Permission); err != nil {
 				return err
 			}
 		}
@@ -313,7 +313,7 @@ func runRepoList(cmd *cobra.Command, f *cmdutil.Factory, opts *repoListOptions) 
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		for _, p := range perms {
-			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", firstNonEmpty(p.User.FullName, p.User.Name), p.Permission); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", cmdutil.FirstNonEmpty(p.User.FullName, p.User.Name), p.Permission); err != nil {
 				return err
 			}
 		}
@@ -390,13 +390,4 @@ func runRepoRevoke(cmd *cobra.Command, f *cmdutil.Factory, opts *repoRevokeOptio
 		return err
 	}
 	return nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }

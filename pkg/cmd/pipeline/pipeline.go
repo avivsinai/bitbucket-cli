@@ -318,20 +318,11 @@ func resolveCloudRepo(cmd *cobra.Command, f *cmdutil.Factory, workspaceOverride,
 		return "", "", nil, fmt.Errorf("command supports Bitbucket Cloud contexts only")
 	}
 
-	workspace := firstNonEmpty(workspaceOverride, ctxCfg.Workspace)
-	repo := firstNonEmpty(repoOverride, ctxCfg.DefaultRepo)
+	workspace := cmdutil.FirstNonEmpty(workspaceOverride, ctxCfg.Workspace)
+	repo := cmdutil.FirstNonEmpty(repoOverride, ctxCfg.DefaultRepo)
 	if workspace == "" || repo == "" {
 		return "", "", nil, fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 	}
 
 	return workspace, repo, host, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }
