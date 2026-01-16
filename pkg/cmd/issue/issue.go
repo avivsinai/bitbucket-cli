@@ -66,7 +66,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
   bkt issue list --kind bug --priority major
 
   # List issues assigned to a user
-  bkt issue list --assignee johndoe`,
+  bkt issue list --assignee {uuid}`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd, f, opts)
 		},
@@ -565,7 +565,7 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
   bkt issue edit 42 --state resolved --priority critical
 
   # Assign to user
-  bkt issue edit 42 --assignee johndoe`,
+  bkt issue edit 42 --assignee {uuid}`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			issueID, err := strconv.Atoi(args[0])
