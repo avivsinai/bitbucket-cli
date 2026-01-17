@@ -38,6 +38,7 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newListCmd(f))
 	cmd.AddCommand(newViewCmd(f))
 	cmd.AddCommand(newCreateCmd(f))
+	cmd.AddCommand(newEditCmd(f))
 	cmd.AddCommand(newCheckoutCmd(f))
 	cmd.AddCommand(newDiffCmd(f))
 	cmd.AddCommand(newApproveCmd(f))
@@ -525,6 +526,178 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}
+
+type editOptions struct {
+	Project     string
+	Workspace   string
+	Repo        string
+	ID          int
+	Title       string
+	Description string
+	Body        string
+}
+
+func newEditCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &editOptions{}
+	cmd := &cobra.Command{
+		Use:   "edit <id>",
+		Short: "Edit a pull request",
+		Long:  "Edit a pull request's title and/or description.",
+		Example: `  # Update pull request title
+  bkt pr edit 123 --title "New feature: user authentication"
+
+  # Update pull request description
+  bkt pr edit 123 --body "This PR adds OAuth2 support"
+
+  # Update both title and description
+  bkt pr edit 123 -t "Fix login bug" -b "Resolves issue with session timeout"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid pull request id %q", args[0])
+			}
+			opts.ID = id
+
+			// --body and --description are mutually exclusive aliases
+			if cmd.Flags().Changed("body") && cmd.Flags().Changed("description") {
+				return fmt.Errorf("specify only one of --body or --description")
+			}
+
+			// --body is an alias for --description (for gh ergonomics)
+			if cmd.Flags().Changed("body") {
+				opts.Description = opts.Body
+			}
+
+			// Require at least one field to update
+			if !cmd.Flags().Changed("title") && !cmd.Flags().Changed("description") && !cmd.Flags().Changed("body") {
+				return fmt.Errorf("at least one of --title, --body, or --description is required")
+			}
+
+			return runEdit(cmd, f, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override.")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud).")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override.")
+	cmd.Flags().StringVarP(&opts.Title, "title", "t", "", "Set the new title.")
+	cmd.Flags().StringVarP(&opts.Description, "description", "", "", "Set the new description.")
+	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Set the new body (alias for --description).")
+
+	return cmd
+}
+
+func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		// Fetch current PR to get version (optimistic locking) and current values
+		pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		// Compute new values: use flag value if changed, otherwise keep existing
+		newTitle := pr.Title
+		if cmd.Flags().Changed("title") {
+			newTitle = opts.Title
+		}
+		newDesc := pr.Description
+		if cmd.Flags().Changed("description") || cmd.Flags().Changed("body") {
+			newDesc = opts.Description
+		}
+
+		updatedPR, err := client.UpdatePullRequest(ctx, projectKey, repoSlug, opts.ID, pr.Version, bbdc.UpdatePROptions{
+			Title:       newTitle,
+			Description: newDesc,
+			Reviewers:   pr.Reviewers,
+			FromRef:     &pr.FromRef,
+			ToRef:       &pr.ToRef,
+		})
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"project":      projectKey,
+			"repo":         repoSlug,
+			"pull_request": updatedPR,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			_, err := fmt.Fprintf(ios.Out, "✓ Updated pull request #%d\n", updatedPR.ID)
+			return err
+		})
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		// Build input with only changed fields
+		input := bbcloud.UpdatePullRequestInput{}
+		if cmd.Flags().Changed("title") {
+			input.Title = &opts.Title
+		}
+		if cmd.Flags().Changed("description") || cmd.Flags().Changed("body") {
+			input.Description = &opts.Description
+		}
+
+		updatedPR, err := client.UpdatePullRequest(ctx, workspace, repoSlug, opts.ID, input)
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"workspace":    workspace,
+			"repo":         repoSlug,
+			"pull_request": updatedPR,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			_, err := fmt.Fprintf(ios.Out, "✓ Updated pull request #%d\n", updatedPR.ID)
+			return err
+		})
 
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
