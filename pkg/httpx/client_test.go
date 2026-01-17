@@ -203,27 +203,27 @@ func TestClientBackoffRespectsContextCancellation(t *testing.T) {
 
 func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
 	tests := []struct {
-		name     string
-		body     string
-		status   int
-		wantMsg  string
+		name    string
+		body    string
+		status  int
+		wantMsg string
 	}{
 		{
-			name:   "captcha exception with clear message",
-			status: http.StatusForbidden,
-			body: `{"errors":[{"message":"CAPTCHA required. Your Bitbucket account has been locked.","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
+			name:    "captcha exception with clear message",
+			status:  http.StatusForbidden,
+			body:    `{"errors":[{"message":"CAPTCHA required. Your Bitbucket account has been locked.","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
 			wantMsg: "403 Forbidden: CAPTCHA required. Your Bitbucket account has been locked.",
 		},
 		{
-			name:   "captcha exception prioritized over generic error",
-			status: http.StatusForbidden,
-			body: `{"errors":[{"message":"XSRF check failed","exceptionName":""},{"message":"Account locked","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
+			name:    "captcha exception prioritized over generic error",
+			status:  http.StatusForbidden,
+			body:    `{"errors":[{"message":"XSRF check failed","exceptionName":""},{"message":"Account locked","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
 			wantMsg: "403 Forbidden: CAPTCHA verification required: Account locked",
 		},
 		{
-			name:   "normal error without captcha",
-			status: http.StatusNotFound,
-			body:   `{"errors":[{"message":"Repository not found"}]}`,
+			name:    "normal error without captcha",
+			status:  http.StatusNotFound,
+			body:    `{"errors":[{"message":"Repository not found"}]}`,
 			wantMsg: "404 Not Found: Repository not found",
 		},
 		{
