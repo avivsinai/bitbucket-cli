@@ -1,0 +1,47 @@
+name: Gitleaks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"  # Daily scan at 4 AM UTC
+
+permissions:
+  contents: read
+  security-events: write  # For uploading SARIF results
+  actions: read
+
+jobs:
+  gitleaks:
+    name: Scan for secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for all branches and tags
+
+      - name: Run Gitleaks
+        id: gitleaks
+        uses: DariuszPorowski/github-action-gitleaks@v2
+        with:
+          config: .gitleaks.toml
+          report_format: sarif
+          fail: false  # Don't fail workflow, upload results instead
+          log_level: info
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: steps.gitleaks.outputs.exitcode == 1
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.gitleaks.outputs.report }}
+
+      - name: Fail if secrets found
+        if: steps.gitleaks.outputs.exitcode == 1
+        run: |
+          echo "::error::Gitleaks detected secrets in the codebase"
+          exit 1

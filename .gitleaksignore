@@ -1,0 +1,29 @@
+# Gitleaks ignore file
+# Add fingerprints of known false positives here
+# To get a fingerprint, run: gitleaks detect --verbose
+# Each finding has a unique fingerprint that can be added below
+
+# Format: one fingerprint per line
+# Example: abc123def456...
+
+# Test fixtures and examples can be added here if they trigger false positives
+
+# Email addresses in documentation (mailto: links detected as auth-tuples)
+f3244d7a2052b816a94fe2052de667a635c76acf:README.md:generic-auth-tuple:121
+93cd91fe0bf1f638ea42957c5e1ea7fc0b9f1290:CODE_OF_CONDUCT.md:generic-auth-tuple:63
+93cd91fe0bf1f638ea42957c5e1ea7fc0b9f1290:SUPPORT.md:generic-auth-tuple:6
+93cd91fe0bf1f638ea42957c5e1ea7fc0b9f1290:SECURITY.md:generic-auth-tuple:15
+93cd91fe0bf1f638ea42957c5e1ea7fc0b9f1290:docs/SECURITY.md:generic-auth-tuple:37
+e49525476b6c9f5f7e3f08abd7bbda71d1883b68:promptcode_bitbucket-cli-full.md:generic-auth-tuple:633
+e49525476b6c9f5f7e3f08abd7bbda71d1883b68:promptcode_bitbucket-cli-full.md:generic-auth-tuple:865
+e49525476b6c9f5f7e3f08abd7bbda71d1883b68:promptcode_bitbucket-cli-full.md:generic-auth-tuple:12551
+e49525476b6c9f5f7e3f08abd7bbda71d1883b68:promptcode_bitbucket-cli-full.md:generic-auth-tuple:12587
+# Additional commit with example.com emails
+674fd2160c1f39ac07b02738d53d558b3dececcf:CODE_OF_CONDUCT.md:generic-auth-tuple:63
+674fd2160c1f39ac07b02738d53d558b3dececcf:SUPPORT.md:generic-auth-tuple:6
+674fd2160c1f39ac07b02738d53d558b3dececcf:SECURITY.md:generic-auth-tuple:15
+674fd2160c1f39ac07b02738d53d558b3dececcf:docs/SECURITY.md:generic-auth-tuple:37
+674fd2160c1f39ac07b02738d53d558b3dececcf:promptcode_bitbucket-cli-full.md:generic-auth-tuple:633
+674fd2160c1f39ac07b02738d53d558b3dececcf:promptcode_bitbucket-cli-full.md:generic-auth-tuple:865
+674fd2160c1f39ac07b02738d53d558b3dececcf:promptcode_bitbucket-cli-full.md:generic-auth-tuple:12551
+674fd2160c1f39ac07b02738d53d558b3dececcf:promptcode_bitbucket-cli-full.md:generic-auth-tuple:12587
