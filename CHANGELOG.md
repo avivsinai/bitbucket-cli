@@ -6,6 +6,8 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-01-17
+
 ### Added
 - New `bkt issue` command group for Bitbucket Cloud issue tracker (Cloud-only).
   - `bkt issue list`: List issues with filtering by state, kind, priority, assignee, milestone.
