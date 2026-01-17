@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project stewards at
-[opensource@avivsinai.dev](mailto:opensource@avivsinai.dev). All complaints will
+[opensource@example.com](mailto:opensource@example.com). All complaints will
 be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the

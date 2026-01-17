@@ -1,4 +1,4 @@
-module github.com/avivsinai/bitbucket-cli
+module github.com/example/bitbucket-cli
 
 go 1.24.0
 

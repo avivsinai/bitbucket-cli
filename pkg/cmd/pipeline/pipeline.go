@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdPipeline interacts with Bitbucket Cloud pipelines.

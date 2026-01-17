@@ -3,7 +3,7 @@ package bbdc
 import (
 	"context"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 // Ping issues a lightweight request to populate telemetry such as rate limits.

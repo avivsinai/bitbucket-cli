@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/internal/config"
 )
 
 func newTestFactory(cfg *config.Config) *Factory {
@@ -162,7 +162,7 @@ func TestResolveHostNoHostsError(t *testing.T) {
 }
 
 func TestResolveContextOverridesProjectFromRemoteSSH(t *testing.T) {
-	repoDir := initGitRepo(t, "ssh://git@bitbucket.example.com:7999/PLAYG/daredevil-ui.git")
+	repoDir := initGitRepo(t, "ssh://git@bitbucket.example.com:7999/TEAM/sample-app.git")
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -197,11 +197,11 @@ func TestResolveContextOverridesProjectFromRemoteSSH(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveContext error: %v", err)
 	}
-	if ctx.ProjectKey != "PLAYG" {
-		t.Fatalf("project = %q, want %q", ctx.ProjectKey, "PLAYG")
+	if ctx.ProjectKey != "TEAM" {
+		t.Fatalf("project = %q, want %q", ctx.ProjectKey, "TEAM")
 	}
-	if ctx.DefaultRepo != "daredevil-ui" {
-		t.Fatalf("repo = %q, want %q", ctx.DefaultRepo, "daredevil-ui")
+	if ctx.DefaultRepo != "sample-app" {
+		t.Fatalf("repo = %q, want %q", ctx.DefaultRepo, "sample-app")
 	}
 }
 

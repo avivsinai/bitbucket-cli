@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 // NewDCClient constructs a Bitbucket Data Center client using the supplied host.

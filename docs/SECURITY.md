@@ -34,5 +34,5 @@ implementation details.
 
 ## Contact
 
-Email [security@avivsinai.dev](mailto:security@avivsinai.dev). We prefer
+Email [security@example.com](mailto:security@example.com). We prefer
 coordinated disclosure.

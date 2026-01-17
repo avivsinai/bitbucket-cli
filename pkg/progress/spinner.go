@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
 )
 
 // Spinner renders a simple textual indicator while a background task runs.

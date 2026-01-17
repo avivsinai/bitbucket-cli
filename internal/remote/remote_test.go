@@ -74,13 +74,13 @@ func TestDetectDataCenterProjects(t *testing.T) {
 }
 
 func TestDetectDataCenterRootSSH(t *testing.T) {
-	dir := initGitRepo(t, "ssh://git@bitbucket.example.com:7999/PLAYG/daredevil-ui.git")
+	dir := initGitRepo(t, "ssh://git@bitbucket.example.com:7999/TEAM/sample-app.git")
 
 	loc, err := Detect(dir)
 	if err != nil {
 		t.Fatalf("Detect() error = %v", err)
 	}
-	if loc.Kind != "dc" || loc.ProjectKey != "PLAYG" || loc.RepoSlug != "daredevil-ui" {
+	if loc.Kind != "dc" || loc.ProjectKey != "TEAM" || loc.RepoSlug != "sample-app" {
 		t.Fatalf("locator = %+v", loc)
 	}
 }

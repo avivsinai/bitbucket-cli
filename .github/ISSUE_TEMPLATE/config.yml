@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/avivsinai/bitbucket-cli/security
+    url: https://github.com/example/bitbucket-cli/security
     about: Please report security vulnerabilities privately.

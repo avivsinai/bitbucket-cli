@@ -134,14 +134,14 @@ bitbucket-cli/
 File: .github/CODEOWNERS (54 tokens)
 ```
 # Default owners
-*       @avivsinai
+*       @example
 
 # Client libraries
-pkg/bbdc/    @avivsinai
-pkg/bbcloud/ @avivsinai
+pkg/bbdc/    @example
+pkg/bbcloud/ @example
 
 # CLI commands
-pkg/cmd/     @avivsinai
+pkg/cmd/     @example
 
 ```
 
@@ -154,13 +154,13 @@ updates:
     schedule:
       interval: "weekly"
     assignees:
-      - avivsinai
+      - example
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     assignees:
-      - avivsinai
+      - example
 
 ```
 
@@ -210,7 +210,7 @@ File: .github/ISSUE_TEMPLATE/config.yml (44 tokens)
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/avivsinai/bitbucket-cli/security
+    url: https://github.com/example/bitbucket-cli/security
     about: Please report security vulnerabilities privately.
 
 ```
@@ -425,7 +425,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/avivsinai/bitbucket-cli/internal/build.Version={{.Version}}
+      - -s -w -X github.com/example/bitbucket-cli/internal/build.Version={{.Version}}
     mod_timestamp: '{{ .CommitDate }}'
 
 archives:
@@ -447,11 +447,11 @@ sboms:
 brews:
   - name: bkt
     tap:
-      owner: avivsinai
+      owner: example
       name: homebrew-tap
     folder: Formula
     description: Bitbucket CLI with gh-style ergonomics
-    homepage: https://github.com/avivsinai/bitbucket-cli
+    homepage: https://github.com/example/bitbucket-cli
     license: MIT
     test: |
       system "#{bin}/bkt", "--version"
@@ -461,9 +461,9 @@ nfpms:
     package_name: bkt
     file_name_template: 'bkt_{{ .Version }}_{{ .Arch }}'
     formats: [deb]
-    maintainer: Aviv Sinai <opensource@avivsinai.dev>
+    maintainer: Example Maintainer <opensource@example.com>
     description: Bitbucket CLI
-    homepage: https://github.com/avivsinai/bitbucket-cli
+    homepage: https://github.com/example/bitbucket-cli
     license: MIT
 
 ```
@@ -561,8 +561,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/avivsinai/bitbucket-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/example/bitbucket-cli/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/example/bitbucket-cli/releases/tag/v0.1.0
 
 ```
 
@@ -630,7 +630,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project stewards at
-[opensource@avivsinai.dev](mailto:opensource@avivsinai.dev). All complaints will
+[opensource@example.com](mailto:opensource@example.com). All complaints will
 be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
@@ -862,7 +862,7 @@ implementation details.
 
 ## Contact
 
-Email [security@avivsinai.dev](mailto:security@avivsinai.dev). We prefer
+Email [security@example.com](mailto:security@example.com). We prefer
 coordinated disclosure.
 
 ```
@@ -884,7 +884,7 @@ summarises the changes for each release.
 
 File: go.mod (155 tokens)
 ```
-module github.com/avivsinai/bitbucket-cli
+module github.com/example/bitbucket-cli
 
 go 1.25.3
 
@@ -937,8 +937,8 @@ File: GOVERNANCE.md (307 tokens)
 
 - **Maintainers**: responsible for roadmap curation, triage, and releases.
   Current maintainers:
-  - Aviv Sinai (@avivsinai)
-  - Project Stewards group (<opensource@avivsinai.dev>)
+  - Example Maintainer (@example)
+  - Project Stewards group (<opensource@example.com>)
 - **Reviewers**: contributors with merge rights on specific areas (commands,
   clients, docs). Reviewers can approve PRs but maintainers perform final merges.
 - **Contributors**: anyone sending PRs, docs updates, or filing issues.
@@ -980,10 +980,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/avivsinai/bitbucket-cli/internal/build"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/factory"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/root"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/internal/build"
+	"github.com/example/bitbucket-cli/pkg/cmd/factory"
+	"github.com/example/bitbucket-cli/pkg/cmd/root"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // Main initialises CLI dependencies and executes the root command.
@@ -1302,7 +1302,7 @@ File: LICENSE (221 tokens)
 ```
 MIT License
 
-Copyright (c) 2025 Aviv Sinai
+Copyright (c) 2025 Example Maintainer
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1566,7 +1566,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 // Options configure the Bitbucket Cloud client.
@@ -2020,7 +2020,7 @@ package bbcloud
 import (
 	"context"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 // Ping performs a lightweight request to update rate limit telemetry.
@@ -2758,7 +2758,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 // Options configure the Bitbucket Data Center client.
@@ -3293,7 +3293,7 @@ package bbdc
 import (
 	"context"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 // Ping issues a lightweight request to populate telemetry such as rate limits.
@@ -4068,8 +4068,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdAdmin provides administrative operations for Bitbucket Data Center.
@@ -4267,7 +4267,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type apiOptions struct {
@@ -4440,12 +4440,12 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
 )
 
 // NewCmdAuth returns the root auth command.
@@ -4895,9 +4895,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdBranch exposes branch operations.
@@ -5259,8 +5259,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type protectOptions struct {
@@ -5517,7 +5517,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type rebaseOptions struct {
@@ -5591,8 +5591,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdContext returns the context management command tree.
@@ -5885,7 +5885,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdExtension manages external bkt extensions.
@@ -6226,13 +6226,13 @@ File: pkg/cmd/factory/factory.go (254 tokens)
 package factory
 
 import (
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/browser"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
-	"github.com/avivsinai/bitbucket-cli/pkg/pager"
-	"github.com/avivsinai/bitbucket-cli/pkg/progress"
-	"github.com/avivsinai/bitbucket-cli/pkg/prompter"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/browser"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/pager"
+	"github.com/example/bitbucket-cli/pkg/progress"
+	"github.com/example/bitbucket-cli/pkg/prompter"
 )
 
 // New constructs a command factory following gh/jk idioms.
@@ -6271,7 +6271,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCommand manages repository and project permissions.
@@ -6662,9 +6662,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdPipeline interacts with Bitbucket Cloud pipelines.
@@ -6994,8 +6994,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type autoMergeOptions struct {
@@ -7235,9 +7235,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdPR returns the pull request command tree.
@@ -8087,7 +8087,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type reactionOptions struct {
@@ -8326,7 +8326,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 func newReviewerGroupCmd(f *cmdutil.Factory) *cobra.Command {
@@ -8529,7 +8529,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type suggestionOptions struct {
@@ -8643,7 +8643,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type taskOptions struct {
@@ -8918,9 +8918,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdRepo wires repository subcommands.
@@ -9730,19 +9730,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/admin"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/api"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/auth"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/branch"
-	contextcmd "github.com/avivsinai/bitbucket-cli/pkg/cmd/context"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/extension"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/perms"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pipeline"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pr"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/repo"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/status"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/webhook"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmd/admin"
+	"github.com/example/bitbucket-cli/pkg/cmd/api"
+	"github.com/example/bitbucket-cli/pkg/cmd/auth"
+	"github.com/example/bitbucket-cli/pkg/cmd/branch"
+	contextcmd "github.com/example/bitbucket-cli/pkg/cmd/context"
+	"github.com/example/bitbucket-cli/pkg/cmd/extension"
+	"github.com/example/bitbucket-cli/pkg/cmd/perms"
+	"github.com/example/bitbucket-cli/pkg/cmd/pipeline"
+	"github.com/example/bitbucket-cli/pkg/cmd/pr"
+	"github.com/example/bitbucket-cli/pkg/cmd/repo"
+	"github.com/example/bitbucket-cli/pkg/cmd/status"
+	"github.com/example/bitbucket-cli/pkg/cmd/webhook"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdRoot assembles the root Cobra command using shared dependencies.
@@ -9812,8 +9812,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 type cloudStatusOptions struct {
@@ -9934,8 +9934,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 type rateLimitOptions struct{}
@@ -10028,8 +10028,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCmdStatus exposes commit and PR status commands.
@@ -10262,9 +10262,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 // NewCommand returns the webhook command.
@@ -10687,10 +10687,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/httpx"
 )
 
 // NewDCClient constructs a Bitbucket Data Center client using the supplied host.
@@ -10772,7 +10772,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/internal/config"
 )
 
 // ResolveContext fetches the context and host configuration given an optional
@@ -10861,12 +10861,12 @@ package cmdutil
 import (
 	"sync"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/browser"
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
-	"github.com/avivsinai/bitbucket-cli/pkg/pager"
-	"github.com/avivsinai/bitbucket-cli/pkg/progress"
-	"github.com/avivsinai/bitbucket-cli/pkg/prompter"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/browser"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/pager"
+	"github.com/example/bitbucket-cli/pkg/progress"
+	"github.com/example/bitbucket-cli/pkg/prompter"
 )
 
 // Factory wires together shared services used by Cobra commands.
@@ -10966,7 +10966,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/format"
+	"github.com/example/bitbucket-cli/pkg/format"
 )
 
 // OutputSettings captures structured output preferences.
@@ -12063,7 +12063,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
 )
 
 // Manager coordinates optional pager processes (e.g. less) used for long
@@ -12164,7 +12164,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
 )
 
 // Spinner renders a simple textual indicator while a background task runs.
@@ -12273,7 +12273,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
 )
 
 func TestConfirmRetriesOnInvalidInput(t *testing.T) {
@@ -12324,7 +12324,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
 )
 
 // Interface exposes interactive prompt helpers used by commands.
@@ -12420,9 +12420,9 @@ File: README.md (1134 tokens)
 ```
 # bkt – Bitbucket CLI
 
-[![CI](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/avivsinai/bitbucket-cli?label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/avivsinai/bitbucket-cli)
-[![Go Reference](https://pkg.go.dev/badge/github.com/avivsinai/bitbucket-cli.svg)](https://pkg.go.dev/github.com/avivsinai/bitbucket-cli)
+[![CI](https://github.com/example/bitbucket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/example/bitbucket-cli/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/example/bitbucket-cli?label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/example/bitbucket-cli)
+[![Go Reference](https://pkg.go.dev/badge/github.com/example/bitbucket-cli.svg)](https://pkg.go.dev/github.com/example/bitbucket-cli)
 
 `bkt` is a stand-alone Bitbucket command-line interface that targets Bitbucket Data Center **and** Bitbucket Cloud. It mirrors the ergonomics of `gh` while remaining provider-pure (no Jenkins coupling) and delivers a consistent JSON/YAML contract for automation.
 
@@ -12548,7 +12548,7 @@ read-only snapshots.
 
 ## Reporting a vulnerability
 
-Please email [security@avivsinai.dev](mailto:security@avivsinai.dev) with
+Please email [security@example.com](mailto:security@example.com) with
 "[bkt]" in the subject. Include:
 
 - A detailed description of the issue and the potential impact
@@ -12584,7 +12584,7 @@ File: SUPPORT.md (121 tokens)
 - **Questions / ideas**: open a GitHub Discussion or start a thread in
   `#bkt-cli` on the community Slack (invite in the README).
 - **Bugs**: file an issue using the "Bug report" template.
-- **Security reports**: email [security@avivsinai.dev](mailto:security@avivsinai.dev).
+- **Security reports**: email [security@example.com](mailto:security@example.com).
 - **Commercial support**: not currently offered. If this becomes critical for
   your organization, open a discussion so we can evaluate options.
 

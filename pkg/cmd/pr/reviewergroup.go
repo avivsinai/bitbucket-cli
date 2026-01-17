@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
 )
 
 func newReviewerGroupCmd(f *cmdutil.Factory) *cobra.Command {

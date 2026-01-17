@@ -16,11 +16,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
-	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
-	"github.com/avivsinai/bitbucket-cli/pkg/types"
+	"github.com/example/bitbucket-cli/pkg/bbcloud"
+	"github.com/example/bitbucket-cli/pkg/bbdc"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/pkg/types"
 )
 
 // Sentinel errors for checks command
