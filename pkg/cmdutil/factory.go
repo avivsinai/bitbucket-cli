@@ -3,12 +3,12 @@ package cmdutil
 import (
 	"sync"
 
-	"github.com/example/bitbucket-cli/internal/config"
-	"github.com/example/bitbucket-cli/pkg/browser"
-	"github.com/example/bitbucket-cli/pkg/iostreams"
-	"github.com/example/bitbucket-cli/pkg/pager"
-	"github.com/example/bitbucket-cli/pkg/progress"
-	"github.com/example/bitbucket-cli/pkg/prompter"
+	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/pkg/browser"
+	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/avivsinai/bitbucket-cli/pkg/pager"
+	"github.com/avivsinai/bitbucket-cli/pkg/progress"
+	"github.com/avivsinai/bitbucket-cli/pkg/prompter"
 )
 
 // Factory wires together shared services used by Cobra commands.

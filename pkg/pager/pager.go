@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/example/bitbucket-cli/pkg/iostreams"
+	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 )
 
 // Manager coordinates optional pager processes (e.g. less) used for long

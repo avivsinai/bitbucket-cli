@@ -2,11 +2,11 @@
 
 <p align="center"><em>Bitbucket Cloud & Data Center workflows for developers, coding agents, and automation-first teams.</em></p>
 
-[![CI](https://github.com/example/bitbucket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/example/bitbucket-cli/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/example/bitbucket-cli?cache=none)](https://github.com/example/bitbucket-cli/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/example/bitbucket-cli?cache=none)](https://goreportcard.com/report/github.com/example/bitbucket-cli)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/example/bitbucket-cli/badge)](https://scorecard.dev/viewer/?uri=github.com/example/bitbucket-cli)
-[![Go Reference](https://pkg.go.dev/badge/github.com/example/bitbucket-cli.svg)](https://pkg.go.dev/github.com/example/bitbucket-cli)
+[![CI](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/example/bitbucket-cli?cache=none)](https://github.com/avivsinai/bitbucket-cli/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/avivsinai/bitbucket-cli?cache=none)](https://goreportcard.com/report/github.com/avivsinai/bitbucket-cli)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/avivsinai/bitbucket-cli/badge)](https://scorecard.dev/viewer/?uri=github.com/avivsinai/bitbucket-cli)
+[![Go Reference](https://pkg.go.dev/badge/github.com/avivsinai/bitbucket-cli.svg)](https://pkg.go.dev/github.com/avivsinai/bitbucket-cli)
 [![License](https://img.shields.io/github/license/example/bitbucket-cli?cache=none)](LICENSE)
 
 `bkt` is a stand-alone Bitbucket command-line interface that targets Bitbucket Data Center **and** Bitbucket Cloud. It mirrors the ergonomics of `gh` and delivers a consistent JSON/YAML contract for automation.
@@ -16,12 +16,12 @@
 ## Installation
 
 ```bash
-go install github.com/example/bitbucket-cli/cmd/bkt@latest
+go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest
 ```
 
 This installs `bkt` to `$GOPATH/bin` (or `$HOME/go/bin` by default). Ensure the directory is in your `$PATH`.
 
-Or download pre-built binaries from the [releases page](https://github.com/example/bitbucket-cli/releases/latest).
+Or download pre-built binaries from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
 
 ## Project layout
 
@@ -193,5 +193,5 @@ bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
 
 ## Support
 
-- **Questions / Ideas**: File an [issue](https://github.com/example/bitbucket-cli/issues/new?template=feature_request.md)
-- **Bug Reports**: File an [issue](https://github.com/example/bitbucket-cli/issues/new?template=bug_report.md)
+- **Questions / Ideas**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=feature_request.md)
+- **Bug Reports**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=bug_report.md)

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/example/bitbucket-cli/pkg/format"
+	"github.com/avivsinai/bitbucket-cli/pkg/format"
 )
 
 // OutputSettings captures structured output preferences.

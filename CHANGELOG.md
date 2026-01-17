@@ -100,7 +100,7 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/example/bitbucket-cli/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/example/bitbucket-cli/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/example/bitbucket-cli/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/example/bitbucket-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/avivsinai/bitbucket-cli/releases/tag/v0.1.0

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/example/bitbucket-cli/internal/bktcmd"
+	"github.com/avivsinai/bitbucket-cli/internal/bktcmd"
 )
 
 func main() {

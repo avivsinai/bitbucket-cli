@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/example/bitbucket-cli/internal/config"
-	"github.com/example/bitbucket-cli/internal/remote"
-	"github.com/example/bitbucket-cli/internal/secret"
+	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/remote"
+	"github.com/avivsinai/bitbucket-cli/internal/secret"
 )
 
 // ResolveContext fetches the context and host configuration given an optional

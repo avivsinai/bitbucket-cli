@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/config"
 )
 
 func newTestFactory(cfg *config.Config) *Factory {

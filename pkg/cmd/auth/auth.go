@@ -13,13 +13,13 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/example/bitbucket-cli/internal/config"
-	"github.com/example/bitbucket-cli/internal/secret"
-	"github.com/example/bitbucket-cli/pkg/bbcloud"
-	"github.com/example/bitbucket-cli/pkg/bbdc"
-	"github.com/example/bitbucket-cli/pkg/cmdutil"
-	"github.com/example/bitbucket-cli/pkg/httpx"
-	"github.com/example/bitbucket-cli/pkg/iostreams"
+	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/secret"
+	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
+	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 )
 
 // NewCmdAuth returns the root auth command.

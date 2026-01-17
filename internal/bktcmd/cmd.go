@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/example/bitbucket-cli/internal/build"
-	"github.com/example/bitbucket-cli/pkg/cmd/factory"
-	"github.com/example/bitbucket-cli/pkg/cmd/root"
-	"github.com/example/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/internal/build"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/factory"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/root"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
 // Main initialises CLI dependencies and executes the root command.

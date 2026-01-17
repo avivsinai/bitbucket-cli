@@ -3,7 +3,7 @@ package bbcloud
 import (
 	"context"
 
-	"github.com/example/bitbucket-cli/pkg/httpx"
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 )
 
 // Ping performs a lightweight request to update rate limit telemetry.

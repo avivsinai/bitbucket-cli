@@ -115,7 +115,7 @@ nfpms:
     package_name: bkt
     file_name_template: 'bkt_{{ .Version }}_{{ .Arch }}'
     formats: [deb]
-    maintainer: Example Maintainer <opensource@example.com>
+    maintainer: Aviv Sinai <avivsinai@gmail.com>
     description: Bitbucket CLI
     homepage: https://github.com/avivsinai/bitbucket-cli
     license: MIT

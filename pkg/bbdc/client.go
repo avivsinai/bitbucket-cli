@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/example/bitbucket-cli/pkg/httpx"
-	"github.com/example/bitbucket-cli/pkg/types"
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
 // Options configure the Bitbucket Data Center client.
