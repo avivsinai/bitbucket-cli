@@ -1616,3 +1616,488 @@ func TestErrPendingExitCode(t *testing.T) {
 		t.Error("ErrSilent should not be nil")
 	}
 }
+
+func TestEditCommandArgumentParsing(t *testing.T) {
+	// Error cases: these don't need a server since they fail during arg/flag parsing
+	errorTests := []struct {
+		name          string
+		args          []string
+		errorContains string
+	}{
+		{
+			name:          "no arguments",
+			args:          []string{},
+			errorContains: "accepts 1 arg(s), received 0",
+		},
+		{
+			name:          "invalid pr id",
+			args:          []string{"not-a-number", "--title", "New title"},
+			errorContains: "invalid pull request id",
+		},
+		{
+			name:          "no flags",
+			args:          []string{"123"},
+			errorContains: "at least one of --title, --body, or --description is required",
+		},
+		{
+			name:          "both body and description",
+			args:          []string{"123", "--body", "body", "--description", "desc"},
+			errorContains: "specify only one of --body or --description",
+		},
+	}
+
+	for _, tt := range errorTests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "main",
+						ProjectKey:  "PROJ",
+						DefaultRepo: "repo",
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {
+						Kind:    "dc",
+						BaseURL: "https://bitbucket.example.com",
+						Token:   "test-token",
+					},
+				},
+			}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.errorContains)
+			}
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Fatalf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+
+	// Valid cases: use httptest server to avoid network calls and verify full execution
+	validTests := []struct {
+		name string
+		args []string
+	}{
+		{name: "valid with title", args: []string{"123", "--title", "New title"}},
+		{name: "valid with body", args: []string{"123", "--body", "New body"}},
+		{name: "valid with description", args: []string{"123", "--description", "New desc"}},
+		{name: "valid with title and body", args: []string{"123", "--title", "New title", "--body", "New body"}},
+	}
+
+	for _, tt := range validTests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Return a valid PR for both GET and PUT with required refs
+				pr := bbdc.PullRequest{
+					ID: 123, Title: "Title", Description: "Desc", Version: 1,
+					FromRef: bbdc.Ref{ID: "refs/heads/feature", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+					ToRef:   bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				}
+				_ = json.NewEncoder(w).Encode(pr)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "main",
+						ProjectKey:  "PROJ",
+						DefaultRepo: "repo",
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {
+						Kind:    "dc",
+						BaseURL: server.URL,
+						Token:   "test-token",
+					},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("expected no error for valid args, got %v", err)
+			}
+			if !strings.Contains(stdout.String(), "Updated pull request #123") {
+				t.Errorf("expected success output, got %q", stdout.String())
+			}
+		})
+	}
+}
+
+func TestRunEditDataCenter(t *testing.T) {
+	tests := []struct {
+		name           string
+		prID           int
+		title          string
+		body           string
+		prResponse     bbdc.PullRequest
+		expectPUT      bool
+		putBodyCheck   func(t *testing.T, body map[string]any)
+		outputContains []string
+	}{
+		{
+			name:  "update title only",
+			prID:  123,
+			title: "New Title",
+			prResponse: bbdc.PullRequest{
+				ID:          123,
+				Title:       "Old Title",
+				Description: "Old Description",
+				Version:     5,
+				FromRef:     bbdc.Ref{ID: "refs/heads/feature", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:       bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			expectPUT: true,
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				if body["title"] != "New Title" {
+					t.Errorf("expected title 'New Title', got %v", body["title"])
+				}
+				if body["description"] != "Old Description" {
+					t.Errorf("expected description 'Old Description' (unchanged), got %v", body["description"])
+				}
+				if int(body["version"].(float64)) != 5 {
+					t.Errorf("expected version 5, got %v", body["version"])
+				}
+			},
+			outputContains: []string{"Updated pull request #123"},
+		},
+		{
+			name: "update body only",
+			prID: 456,
+			body: "New Body",
+			prResponse: bbdc.PullRequest{
+				ID:          456,
+				Title:       "Existing Title",
+				Description: "Old Body",
+				Version:     3,
+				FromRef:     bbdc.Ref{ID: "refs/heads/feature", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:       bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			expectPUT: true,
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				if body["title"] != "Existing Title" {
+					t.Errorf("expected title 'Existing Title' (unchanged), got %v", body["title"])
+				}
+				if body["description"] != "New Body" {
+					t.Errorf("expected description 'New Body', got %v", body["description"])
+				}
+				if int(body["version"].(float64)) != 3 {
+					t.Errorf("expected version 3, got %v", body["version"])
+				}
+			},
+			outputContains: []string{"Updated pull request #456"},
+		},
+		{
+			name:  "update both title and body",
+			prID:  789,
+			title: "New Title",
+			body:  "New Body",
+			prResponse: bbdc.PullRequest{
+				ID:          789,
+				Title:       "Old Title",
+				Description: "Old Body",
+				Version:     1,
+				FromRef:     bbdc.Ref{ID: "refs/heads/feature", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:       bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			expectPUT: true,
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				if body["title"] != "New Title" {
+					t.Errorf("expected title 'New Title', got %v", body["title"])
+				}
+				if body["description"] != "New Body" {
+					t.Errorf("expected description 'New Body', got %v", body["description"])
+				}
+			},
+			outputContains: []string{"Updated pull request #789"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var getCalled, putCalled bool
+			var putBody map[string]any
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				if r.Method == "GET" && strings.Contains(r.URL.Path, "/pull-requests/") {
+					getCalled = true
+					_ = json.NewEncoder(w).Encode(tt.prResponse)
+					return
+				}
+
+				if r.Method == "PUT" && strings.Contains(r.URL.Path, "/pull-requests/") {
+					putCalled = true
+					_ = json.NewDecoder(r.Body).Decode(&putBody)
+					// Return updated PR
+					updatedPR := tt.prResponse
+					if title, ok := putBody["title"].(string); ok {
+						updatedPR.Title = title
+					}
+					if desc, ok := putBody["description"].(string); ok {
+						updatedPR.Description = desc
+					}
+					updatedPR.Version++
+					_ = json.NewEncoder(w).Encode(updatedPR)
+					return
+				}
+
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "main",
+						ProjectKey:  "PROJ",
+						DefaultRepo: "repo",
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {
+						Kind:     "dc",
+						BaseURL:  server.URL,
+						Username: "testuser",
+						Token:    "test-token",
+					},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			stderr := &strings.Builder{}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams: &iostreams.IOStreams{
+					Out:    stdout,
+					ErrOut: stderr,
+				},
+				Config: func() (*config.Config, error) {
+					return cfg, nil
+				},
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+
+			args := []string{fmt.Sprintf("%d", tt.prID)}
+			if tt.title != "" {
+				args = append(args, "--title", tt.title)
+			}
+			if tt.body != "" {
+				args = append(args, "--body", tt.body)
+			}
+			cmd.SetArgs(args)
+
+			ctx := context.Background()
+			cmd.SetContext(ctx)
+
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !getCalled {
+				t.Error("expected GET endpoint to be called")
+			}
+
+			if tt.expectPUT && !putCalled {
+				t.Error("expected PUT endpoint to be called")
+			}
+
+			if tt.putBodyCheck != nil && putBody != nil {
+				tt.putBodyCheck(t, putBody)
+			}
+
+			output := stdout.String()
+			for _, expected := range tt.outputContains {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected output to contain %q, got:\n%s", expected, output)
+				}
+			}
+		})
+	}
+}
+
+func TestRunEditCloud(t *testing.T) {
+	tests := []struct {
+		name           string
+		prID           int
+		title          string
+		body           string
+		prResponse     bbcloud.PullRequest
+		putBodyCheck   func(t *testing.T, body map[string]any)
+		outputContains []string
+	}{
+		{
+			name:  "update title only",
+			prID:  123,
+			title: "New Title",
+			prResponse: bbcloud.PullRequest{
+				ID:    123,
+				Title: "Old Title",
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				if body["title"] != "New Title" {
+					t.Errorf("expected title 'New Title', got %v", body["title"])
+				}
+				// description should NOT be present (only changed fields)
+				if _, ok := body["description"]; ok {
+					t.Errorf("description should not be in PUT body when only title changed")
+				}
+			},
+			outputContains: []string{"Updated pull request #123"},
+		},
+		{
+			name: "update description only",
+			prID: 456,
+			body: "New Description",
+			prResponse: bbcloud.PullRequest{
+				ID:    456,
+				Title: "Existing Title",
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				// title should NOT be present
+				if _, ok := body["title"]; ok {
+					t.Errorf("title should not be in PUT body when only description changed")
+				}
+				if body["description"] != "New Description" {
+					t.Errorf("expected description 'New Description', got %v", body["description"])
+				}
+			},
+			outputContains: []string{"Updated pull request #456"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var putCalled bool
+			var putBody map[string]any
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				if r.Method == "PUT" && strings.Contains(r.URL.Path, "/pullrequests/") {
+					putCalled = true
+					_ = json.NewDecoder(r.Body).Decode(&putBody)
+					// Return updated PR
+					updatedPR := tt.prResponse
+					if title, ok := putBody["title"].(string); ok {
+						updatedPR.Title = title
+					}
+					_ = json.NewEncoder(w).Encode(updatedPR)
+					return
+				}
+
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "cloud",
+						Workspace:   "workspace",
+						DefaultRepo: "repo",
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {
+						Kind:     "cloud",
+						BaseURL:  server.URL,
+						Username: "testuser",
+						Token:    "test-token",
+					},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			stderr := &strings.Builder{}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams: &iostreams.IOStreams{
+					Out:    stdout,
+					ErrOut: stderr,
+				},
+				Config: func() (*config.Config, error) {
+					return cfg, nil
+				},
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+
+			args := []string{fmt.Sprintf("%d", tt.prID)}
+			if tt.title != "" {
+				args = append(args, "--title", tt.title)
+			}
+			if tt.body != "" {
+				args = append(args, "--body", tt.body)
+			}
+			cmd.SetArgs(args)
+
+			ctx := context.Background()
+			cmd.SetContext(ctx)
+
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !putCalled {
+				t.Error("expected PUT endpoint to be called")
+			}
+
+			if tt.putBodyCheck != nil && putBody != nil {
+				tt.putBodyCheck(t, putBody)
+			}
+
+			output := stdout.String()
+			for _, expected := range tt.outputContains {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected output to contain %q, got:\n%s", expected, output)
+				}
+			}
+		})
+	}
+}
