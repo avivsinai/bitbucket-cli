@@ -103,8 +103,8 @@ func TestListIssuesBBQLQueryBuilding(t *testing.T) {
 			wantQueryParts: []string{`title ~ "urgent"`},
 		},
 		{
-			name: "empty options produces no query",
-			opts: IssueListOptions{},
+			name:         "empty options produces no query",
+			opts:         IssueListOptions{},
 			excludeQuery: []string{"q="},
 		},
 		{
