@@ -6,6 +6,23 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-01-17
+
+### Fixed
+- Improved error messages for CAPTCHA-locked accounts. When a Bitbucket account
+  is locked due to failed authentication attempts, the CLI now displays the
+  actual CAPTCHA message instead of a generic "XSRF check failed" error (#16).
+- Fixed SSH URL auto-detection for `ssh://host:port/PROJECT/repo.git` format.
+  Previously, commands would default to a configured project instead of parsing
+  the project from the git remote URL (#17).
+
+### Changed
+- **Breaking**: Git remote now takes precedence over context config for
+  project/repo detection. If you are in a git repository that matches your
+  configured host, the CLI will use the project and repo from the git remote
+  URL, overriding any values set in your context config. Use explicit
+  `--project` and `--repo` flags to override this behavior.
+
 ## [0.4.0] - 2026-01-17
 
 ### Added
