@@ -433,8 +433,8 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
   # Create an enhancement
   bkt issue create -t "Add dark mode" -k enhancement -p minor
 
-  # Create with assignee
-  bkt issue create -t "Fix memory leak" -a johndoe`,
+  # Create with assignee (use UUID from user profile)
+  bkt issue create -t "Fix memory leak" -a "{abc-123-def}"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, f, opts)
 		},

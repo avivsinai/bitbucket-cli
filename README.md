@@ -149,7 +149,7 @@ The CLI wraps Bitbucket pull-request endpoints for creation, listing, review, an
 bkt issue list --state open --kind bug           # List open bugs
 bkt issue view 42 --comments                     # View issue with comments
 bkt issue create -t "Login broken" -k bug -p major
-bkt issue edit 42 --assignee alice --priority critical
+bkt issue edit 42 --assignee "{abc-123}" --priority critical
 bkt issue close 42                               # Close an issue
 bkt issue reopen 42                              # Reopen a closed issue
 bkt issue comment 42 -b "Fixed in v1.2.0"        # Add a comment
