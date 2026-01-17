@@ -1,6 +1,8 @@
 package cmdutil
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -156,5 +158,74 @@ func TestResolveHostNoHostsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no hosts configured") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveContextOverridesProjectFromRemoteSSH(t *testing.T) {
+	repoDir := initGitRepo(t, "ssh://git@bitbucket.example.com:7999/PLAYG/daredevil-ui.git")
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd failed: %v", err)
+	}
+	if err := os.Chdir(repoDir); err != nil {
+		t.Fatalf("Chdir failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+
+	cfg := &config.Config{
+		ActiveContext: "dev",
+		Contexts: map[string]*config.Context{
+			"dev": {
+				Host:       "bitbucket.example.com",
+				ProjectKey: "DEV",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"bitbucket.example.com": {
+				Kind:    "dc",
+				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
+			},
+		},
+	}
+	f := newTestFactory(cfg)
+
+	_, ctx, _, err := ResolveContext(f, nil, "")
+	if err != nil {
+		t.Fatalf("ResolveContext error: %v", err)
+	}
+	if ctx.ProjectKey != "PLAYG" {
+		t.Fatalf("project = %q, want %q", ctx.ProjectKey, "PLAYG")
+	}
+	if ctx.DefaultRepo != "daredevil-ui" {
+		t.Fatalf("repo = %q, want %q", ctx.DefaultRepo, "daredevil-ui")
+	}
+}
+
+func initGitRepo(t *testing.T, remoteURL string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	runGit(t, dir, "init", ".")
+
+	if remoteURL != "" {
+		runGit(t, dir, "remote", "add", "origin", remoteURL)
+	}
+
+	return dir
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	cmdArgs := append([]string{"-C", dir}, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, output)
 	}
 }
