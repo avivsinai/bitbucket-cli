@@ -4,8 +4,8 @@
 
 - **Maintainers**: responsible for roadmap curation, triage, and releases.
   Current maintainers:
-  - Aviv Sinai (@avivsinai)
-  - Project Stewards group (<opensource@avivsinai.dev>)
+  - Example Maintainer (@example)
+  - Project Stewards group (<opensource@example.com>)
 - **Reviewers**: contributors with merge rights on specific areas (commands,
   clients, docs). Reviewers can approve PRs but maintainers perform final merges.
 - **Contributors**: anyone sending PRs, docs updates, or filing issues.

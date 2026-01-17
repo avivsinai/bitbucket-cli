@@ -20,9 +20,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags={{.Version}}
-      - -X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags={{.Commit}}
-      - -X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags={{.Date}}
+      - -X github.com/example/bitbucket-cli/internal/build.versionFromLdflags={{.Version}}
+      - -X github.com/example/bitbucket-cli/internal/build.commitFromLdflags={{.Commit}}
+      - -X github.com/example/bitbucket-cli/internal/build.dateFromLdflags={{.Date}}
     mod_timestamp: '{{ .CommitTimestamp }}'
 
 archives:
@@ -79,7 +79,7 @@ changelog:
 
 release:
   github:
-    owner: avivsinai
+    owner: example
     name: bitbucket-cli
   draft: false
   prerelease: auto
@@ -91,11 +91,11 @@ release:
   footer: |
     ---
 
-    **Full Changelog**: https://github.com/avivsinai/bitbucket-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/example/bitbucket-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
 
     ### Go Install
     ```bash
-    go install github.com/avivsinai/bitbucket-cli/cmd/bkt@{{ .Tag }}
+    go install github.com/example/bitbucket-cli/cmd/bkt@{{ .Tag }}
     ```
 
     ### Binary Downloads
@@ -115,7 +115,7 @@ nfpms:
     package_name: bkt
     file_name_template: 'bkt_{{ .Version }}_{{ .Arch }}'
     formats: [deb]
-    maintainer: Aviv Sinai <opensource@avivsinai.dev>
+    maintainer: Example Maintainer <opensource@example.com>
     description: Bitbucket CLI
-    homepage: https://github.com/avivsinai/bitbucket-cli
+    homepage: https://github.com/example/bitbucket-cli
     license: MIT

@@ -1,9 +1,9 @@
 # Default owners
-*       @avivsinai
+*       @example
 
 # Client libraries
-pkg/bbdc/    @avivsinai
-pkg/bbcloud/ @avivsinai
+pkg/bbdc/    @example
+pkg/bbcloud/ @example
 
 # CLI commands
-pkg/cmd/     @avivsinai
+pkg/cmd/     @example

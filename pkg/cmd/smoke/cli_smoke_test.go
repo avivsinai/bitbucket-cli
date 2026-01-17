@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmd/root"
-	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
-	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/pkg/cmd/root"
+	"github.com/example/bitbucket-cli/pkg/cmdutil"
+	"github.com/example/bitbucket-cli/pkg/iostreams"
 )
 
 func TestRepoListDataCenterTextOutput(t *testing.T) {

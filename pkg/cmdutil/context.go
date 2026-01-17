@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
-	"github.com/avivsinai/bitbucket-cli/internal/remote"
-	"github.com/avivsinai/bitbucket-cli/internal/secret"
+	"github.com/example/bitbucket-cli/internal/config"
+	"github.com/example/bitbucket-cli/internal/remote"
+	"github.com/example/bitbucket-cli/internal/secret"
 )
 
 // ResolveContext fetches the context and host configuration given an optional
@@ -186,13 +186,6 @@ func applyRemoteDefaults(ctx *config.Context, host *config.Host) {
 		return
 	}
 
-	needsWorkspace := host.Kind == "cloud" && ctx.Workspace == ""
-	needsProject := host.Kind == "dc" && ctx.ProjectKey == ""
-	needsRepo := ctx.DefaultRepo == ""
-	if !needsWorkspace && !needsProject && !needsRepo {
-		return
-	}
-
 	wd, err := os.Getwd()
 	if err != nil {
 		return
@@ -206,15 +199,15 @@ func applyRemoteDefaults(ctx *config.Context, host *config.Host) {
 		return
 	}
 
-	if needsRepo && loc.RepoSlug != "" {
+	if loc.RepoSlug != "" {
 		ctx.DefaultRepo = loc.RepoSlug
 	}
 
-	if needsWorkspace && loc.Workspace != "" {
+	if host.Kind == "cloud" && loc.Workspace != "" {
 		ctx.Workspace = loc.Workspace
 	}
 
-	if needsProject && loc.ProjectKey != "" {
+	if host.Kind == "dc" && loc.ProjectKey != "" {
 		ctx.ProjectKey = loc.ProjectKey
 	}
 }
