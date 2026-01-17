@@ -200,3 +200,69 @@ func TestClientBackoffRespectsContextCancellation(t *testing.T) {
 		t.Fatalf("expected single request, got %d", hits)
 	}
 }
+
+func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		status   int
+		wantMsg  string
+	}{
+		{
+			name:   "captcha exception with clear message",
+			status: http.StatusForbidden,
+			body: `{"errors":[{"message":"CAPTCHA required. Your Bitbucket account has been locked.","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
+			wantMsg: "403 Forbidden: CAPTCHA required. Your Bitbucket account has been locked.",
+		},
+		{
+			name:   "captcha exception prioritized over generic error",
+			status: http.StatusForbidden,
+			body: `{"errors":[{"message":"XSRF check failed","exceptionName":""},{"message":"Account locked","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
+			wantMsg: "403 Forbidden: CAPTCHA verification required: Account locked",
+		},
+		{
+			name:   "normal error without captcha",
+			status: http.StatusNotFound,
+			body:   `{"errors":[{"message":"Repository not found"}]}`,
+			wantMsg: "404 Not Found: Repository not found",
+		},
+		{
+			name:    "empty body",
+			status:  http.StatusForbidden,
+			body:    "",
+			wantMsg: "403 Forbidden",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{
+				BaseURL: server.URL,
+				Retry:   RetryPolicy{MaxAttempts: 1},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			req, err := client.NewRequest(context.Background(), http.MethodPost, "/test", nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+
+			err = client.Do(req, nil)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if err.Error() != tt.wantMsg {
+				t.Errorf("got %q, want %q", err.Error(), tt.wantMsg)
+			}
+		})
+	}
+}

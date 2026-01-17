@@ -321,10 +321,12 @@ func (c *Client) Do(req *http.Request, v any) error {
 }
 
 func decodeError(resp *http.Response) error {
+	type apiErrEntry struct {
+		Message       string `json:"message"`
+		ExceptionName string `json:"exceptionName"`
+	}
 	type apiErr struct {
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
+		Errors []apiErrEntry `json:"errors"`
 	}
 
 	var payload apiErr
@@ -335,7 +337,21 @@ func decodeError(resp *http.Response) error {
 	}
 
 	if len(payload.Errors) > 0 {
-		return fmt.Errorf("%s: %s", resp.Status, payload.Errors[0].Message)
+		// Prioritize user-actionable errors like CAPTCHA over generic ones
+		bestErr := payload.Errors[0]
+		for _, e := range payload.Errors {
+			if isCaptchaException(e.ExceptionName) {
+				bestErr = e
+				break
+			}
+		}
+
+		msg := bestErr.Message
+		// Add hint for CAPTCHA-locked accounts
+		if isCaptchaException(bestErr.ExceptionName) && !strings.Contains(strings.ToLower(msg), "captcha") {
+			msg = "CAPTCHA verification required: " + msg
+		}
+		return fmt.Errorf("%s: %s", resp.Status, msg)
 	}
 
 	if err == nil && len(data) > 0 {
@@ -343,6 +359,11 @@ func decodeError(resp *http.Response) error {
 	}
 
 	return fmt.Errorf("%s", resp.Status)
+}
+
+// isCaptchaException checks if the exception name indicates a CAPTCHA-locked account.
+func isCaptchaException(exceptionName string) bool {
+	return strings.Contains(exceptionName, "CaptchaRequired")
 }
 
 func cloneRequest(req *http.Request) (*http.Request, error) {
