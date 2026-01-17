@@ -363,7 +363,7 @@ func decodeError(resp *http.Response) error {
 
 // isCaptchaException checks if the exception name indicates a CAPTCHA-locked account.
 func isCaptchaException(exceptionName string) bool {
-	return strings.Contains(exceptionName, "CaptchaRequired")
+	return strings.Contains(strings.ToLower(exceptionName), "captcharequired")
 }
 
 func cloneRequest(req *http.Request) (*http.Request, error) {
