@@ -99,6 +99,12 @@ release:
     brew install avivsinai/tap/bitbucket-cli
     ```
 
+    ### Scoop (Windows)
+    ```powershell
+    scoop bucket add avivsinai https://github.com/avivsinai/scoop-bucket
+    scoop install bitbucket-cli
+    ```
+
     ### Go Install
     ```bash
     go install github.com/avivsinai/bitbucket-cli/cmd/bkt@{{ .Tag }}
@@ -143,3 +149,17 @@ brews:
       bin.install "bkt"
     test: |
       system "#{bin}/bkt", "version"
+
+scoops:
+  - name: bitbucket-cli
+    repository:
+      owner: avivsinai
+      name: scoop-bucket
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: bucket
+    homepage: https://github.com/avivsinai/bitbucket-cli
+    description: "CLI for Bitbucket Cloud & Data Center - manage repos, PRs, and pipelines"
+    license: MIT
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
