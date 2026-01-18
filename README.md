@@ -40,28 +40,21 @@ This installs `bkt` to `$GOPATH/bin` (or `$HOME/go/bin` by default). Ensure the 
 
 Download pre-built binaries for your platform from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
 
-## Project layout
+### From Source
 
-```
-cmd/bkt/             # CLI entry point
-internal/bktcmd/     # Main() wiring (factory + root command)
-internal/build/      # Version metadata (overridden via ldflags)
-internal/config/     # Context and host configuration
-internal/remote/     # Git remote parsing utilities
-pkg/cmd/             # Cobra command implementations (auth, repo, pr, ...)
-pkg/cmdutil/         # Shared command helpers and factory wiring
-pkg/iostreams/       # IO stream abstractions
-pkg/bbdc/            # Bitbucket Data Center client implementation
-pkg/bbcloud/         # Bitbucket Cloud client implementation
-pkg/format/          # Output rendering helpers
-pkg/httpx/           # Shared HTTP client and retry logic
+```bash
+git clone https://github.com/avivsinai/bitbucket-cli.git
+cd bitbucket-cli
+make build   # produces ./bin/bkt
+./bin/bkt --help
 ```
 
 ## Getting started
 
+After installation, verify it works:
+
 ```bash
-go build ./cmd/bkt
-./bkt --help
+bkt --help
 ```
 
 ### 1. Authenticate against Bitbucket Data Center or Cloud
@@ -204,11 +197,48 @@ bkt api /rest/api/1.0/projects --param limit=100 --json
 bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
 ```
 
-## Testing
+## Security
 
-`go test ./...` runs fast smoke coverage that wires the CLI against an in-memory Bitbucket mock (see `pkg/cmd/smoke/cli_smoke_test.go`). Extend that harness as new regression scenarios emerge.
+This project uses automated secret scanning ([gitleaks](https://github.com/gitleaks/gitleaks)), dependency updates ([Dependabot](https://github.com/dependabot)), and security posture tracking ([OSSF Scorecard](https://github.com/ossf/scorecard)).
+
+Found a security issue? See our [security policy](SECURITY.md) for responsible disclosure.
+
+## Development
+
+### Project Layout
+
+```
+cmd/bkt/             # CLI entry point
+internal/bktcmd/     # Main() wiring (factory + root command)
+internal/build/      # Version metadata (overridden via ldflags)
+internal/config/     # Context and host configuration
+internal/remote/     # Git remote parsing utilities
+pkg/cmd/             # Cobra command implementations (auth, repo, pr, ...)
+pkg/cmdutil/         # Shared command helpers and factory wiring
+pkg/iostreams/       # IO stream abstractions
+pkg/bbdc/            # Bitbucket Data Center client implementation
+pkg/bbcloud/         # Bitbucket Cloud client implementation
+pkg/format/          # Output rendering helpers
+pkg/httpx/           # Shared HTTP client and retry logic
+```
+
+### Building & Testing
+
+```bash
+make build      # Build the binary to ./bin/bkt
+make test       # Run unit tests
+make fmt        # Format code
+make lint       # Run linters
+make tidy       # Tidy go modules
+```
+
+`go test ./...` runs fast smoke coverage that wires the CLI against an in-memory Bitbucket mock (see `pkg/cmd/smoke/cli_smoke_test.go`).
 
 ## Support
 
 - **Questions / Ideas**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=feature_request.md)
 - **Bug Reports**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=bug_report.md)
+
+## License
+
+`bkt` is available under the [MIT License](LICENSE).
