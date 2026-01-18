@@ -18,9 +18,9 @@ VERSION ?= $(shell \
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w \
-	-X github.com/example/bitbucket-cli/internal/build.versionFromLdflags=$(VERSION) \
-	-X github.com/example/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
-	-X github.com/example/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
+	-X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags=$(VERSION) \
+	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
+	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
 .PHONY: build fmt lint test tidy sbom release snapshot clean
 
