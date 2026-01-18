@@ -94,6 +94,11 @@ release:
 
     **Full Changelog**: https://github.com/avivsinai/bitbucket-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
 
+    ### Homebrew (macOS/Linux)
+    ```bash
+    brew install avivsinai/tap/bitbucket-cli
+    ```
+
     ### Go Install
     ```bash
     go install github.com/avivsinai/bitbucket-cli/cmd/bkt@{{ .Tag }}
@@ -120,3 +125,21 @@ nfpms:
     description: Bitbucket CLI
     homepage: https://github.com/avivsinai/bitbucket-cli
     license: MIT
+
+brews:
+  - name: bitbucket-cli
+    repository:
+      owner: avivsinai
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/avivsinai/bitbucket-cli
+    description: "CLI for Bitbucket Cloud - manage repos, PRs, and pipelines from the terminal"
+    license: MIT
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
+    install: |
+      bin.install "bkt"
+    test: |
+      system "#{bin}/bkt", "version"
