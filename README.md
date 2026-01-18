@@ -15,13 +15,30 @@
 
 ## Installation
 
+### Homebrew (macOS/Linux)
+
+```bash
+brew install avivsinai/tap/bitbucket-cli
+```
+
+### Scoop (Windows)
+
+```powershell
+scoop bucket add avivsinai https://github.com/avivsinai/scoop-bucket
+scoop install bitbucket-cli
+```
+
+### Go Install
+
 ```bash
 go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest
 ```
 
 This installs `bkt` to `$GOPATH/bin` (or `$HOME/go/bin` by default). Ensure the directory is in your `$PATH`.
 
-Or download pre-built binaries from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
+### Binary Downloads
+
+Download pre-built binaries for your platform from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
 
 ## Project layout
 
