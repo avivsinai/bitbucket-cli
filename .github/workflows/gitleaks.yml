@@ -6,8 +6,6 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
-  schedule:
-    - cron: "0 4 * * *"  # Daily scan at 4 AM UTC
 
 permissions:
   contents: read
