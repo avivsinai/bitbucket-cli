@@ -40,4 +40,5 @@ jobs:
           npx skild publish \
             --dir skills/bkt \
             --alias bkt \
+            --alias bitbucket-cli \
             --skill-version ${{ steps.version.outputs.version }}
