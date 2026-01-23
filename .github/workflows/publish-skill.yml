@@ -2,11 +2,9 @@ name: Publish Skill
 
 on:
   push:
+    branches: [master]
     paths:
       - 'skills/**'
-    branches:
-      - master
-  workflow_dispatch:
 
 jobs:
   publish:
@@ -14,25 +12,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Extract version from SKILL.md
-        id: version
-        run: |
-          VERSION=$(grep -E '^version:' skills/bkt/SKILL.md | head -1 | awk '{print $2}')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Extracted version: $VERSION"
+      - name: Install skild
+        run: npm install -g skild
 
-      - name: Setup skild auth
-        env:
-          SKILD_AUTH_JSON: ${{ secrets.SKILD_AUTH_JSON }}
+      - name: Configure skild auth
         run: |
           mkdir -p ~/.skild
-          echo "$SKILD_AUTH_JSON" > ~/.skild/registry-auth.json
-          chmod 600 ~/.skild/registry-auth.json
+          echo '${{ secrets.SKILD_AUTH_JSON }}' > ~/.skild/registry-auth.json
+
+      - name: Get next version
+        id: version
+        run: |
+          CURRENT=$(grep -oP 'version:\s*\K[\d.]+' skills/bkt/SKILL.md)
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
+          NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
+          echo "version=$NEXT" >> $GITHUB_OUTPUT
+          echo "Current: $CURRENT -> Next: $NEXT"
 
       - name: Publish skill
         run: |
