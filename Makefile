@@ -22,9 +22,23 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean
+.PHONY: build fmt lint test tidy sbom release snapshot clean sync-skills check-skills
 
 build: $(BIN_DIR)/bkt
+
+# Skill sync: .claude/skills/ is source of truth
+sync-skills:
+	@echo "Syncing skills from .claude/skills/ to .codex/skills/ and skills/..."
+	@mkdir -p .codex/skills/bkt skills/bkt
+	@cp -R .claude/skills/bkt/* .codex/skills/bkt/
+	@cp -R .claude/skills/bkt/* skills/bkt/
+	@echo "✓ Skills synced"
+
+check-skills:
+	@echo "Checking skill sync..."
+	@diff -rq .claude/skills/bkt .codex/skills/bkt || (echo "❌ .codex/skills/bkt out of sync" && exit 1)
+	@diff -rq .claude/skills/bkt skills/bkt || (echo "❌ skills/bkt out of sync" && exit 1)
+	@echo "✓ Skills in sync"
 
 $(BIN_DIR)/bkt: $(SOURCES) go.mod go.sum
 	@mkdir -p $(BIN_DIR)
