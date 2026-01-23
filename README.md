@@ -49,6 +49,18 @@ make build   # produces ./bin/bkt
 ./bin/bkt --help
 ```
 
+### Claude Code / Codex Skill
+
+Install the `bkt` skill to give Claude Code or Codex CLI native Bitbucket knowledge:
+
+```bash
+# Via skild.sh (registry-based)
+npx skild install @avivsinai/bkt
+
+# Via skills.sh (GitHub-based)
+npx skills add avivsinai/bitbucket-cli
+```
+
 ## Getting started
 
 After installation, verify it works:
