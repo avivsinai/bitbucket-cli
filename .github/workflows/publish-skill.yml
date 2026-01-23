@@ -6,6 +6,7 @@ on:
       - 'skills/**'
     branches:
       - master
+  workflow_dispatch:
 
 jobs:
   publish:
