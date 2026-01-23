@@ -5,7 +5,7 @@ on:
     paths:
       - 'skills/**'
     branches:
-      - main
+      - master
 
 jobs:
   publish:
