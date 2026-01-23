@@ -1,0 +1,38 @@
+name: Publish Skill
+
+on:
+  push:
+    paths:
+      - 'skills/**'
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Extract version from SKILL.md
+        id: version
+        run: |
+          VERSION=$(grep -E '^version:' skills/bkt/SKILL.md | head -1 | awk '{print $2}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Extracted version: $VERSION"
+
+      - name: Publish skill
+        env:
+          SKILD_AUTH_JSON: ${{ secrets.SKILD_AUTH_JSON }}
+        run: |
+          echo "$SKILD_AUTH_JSON" > /tmp/auth.json
+          npx skild publish \
+            --dir skills/bkt \
+            --alias bkt \
+            --skill-version ${{ steps.version.outputs.version }} \
+            --auth-file /tmp/auth.json
+          rm /tmp/auth.json
