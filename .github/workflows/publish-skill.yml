@@ -26,14 +26,17 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Extracted version: $VERSION"
 
-      - name: Publish skill
+      - name: Setup skild auth
         env:
           SKILD_AUTH_JSON: ${{ secrets.SKILD_AUTH_JSON }}
         run: |
-          echo "$SKILD_AUTH_JSON" > /tmp/auth.json
+          mkdir -p ~/.skild
+          echo "$SKILD_AUTH_JSON" > ~/.skild/registry-auth.json
+          chmod 600 ~/.skild/registry-auth.json
+
+      - name: Publish skill
+        run: |
           npx skild publish \
             --dir skills/bkt \
             --alias bkt \
-            --skill-version ${{ steps.version.outputs.version }} \
-            --auth-file /tmp/auth.json
-          rm /tmp/auth.json
+            --skill-version ${{ steps.version.outputs.version }}
