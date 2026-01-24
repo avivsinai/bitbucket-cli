@@ -53,13 +53,56 @@ make build   # produces ./bin/bkt
 
 Install the `bkt` skill to give Claude Code or Codex CLI native Bitbucket knowledge:
 
-```bash
-# Via skild.sh (registry-based)
-npx skild install @avivsinai/bkt
+<details open>
+<summary><b>Via add-skill (Recommended)</b></summary>
 
-# Via skills.sh (GitHub-based)
+```bash
+npx add-skill avivsinai/bitbucket-cli
+```
+
+</details>
+
+<details>
+<summary><b>Via skild registry</b></summary>
+
+```bash
+npx skild install @avivsinai/bkt
+```
+
+</details>
+
+<details>
+<summary><b>Via skills.sh</b></summary>
+
+```bash
 npx skills add avivsinai/bitbucket-cli
 ```
+
+</details>
+
+<details>
+<summary><b>Via Skills Marketplace</b></summary>
+
+Add the marketplace once, then install and discover more skills:
+
+```bash
+/plugin marketplace add avivsinai/skills-marketplace
+/plugin install bkt@avivsinai-marketplace
+```
+
+Browse available skills at [avivsinai/skills-marketplace](https://github.com/avivsinai/skills-marketplace).
+
+</details>
+
+<details>
+<summary><b>Direct from repo</b></summary>
+
+```bash
+git clone https://github.com/avivsinai/bitbucket-cli.git
+cp -r bitbucket-cli/.claude/skills/bkt ~/.claude/skills/
+```
+
+</details>
 
 ## Getting started
 
