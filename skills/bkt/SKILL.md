@@ -11,15 +11,24 @@ metadata:
 
 `bkt` is a unified CLI for **Bitbucket Data Center** and **Bitbucket Cloud**. It mirrors `gh` ergonomics and provides structured JSON/YAML output for automation.
 
-## Prerequisites
+## Dependency Check
+
+**Before executing any `bkt` command**, verify the CLI is installed:
 
 ```bash
-# Install via Homebrew
-brew install avivsinai/tap/bitbucket-cli
-
-# Or via Go
-go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest
+bkt --version
 ```
+
+If the command fails or `bkt` is not found, install it using one of these methods:
+
+| Platform | Command |
+|----------|---------|
+| macOS/Linux | `brew install avivsinai/tap/bitbucket-cli` |
+| Windows | `scoop bucket add avivsinai https://github.com/avivsinai/scoop-bucket && scoop install bitbucket-cli` |
+| Go | `go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest` |
+| Binary | Download from [GitHub Releases](https://github.com/avivsinai/bitbucket-cli/releases) |
+
+**Only proceed with `bkt` commands after confirming installation succeeds.**
 
 ## Authentication
 
