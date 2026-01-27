@@ -54,10 +54,12 @@ make build   # produces ./bin/bkt
 Install the `bkt` skill to give Claude Code or Codex CLI native Bitbucket knowledge:
 
 <details open>
-<summary><b>Via add-skill (Recommended)</b></summary>
+<summary><b>Via skills (Recommended)</b></summary>
+
+Using [Vercel's skills CLI](https://github.com/vercel-labs/add-skill):
 
 ```bash
-npx add-skill avivsinai/bitbucket-cli
+npx skills add avivsinai/bitbucket-cli -g -y
 ```
 
 </details>
@@ -66,16 +68,7 @@ npx add-skill avivsinai/bitbucket-cli
 <summary><b>Via skild registry</b></summary>
 
 ```bash
-npx skild install @avivsinai/bkt
-```
-
-</details>
-
-<details>
-<summary><b>Via skills.sh</b></summary>
-
-```bash
-npx skills add avivsinai/bitbucket-cli
+npx skild install @avivsinai/bkt -t claude -y
 ```
 
 </details>
@@ -83,19 +76,17 @@ npx skills add avivsinai/bitbucket-cli
 <details>
 <summary><b>Via Skills Marketplace</b></summary>
 
-Add the marketplace once, then install and discover more skills:
+> **Known Issue**: Claude Code uses SSH to clone marketplace repos, which fails without SSH keys configured. See [issue #14485](https://github.com/anthropics/claude-code/issues/14485). Use the skills or skild methods instead.
 
 ```bash
 /plugin marketplace add avivsinai/skills-marketplace
 /plugin install bkt@avivsinai-marketplace
 ```
 
-Browse available skills at [avivsinai/skills-marketplace](https://github.com/avivsinai/skills-marketplace).
-
 </details>
 
 <details>
-<summary><b>Direct from repo</b></summary>
+<summary><b>Manual install</b></summary>
 
 ```bash
 git clone https://github.com/avivsinai/bitbucket-cli.git
