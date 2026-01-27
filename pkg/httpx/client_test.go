@@ -128,7 +128,8 @@ func TestClientNewRequestPreservesQuery(t *testing.T) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	if got := req.URL.String(); got != "https://example.com/rest/projects?limit=25&start=0" {
+	// Paths starting with "/" should be joined to the base URL path, not replace it
+	if got := req.URL.String(); got != "https://example.com/api/rest/projects?limit=25&start=0" {
 		t.Fatalf("unexpected URL: %s", got)
 	}
 	if req.URL.RawQuery != "limit=25&start=0" {
@@ -147,7 +148,8 @@ func TestClientNewRequestHandlesRelativeWithoutSlash(t *testing.T) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	if got := req.URL.String(); got != "https://example.com/rest/repos" {
+	// Paths without leading "/" get one added, then joined to base path
+	if got := req.URL.String(); got != "https://example.com/api/rest/repos" {
 		t.Fatalf("unexpected URL: %s", got)
 	}
 }

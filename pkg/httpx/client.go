@@ -153,7 +153,17 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 		rel.Path = "/"
 	}
 
-	u := c.baseURL.ResolveReference(rel)
+	// Join paths properly: for relative paths starting with "/", we want to
+	// append to the base URL path, not replace it. Go's ResolveReference
+	// treats "/foo" as an absolute path that replaces the base path.
+	u := *c.baseURL
+	if strings.HasPrefix(path, "/") && c.baseURL.Path != "" {
+		u.Path = strings.TrimSuffix(c.baseURL.Path, "/") + rel.Path
+	} else {
+		resolved := c.baseURL.ResolveReference(rel)
+		u = *resolved
+	}
+	u.RawQuery = rel.RawQuery
 
 	var payload []byte
 	if body != nil {
