@@ -189,13 +189,16 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 	case "cloud":
 		if opts.Web && isTerminal(ios.In) {
 			tokenURL := "https://id.atlassian.com/manage-profile/security/api-tokens"
-			if _, err := fmt.Fprintln(ios.Out, "Opening Bitbucket Cloud to create an API token..."); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "Opening Atlassian to create a Bitbucket API token..."); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(ios.Out, "\nSelect these scopes when creating your token:"); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "\nIMPORTANT: Click \"Create API token with scopes\" and select \"Bitbucket\" as the application."); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(ios.Out, "  - Account: Read"); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "\nRequired scopes:"); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintln(ios.Out, "  - Account: Read (required for login)"); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintln(ios.Out, "  - Repositories: Read, Write"); err != nil {

@@ -140,16 +140,21 @@ bkt auth login https://bitbucket.org --kind cloud --web
 bkt auth login https://bitbucket.org --kind cloud --username <email> --token <api-token>
 ```
 
-Create an **API token** in Bitbucket Cloud:
-1. Go to **Atlassian Account → Security → API tokens** ([direct link](https://id.atlassian.com/manage-profile/security/api-tokens))
-2. Click **Create token**
-3. Grant scopes:
-   - **Repositories**: Read (and Write if creating branches)
-   - **Pull requests**: Read, Write
-   - **Account**: Read (for commands that fetch user info)
-4. Copy the generated token
+Create an **API token with scopes** for Bitbucket Cloud:
+1. Go to [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Click **Create and manage API tokens** → **Create API token with scopes**
+3. Name your token and set an expiry date
+4. **Select "Bitbucket" as the application** (required!)
+5. Grant scopes:
+   - **Account: Read** — Required for authentication
+   - **Repositories: Read, Write** — For repo commands
+   - **Pull requests: Read, Write** — For PR commands
+   - **Issues: Read, Write** — For issue commands (optional)
+6. Click **Create** and copy the token immediately
 
-> **Important:** Use your **Atlassian account email** as the username (not your Bitbucket username).
+> **Warning:** General Atlassian API tokens won't work. You must select "Bitbucket" as the application when creating the token.
+
+> **Note:** Use your **Atlassian account email** as the username (not your Bitbucket username).
 
 <details>
 <summary>Legacy: App passwords (deprecated)</summary>
