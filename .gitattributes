@@ -3,9 +3,12 @@
 
 # Go source files
 *.go text eol=lf
+*.mod text eol=lf
+*.sum text eol=lf
 
 # Shell scripts
 *.sh text eol=lf
+*.bash text eol=lf
 
 # Batch files (Windows)
 *.bat text eol=crlf
@@ -20,6 +23,9 @@
 
 # Makefiles
 Makefile text eol=lf
+Dockerfile text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
 
 # Binary files
 *.png binary
