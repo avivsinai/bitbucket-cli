@@ -141,7 +141,7 @@ bkt auth login https://bitbucket.org --kind cloud --username <email> --token <ap
 ```
 
 Create an **API token** in Bitbucket Cloud:
-1. Go to **Personal settings → API tokens** ([direct link](https://bitbucket.org/account/settings/api-tokens/))
+1. Go to **Atlassian Account → Security → API tokens** ([direct link](https://id.atlassian.com/manage-profile/security/api-tokens))
 2. Click **Create token**
 3. Grant scopes:
    - **Repositories**: Read (and Write if creating branches)

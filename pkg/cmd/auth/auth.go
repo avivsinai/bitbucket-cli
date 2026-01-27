@@ -64,7 +64,7 @@ func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Kind, "kind", opts.Kind, "Bitbucket deployment kind (dc or cloud)")
 	cmd.Flags().StringVar(&opts.Username, "username", "", "Username (DC: PAT owner, Cloud: Atlassian email for API tokens)")
-	cmd.Flags().StringVar(&opts.Token, "token", "", "Authentication token (DC: PAT, Cloud: API token or app password)")
+	cmd.Flags().StringVar(&opts.Token, "token", "", "Authentication token (DC: PAT, Cloud: API token)")
 	cmd.Flags().BoolVar(&opts.AllowInsecureStore, "allow-insecure-store", false, "Allow encrypted fallback secret storage when no OS keychain is available")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Open browser to create token, then prompt for credentials")
 
@@ -188,20 +188,23 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		}
 	case "cloud":
 		if opts.Web && isTerminal(ios.In) {
-			tokenURL := "https://bitbucket.org/account/settings/api-tokens/"
+			tokenURL := "https://id.atlassian.com/manage-profile/security/api-tokens"
 			if _, err := fmt.Fprintln(ios.Out, "Opening Bitbucket Cloud to create an API token..."); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(ios.Out, "\nRecommended scopes:"); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "\nSelect these scopes when creating your token:"); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(ios.Out, "  • Account: Read"); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "  - Account: Read"); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(ios.Out, "  • Repositories: Read, Write"); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "  - Repositories: Read, Write"); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(ios.Out, "  • Pull requests: Read, Write"); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "  - Pull requests: Read, Write"); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintln(ios.Out, "  - Issues: Read, Write (if using issue commands)"); err != nil {
 				return err
 			}
 			if err := f.BrowserOpener().Open(tokenURL); err != nil {
@@ -218,7 +221,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("username is required when not running in a TTY")
 			}
-			prompt := "Atlassian email (API token) or Bitbucket username (app password)"
+			prompt := "Atlassian account email"
 			if opts.Web {
 				prompt = "Atlassian account email"
 			}
@@ -232,7 +235,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("token is required when not running in a TTY")
 			}
-			prompt := "API token or app password"
+			prompt := "API token"
 			if opts.Web {
 				prompt = "API token"
 			}
