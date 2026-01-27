@@ -26,6 +26,13 @@ Options:
 - `--web` — Open browser to create token
 - `--allow-insecure-store` — Allow encrypted file fallback
 
+**Bitbucket Cloud Token Requirements:**
+When using `--kind cloud`, create an API token with scopes at Atlassian:
+- Select "Bitbucket" as the application
+- Required: Account: Read
+- Recommended: Repositories (Read/Write), Pull requests (Read/Write)
+- Optional: Issues (Read/Write)
+
 ### Status and Logout
 ```bash
 bkt auth status                           # Show configured hosts and contexts
