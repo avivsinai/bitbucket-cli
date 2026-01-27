@@ -203,6 +203,24 @@ func TestClientBackoffRespectsContextCancellation(t *testing.T) {
 	}
 }
 
+func TestClientNewRequestNoDoubledBasePath(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Pass path that already includes /2.0 - should NOT become /2.0/2.0/repositories
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/2.0/repositories", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	expected := "https://api.bitbucket.org/2.0/repositories"
+	if got := req.URL.String(); got != expected {
+		t.Fatalf("doubled base path: got %s, want %s", got, expected)
+	}
+}
+
 func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
 	tests := []struct {
 		name    string

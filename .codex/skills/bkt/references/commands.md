@@ -420,14 +420,14 @@ bkt api /rest/api/1.0/projects --param limit=100
 bkt api /rest/api/1.0/projects/ABC/repos --json
 
 # Cloud
-bkt api /2.0/repositories --param workspace=myteam
-bkt api /2.0/repositories/myteam/api --field pagelen=50
+bkt api /repositories --param workspace=myteam
+bkt api /repositories/myteam/api --field pagelen=50
 
 # POST/PUT/DELETE with fields
 bkt api /rest/api/1.0/projects/ABC/repos -X POST --field name=demo --field scmId=git
 
 # POST with raw JSON body
-bkt api /2.0/repositories/myteam/api/issues -X POST --input '{"title": "Bug report"}'
+bkt api /repositories/myteam/api/issues -X POST --input '{"title": "Bug report"}'
 ```
 
 Options:

@@ -157,8 +157,16 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 	// append to the base URL path, not replace it. Go's ResolveReference
 	// treats "/foo" as an absolute path that replaces the base path.
 	u := *c.baseURL
-	if strings.HasPrefix(path, "/") && c.baseURL.Path != "" {
-		u.Path = strings.TrimSuffix(c.baseURL.Path, "/") + rel.Path
+	basePath := c.baseURL.Path
+	if strings.HasPrefix(path, "/") && basePath != "" {
+		// Guard: if path already starts with base path, don't double it.
+		// This handles cases where callers pass "/2.0/repositories" when base is
+		// already "https://api.bitbucket.org/2.0" - we don't want "/2.0/2.0/repositories".
+		if strings.HasPrefix(rel.Path, basePath) {
+			u.Path = rel.Path
+		} else {
+			u.Path = strings.TrimSuffix(basePath, "/") + rel.Path
+		}
 	} else {
 		resolved := c.baseURL.ResolveReference(rel)
 		u = *resolved
