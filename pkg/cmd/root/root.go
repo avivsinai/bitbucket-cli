@@ -16,6 +16,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/project"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/repo"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/status"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/variable"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/webhook"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
@@ -62,6 +63,7 @@ Common flows:
 		webhook.NewCommand(f),
 		status.NewCmdStatus(f),
 		pipeline.NewCmdPipeline(f),
+		variable.NewCommand(f),
 		api.NewCmdAPI(f),
 		extension.NewCmdExtension(f),
 	)
