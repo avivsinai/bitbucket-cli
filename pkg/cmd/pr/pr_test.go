@@ -20,6 +20,313 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
+func TestListRequiresMineWithoutRepo(t *testing.T) {
+	tests := []struct {
+		name          string
+		context       *config.Context
+		host          *config.Host
+		args          []string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "dc without repo and without mine",
+			context: &config.Context{
+				Host:       "main",
+				ProjectKey: "PROJ",
+				// No DefaultRepo
+			},
+			host: &config.Host{
+				Kind:     "dc",
+				BaseURL:  "https://bitbucket.example.com",
+				Username: "testuser",
+				Token:    "test-token",
+			},
+			args:          []string{},
+			expectError:   true,
+			errorContains: "--mine is required when not specifying a repository",
+		},
+		{
+			name: "cloud without repo and without mine",
+			context: &config.Context{
+				Host:      "cloud",
+				Workspace: "workspace",
+				// No DefaultRepo
+			},
+			host: &config.Host{
+				Kind:     "cloud",
+				BaseURL:  "https://api.bitbucket.org/2.0",
+				Username: "testuser",
+				Token:    "test-token",
+			},
+			args:          []string{},
+			expectError:   true,
+			errorContains: "--mine is required when not specifying a repository",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": tt.context,
+				},
+				Hosts: map[string]*config.Host{
+					tt.context.Host: tt.host,
+				},
+			}
+
+			stdout := &strings.Builder{}
+			stderr := &strings.Builder{}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams: &iostreams.IOStreams{
+					Out:    stdout,
+					ErrOut: stderr,
+				},
+				Config: func() (*config.Config, error) {
+					return cfg, nil
+				},
+			}
+
+			cmd := newListCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+
+			err := cmd.Execute()
+
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.errorContains)
+				}
+				if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Fatalf("expected error containing %q, got %q", tt.errorContains, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestListDashboardDC(t *testing.T) {
+	prs := []bbdc.PullRequest{
+		{
+			ID:    1,
+			Title: "First PR",
+			State: "OPEN",
+			FromRef: bbdc.Ref{
+				DisplayID:  "feature-1",
+				Repository: bbdc.Repository{Slug: "repo1", Project: &bbdc.Project{Key: "PROJ"}},
+			},
+			ToRef: bbdc.Ref{DisplayID: "main"},
+		},
+		{
+			ID:    2,
+			Title: "Second PR",
+			State: "OPEN",
+			FromRef: bbdc.Ref{
+				DisplayID:  "feature-2",
+				Repository: bbdc.Repository{Slug: "repo2", Project: &bbdc.Project{Key: "PROJ"}},
+			},
+			ToRef: bbdc.Ref{DisplayID: "main"},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(r.URL.Path, "/dashboard/pull-requests") {
+			resp := struct {
+				Values     []bbdc.PullRequest `json:"values"`
+				IsLastPage bool               `json:"isLastPage"`
+			}{
+				Values:     prs,
+				IsLastPage: true,
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:       "main",
+				ProjectKey: "PROJ",
+				// No DefaultRepo - this triggers dashboard mode
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {
+				Kind:     "dc",
+				BaseURL:  server.URL,
+				Username: "testuser",
+				Token:    "test-token",
+			},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams: &iostreams.IOStreams{
+			Out:    stdout,
+			ErrOut: stderr,
+		},
+		Config: func() (*config.Config, error) {
+			return cfg, nil
+		},
+	}
+
+	cmd := newListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--mine"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "#1") {
+		t.Errorf("expected output to contain PR #1, got:\n%s", output)
+	}
+	if !strings.Contains(output, "#2") {
+		t.Errorf("expected output to contain PR #2, got:\n%s", output)
+	}
+	if !strings.Contains(output, "First PR") {
+		t.Errorf("expected output to contain 'First PR', got:\n%s", output)
+	}
+	if !strings.Contains(output, "PROJ/repo1") {
+		t.Errorf("expected output to contain repo info 'PROJ/repo1', got:\n%s", output)
+	}
+}
+
+func TestListWorkspaceCloud(t *testing.T) {
+	prs := []bbcloud.PullRequest{
+		{
+			ID:    1,
+			Title: "First PR",
+			State: "OPEN",
+		},
+		{
+			ID:    2,
+			Title: "Second PR",
+			State: "OPEN",
+		},
+	}
+	// Set nested fields
+	prs[0].Source.Branch.Name = "feature-1"
+	prs[0].Destination.Branch.Name = "main"
+	prs[0].Links.HTML.Href = "https://bitbucket.org/workspace/repo1/pull-requests/1"
+	prs[1].Source.Branch.Name = "feature-2"
+	prs[1].Destination.Branch.Name = "main"
+	prs[1].Links.HTML.Href = "https://bitbucket.org/workspace/repo2/pull-requests/2"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		// Handle /user endpoint to return current user
+		if r.URL.Path == "/user" {
+			user := bbcloud.User{
+				UUID:     "{12345}",
+				Username: "testuser",
+				Display:  "Test User",
+			}
+			_ = json.NewEncoder(w).Encode(user)
+			return
+		}
+
+		if strings.Contains(r.URL.Path, "/workspaces/") && strings.Contains(r.URL.Path, "/pullrequests/") {
+			resp := struct {
+				Values []bbcloud.PullRequest `json:"values"`
+				Next   string                `json:"next"`
+			}{
+				Values: prs,
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:      "cloud",
+				Workspace: "workspace",
+				// No DefaultRepo - this triggers workspace mode
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {
+				Kind:     "cloud",
+				BaseURL:  server.URL,
+				Username: "testuser",
+				Token:    "test-token",
+			},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams: &iostreams.IOStreams{
+			Out:    stdout,
+			ErrOut: stderr,
+		},
+		Config: func() (*config.Config, error) {
+			return cfg, nil
+		},
+	}
+
+	cmd := newListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--mine"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "#1") {
+		t.Errorf("expected output to contain PR #1, got:\n%s", output)
+	}
+	if !strings.Contains(output, "#2") {
+		t.Errorf("expected output to contain PR #2, got:\n%s", output)
+	}
+	if !strings.Contains(output, "First PR") {
+		t.Errorf("expected output to contain 'First PR', got:\n%s", output)
+	}
+	if !strings.Contains(output, "repo1") {
+		t.Errorf("expected output to contain repo info 'repo1', got:\n%s", output)
+	}
+}
+
 func TestStateIcon(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
