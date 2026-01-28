@@ -170,10 +170,21 @@ without a native keychain.
 
 ### 2. Create and activate a context
 
+#### Bitbucket Data Center
+
 ```bash
 bkt context create dc-prod --host bitbucket.mycorp.example --project ABC --set-active
 bkt context list
 ```
+
+#### Bitbucket Cloud
+
+```bash
+bkt context create cloud-prod --host api.bitbucket.org --workspace myteam --set-active
+bkt context list
+```
+
+> **Tip:** Run `bkt auth status` to see configured hosts and the exact host value to use with `--host`.
 
 Contexts capture the host mapping, default project/workspace, and optional default repository for commands.
 
