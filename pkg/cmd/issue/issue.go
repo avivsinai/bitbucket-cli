@@ -229,7 +229,7 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Open in browser")
-	cmd.Flags().BoolVarP(&opts.Comments, "comments", "c", false, "Show comments")
+	cmd.Flags().BoolVar(&opts.Comments, "comments", false, "Show comments")
 
 	return cmd
 }
