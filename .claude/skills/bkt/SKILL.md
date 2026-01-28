@@ -191,7 +191,7 @@ For endpoints not yet wrapped:
 
 ```bash
 bkt api /rest/api/1.0/projects --param limit=100 --json
-bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
+bkt api /repositories --param workspace=myteam --field pagelen=50
 ```
 
 ## Output Modes

@@ -22,6 +22,15 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 )
 
+// CloudTokenURL is the URL where users create Bitbucket Cloud API tokens.
+const CloudTokenURL = "https://id.atlassian.com/manage-profile/security/api-tokens"
+
+// CloudEmailPrompt is the prompt shown when asking for the Atlassian account email.
+const CloudEmailPrompt = "Atlassian account email"
+
+// CloudTokenPrompt is the prompt shown when asking for the API token.
+const CloudTokenPrompt = "API token"
+
 // NewCmdAuth returns the root auth command.
 func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -188,7 +197,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		}
 	case "cloud":
 		if opts.Web && isTerminal(ios.In) {
-			tokenURL := "https://id.atlassian.com/manage-profile/security/api-tokens"
+			tokenURL := CloudTokenURL
 			if _, err := fmt.Fprintln(ios.Out, "Opening Atlassian to create a Bitbucket API token..."); err != nil {
 				return err
 			}
@@ -224,11 +233,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("username is required when not running in a TTY")
 			}
-			prompt := "Atlassian account email"
-			if opts.Web {
-				prompt = "Atlassian account email"
-			}
-			opts.Username, err = promptString(reader, ios.Out, prompt)
+			opts.Username, err = promptString(reader, ios.Out, CloudEmailPrompt)
 			if err != nil {
 				return err
 			}
@@ -238,11 +243,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if !isTerminal(ios.In) {
 				return fmt.Errorf("token is required when not running in a TTY")
 			}
-			prompt := "API token"
-			if opts.Web {
-				prompt = "API token"
-			}
-			opts.Token, err = promptSecret(ios, prompt)
+			opts.Token, err = promptSecret(ios, CloudTokenPrompt)
 			if err != nil {
 				return err
 			}

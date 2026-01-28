@@ -10,13 +10,13 @@ import (
 )
 
 func TestCloudTokenURLIsAtlassian(t *testing.T) {
-	// The token URL for cloud should point to Atlassian's account management
-	expectedURL := "https://id.atlassian.com/manage-profile/security/api-tokens"
-
-	// Verify the URL constant/value used in runLogin for cloud kind
-	// This test ensures we don't regress to the old bitbucket.org URL
-	if !strings.Contains(expectedURL, "id.atlassian.com") {
-		t.Fatal("Cloud token URL should use id.atlassian.com")
+	// Verify the actual CloudTokenURL constant points to Atlassian's account management.
+	// This test ensures we don't regress to the old bitbucket.org URL.
+	if !strings.Contains(CloudTokenURL, "id.atlassian.com") {
+		t.Fatalf("CloudTokenURL should use id.atlassian.com, got: %s", CloudTokenURL)
+	}
+	if !strings.Contains(CloudTokenURL, "api-tokens") {
+		t.Fatalf("CloudTokenURL should point to api-tokens page, got: %s", CloudTokenURL)
 	}
 }
 
@@ -53,11 +53,20 @@ func TestLoginFlagHelpTextNoAppPassword(t *testing.T) {
 }
 
 func TestCloudLoginPromptsNoAppPassword(t *testing.T) {
-	// Test that the email prompt for cloud login doesn't mention app password
-	// This would require capturing output during runLogin with opts.Web = false
-	// and verifying the prompt text
-	//
-	// The implementation removes "app password" from prompt text when
-	// opts.Web is false, so this verifies the change was made correctly.
-	// Full integration testing would require mocking terminal input.
+	// Verify that the cloud login prompt constants don't mention "app password".
+	// This ensures users aren't confused by old terminology since Bitbucket Cloud
+	// uses API tokens, not app passwords.
+	prompts := []struct {
+		name  string
+		value string
+	}{
+		{"CloudEmailPrompt", CloudEmailPrompt},
+		{"CloudTokenPrompt", CloudTokenPrompt},
+	}
+
+	for _, p := range prompts {
+		if strings.Contains(strings.ToLower(p.value), "app password") {
+			t.Errorf("%s should not mention 'app password', got: %s", p.name, p.value)
+		}
+	}
 }

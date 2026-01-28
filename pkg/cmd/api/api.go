@@ -29,7 +29,7 @@ func NewCmdAPI(f *cmdutil.Factory) *cobra.Command {
 
 Examples:
   bkt api /rest/api/1.0/projects
-  bkt api /2.0/repositories --workspace my-team --param pagelen=50
+  bkt api /repositories --workspace my-team --param pagelen=50
   bkt api /rest/api/1.0/projects/ABC/repos --method POST --field name=demo --field scmId=git`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

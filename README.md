@@ -245,7 +245,7 @@ For endpoints that are not yet wrapped, reach directly for the API escape hatch:
 
 ```bash
 bkt api /rest/api/1.0/projects --param limit=100 --json
-bkt api /2.0/repositories --param workspace=myteam --field pagelen=50
+bkt api /repositories --param workspace=myteam --field pagelen=50
 ```
 
 ## Security
