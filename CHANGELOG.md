@@ -6,6 +6,9 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Clarified Bitbucket Cloud context creation in README, showing that `--host api.bitbucket.org` is required and adding a tip to use `bkt auth status` to discover the correct host value.
+
 ## [0.4.1] - 2026-01-17
 
 ### Fixed
