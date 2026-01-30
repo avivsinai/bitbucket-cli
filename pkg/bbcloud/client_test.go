@@ -23,6 +23,9 @@ func TestListPipelinesPaginates(t *testing.T) {
 			if r.URL.Query().Get("pagelen") == "" {
 				t.Fatalf("expected pagelen query in first request")
 			}
+			if r.URL.Query().Get("sort") != "-created_on" {
+				t.Fatalf("expected sort=-created_on query in first request")
+			}
 			payload := PipelinePage{
 				Values: []Pipeline{{UUID: "1"}, {UUID: "2"}},
 				Next:   serverURL + "/repositories/work/repo/pipelines/?pagelen=20&page=2",
@@ -68,6 +71,9 @@ func TestListPipelinesRespectsLimit(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		if count == 1 {
+			if r.URL.Query().Get("sort") != "-created_on" {
+				t.Fatalf("expected sort=-created_on query in first request")
+			}
 			payload := PipelinePage{
 				Values: []Pipeline{{UUID: "1"}, {UUID: "2"}},
 				Next:   serverURL + "/repositories/work/repo/pipelines/?pagelen=20&page=2",

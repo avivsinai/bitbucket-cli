@@ -207,7 +207,14 @@ func runPipelineList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) 
 			return err
 		}
 		for _, p := range pipelines {
-			if _, err := fmt.Fprintf(ios.Out, "%s\t%-12s\t%s\t%s\n", p.UUID, p.State.Name, p.Target.Ref.Name, p.State.Result.Name); err != nil {
+			created := ""
+			if p.CreatedOn != "" {
+				if t, err := time.Parse(time.RFC3339Nano, p.CreatedOn); err == nil {
+					created = t.Local().Format("2006-01-02 15:04")
+				}
+			}
+			if _, err := fmt.Fprintf(ios.Out, "#%-4d %s\t%-12s\t%-10s\t%s\t%s\n",
+				p.BuildNumber, p.UUID, p.State.Name, p.State.Result.Name, p.Target.Ref.Name, created); err != nil {
 				return err
 			}
 		}
