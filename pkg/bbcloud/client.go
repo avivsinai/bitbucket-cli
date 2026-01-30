@@ -97,8 +97,9 @@ type Repository struct {
 
 // Pipeline represents a pipeline execution.
 type Pipeline struct {
-	UUID  string `json:"uuid"`
-	State struct {
+	UUID        string `json:"uuid"`
+	BuildNumber int    `json:"build_number"`
+	State       struct {
 		Result struct {
 			Name string `json:"name"`
 		} `json:"result"`
@@ -134,7 +135,7 @@ func (c *Client) ListPipelines(ctx context.Context, workspace, repoSlug string, 
 		pageLen = 20
 	}
 
-	path := fmt.Sprintf("/repositories/%s/%s/pipelines/?pagelen=%d",
+	path := fmt.Sprintf("/repositories/%s/%s/pipelines/?pagelen=%d&sort=-created_on",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
 		pageLen,
