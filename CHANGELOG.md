@@ -6,6 +6,25 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-01-30
+
+### Added
+- `bkt pipeline list` now displays build number (`#N`) and timestamp for each pipeline run (#36).
+
+### Changed
+- Pipeline list now sorts by newest first (`-created_on`) instead of oldest first.
+
+## [0.5.3] - 2026-01-27
+
+### Added
+- New `bkt` skill for Claude Code and Codex CLI (#28).
+
+### Fixed
+- Preserve base URL path when resolving request paths.
+- Update Bitbucket Cloud auth to use Atlassian API tokens.
+
+## [0.5.2] - 2026-01-18
+
 ### Changed
 - Clarified Bitbucket Cloud context creation in README, showing that `--host api.bitbucket.org` is required and adding a tip to use `bkt auth status` to discover the correct host value.
 
