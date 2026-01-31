@@ -464,6 +464,8 @@ func (c *Client) GetPipelineLogs(ctx context.Context, workspace, repoSlug, pipel
 	if err != nil {
 		return nil, err
 	}
+	// Override Accept header - logs endpoint returns octet-stream, not JSON
+	req.Header.Set("Accept", "application/octet-stream")
 
 	var buf strings.Builder
 	if err := c.http.Do(req, &buf); err != nil {
