@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,13 +48,13 @@ type listOptions struct {
 
 type viewOptions struct {
 	baseOptions
-	UUID string
+	Identifier string // UUID or build number
 }
 
 type logsOptions struct {
 	baseOptions
-	UUID string
-	Step string
+	Identifier string // UUID or build number
+	Step       string
 }
 
 func newRunCmd(f *cmdutil.Factory) *cobra.Command {
@@ -95,11 +96,12 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &viewOptions{}
 	cmd := &cobra.Command{
-		Use:   "view <uuid>",
+		Use:   "view <id>",
 		Short: "Show details for a pipeline run",
+		Long:  "Show details for a pipeline run. The <id> can be either a build number (e.g., 10) or a UUID.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.UUID = args[0]
+			opts.Identifier = args[0]
 			return runPipelineView(cmd, f, opts)
 		},
 	}
@@ -113,11 +115,12 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 func newLogsCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &logsOptions{}
 	cmd := &cobra.Command{
-		Use:   "logs <uuid>",
+		Use:   "logs <id>",
 		Short: "Fetch logs for a pipeline run",
+		Long:  "Fetch logs for a pipeline run. The <id> can be either a build number (e.g., 10) or a UUID.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.UUID = args[0]
+			opts.Identifier = args[0]
 			return runPipelineLogs(cmd, f, opts)
 		},
 	}
@@ -222,6 +225,22 @@ func runPipelineList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) 
 	})
 }
 
+// resolvePipeline fetches a pipeline by build number or UUID.
+// If the identifier looks like a number, tries build number first, then falls back to UUID.
+func resolvePipeline(ctx context.Context, client *bbcloud.Client, workspace, repo, identifier string) (*bbcloud.Pipeline, error) {
+	// Try parsing as build number first
+	if buildNum, err := strconv.Atoi(strings.TrimPrefix(identifier, "#")); err == nil {
+		pipeline, err := client.GetPipelineByBuildNumber(ctx, workspace, repo, buildNum)
+		if err == nil {
+			return pipeline, nil
+		}
+		// If build number lookup failed, fall back to treating as UUID
+		// (in case the numeric string is actually part of a UUID)
+	}
+	// Treat as UUID
+	return client.GetPipeline(ctx, workspace, repo, identifier)
+}
+
 func runPipelineView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 	ios, err := f.Streams()
 	if err != nil {
@@ -241,12 +260,12 @@ func runPipelineView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) 
 	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 	defer cancel()
 
-	pipeline, err := client.GetPipeline(ctx, workspace, repo, opts.UUID)
+	pipeline, err := resolvePipeline(ctx, client, workspace, repo, opts.Identifier)
 	if err != nil {
 		return err
 	}
 
-	steps, err := client.ListPipelineSteps(ctx, workspace, repo, opts.UUID)
+	steps, err := client.ListPipelineSteps(ctx, workspace, repo, pipeline.UUID)
 	if err != nil {
 		return err
 	}
@@ -293,19 +312,25 @@ func runPipelineLogs(cmd *cobra.Command, f *cmdutil.Factory, opts *logsOptions) 
 	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
+	// Resolve build number or UUID to pipeline
+	pipeline, err := resolvePipeline(ctx, client, workspace, repo, opts.Identifier)
+	if err != nil {
+		return err
+	}
+
 	stepID := opts.Step
 	if stepID == "" {
-		steps, err := client.ListPipelineSteps(ctx, workspace, repo, opts.UUID)
+		steps, err := client.ListPipelineSteps(ctx, workspace, repo, pipeline.UUID)
 		if err != nil {
 			return err
 		}
 		if len(steps) == 0 {
-			return fmt.Errorf("pipeline %s has no steps yet", opts.UUID)
+			return fmt.Errorf("pipeline #%d has no steps yet", pipeline.BuildNumber)
 		}
 		stepID = steps[len(steps)-1].UUID
 	}
 
-	logs, err := client.GetPipelineLogs(ctx, workspace, repo, opts.UUID, stepID)
+	logs, err := client.GetPipelineLogs(ctx, workspace, repo, pipeline.UUID, stepID)
 	if err != nil {
 		return err
 	}

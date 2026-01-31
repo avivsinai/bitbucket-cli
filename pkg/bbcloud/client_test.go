@@ -318,3 +318,25 @@ func TestCommitStatusesPathEncoding(t *testing.T) {
 		t.Fatalf("CommitStatuses: %v", err)
 	}
 }
+
+func TestNormalizeUUID(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"abc-123", "{abc-123}"},
+		{"{abc-123}", "{abc-123}"},
+		{"abc-123}", "{abc-123}"},
+		{"{abc-123", "{abc-123}"},
+		{"{}", "{}"},
+		{"", "{}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := normalizeUUID(tt.input)
+			if got != tt.expected {
+				t.Errorf("normalizeUUID(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
