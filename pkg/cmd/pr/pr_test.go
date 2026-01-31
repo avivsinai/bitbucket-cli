@@ -582,6 +582,13 @@ func TestChecksCommandArgumentParsing(t *testing.T) {
 }
 
 func TestChecksCommandValidation(t *testing.T) {
+	// Use a mock server for cloud tests to avoid hitting real API
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return 404 for any request - we're testing validation, not API calls
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
 	tests := []struct {
 		name          string
 		context       *config.Context
@@ -627,7 +634,7 @@ func TestChecksCommandValidation(t *testing.T) {
 			},
 			host: &config.Host{
 				Kind:     "cloud",
-				BaseURL:  "https://api.bitbucket.org/2.0",
+				BaseURL:  mockServer.URL, // Use mock server instead of real API
 				Username: "testuser",
 				Token:    "test-token",
 			},
@@ -642,7 +649,7 @@ func TestChecksCommandValidation(t *testing.T) {
 			},
 			host: &config.Host{
 				Kind:     "cloud",
-				BaseURL:  "https://api.bitbucket.org/2.0",
+				BaseURL:  mockServer.URL, // Use mock server instead of real API
 				Username: "testuser",
 				Token:    "test-token",
 			},
