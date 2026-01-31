@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -582,6 +583,22 @@ func TestChecksCommandArgumentParsing(t *testing.T) {
 }
 
 func TestChecksCommandValidation(t *testing.T) {
+	// Change to a temp directory without a git repo to prevent
+	// applyRemoteDefaults from overwriting test context values.
+	// In CI environments with a bitbucket.org remote, the git detection
+	// would otherwise fill in workspace/repo and bypass validation.
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
 	// Use a mock server for cloud tests to avoid hitting real API
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Return 404 for any request - we're testing validation, not API calls
