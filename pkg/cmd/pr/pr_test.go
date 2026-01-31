@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -583,12 +582,6 @@ func TestChecksCommandArgumentParsing(t *testing.T) {
 }
 
 func TestChecksCommandValidation(t *testing.T) {
-	// Skip in CI environments where this test is flaky
-	// See: https://github.com/avivsinai/bitbucket-cli/issues/40
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping flaky test in CI - see issue #40")
-	}
-
 	// Use a mock server for cloud tests to avoid hitting real API
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Return 404 for any request - we're testing validation, not API calls
