@@ -53,9 +53,10 @@ func New(opts Options) (*Client, error) {
 
 // User represents a Bitbucket Cloud user profile.
 type User struct {
-	UUID     string `json:"uuid"`
-	Username string `json:"username"`
-	Display  string `json:"display_name"`
+	UUID      string `json:"uuid"`
+	Username  string `json:"username"`
+	AccountID string `json:"account_id"`
+	Display   string `json:"display_name"`
 }
 
 // CurrentUser retrieves the authenticated user.

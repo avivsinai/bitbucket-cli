@@ -264,11 +264,13 @@ func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.I
 
 		for _, pr := range prs {
 			author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+			// Use ToRef.Repository (destination) to show where the PR merges into,
+			// which is more useful for fork-based PRs than the source repo
 			repoInfo := ""
-			if pr.FromRef.Repository.Slug != "" {
-				repoInfo = pr.FromRef.Repository.Slug
-				if pr.FromRef.Repository.Project != nil && pr.FromRef.Repository.Project.Key != "" {
-					repoInfo = pr.FromRef.Repository.Project.Key + "/" + repoInfo
+			if pr.ToRef.Repository.Slug != "" {
+				repoInfo = pr.ToRef.Repository.Slug
+				if pr.ToRef.Repository.Project != nil && pr.ToRef.Repository.Project.Key != "" {
+					repoInfo = pr.ToRef.Repository.Project.Key + "/" + repoInfo
 				}
 			}
 			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
@@ -303,11 +305,21 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	if currentUser.Username == "" {
-		return fmt.Errorf("could not determine username for workspace-level PR listing")
+
+	// Determine username for API call. Username may be empty for newer Bitbucket
+	// accounts, so fall back to AccountID, then configured host username.
+	username := currentUser.Username
+	if username == "" {
+		username = currentUser.AccountID
+	}
+	if username == "" && host.Username != "" && !strings.Contains(host.Username, "@") {
+		username = host.Username
+	}
+	if username == "" {
+		return fmt.Errorf("could not determine username; Bitbucket Cloud account may lack username field")
 	}
 
-	prs, err := client.ListWorkspacePullRequests(ctx, workspace, currentUser.Username, bbcloud.WorkspacePullRequestsOptions{
+	prs, err := client.ListWorkspacePullRequests(ctx, workspace, username, bbcloud.WorkspacePullRequestsOptions{
 		State: opts.State,
 		Limit: opts.Limit,
 	})
@@ -328,7 +340,12 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 
 		for _, pr := range prs {
 			author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
-			repoInfo := extractRepoFromCloudPRLink(pr.Links.HTML.Href)
+			// Use Destination.Repository.Slug (where PR merges into) as primary source,
+			// fall back to URL parsing for backwards compatibility
+			repoInfo := pr.Destination.Repository.Slug
+			if repoInfo == "" {
+				repoInfo = extractRepoFromCloudPRLink(pr.Links.HTML.Href)
+			}
 			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
 				return err
 			}
@@ -347,6 +364,7 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 }
 
 // extractRepoFromCloudPRLink extracts the repository slug from a Bitbucket Cloud PR URL.
+// This is a fallback method; prefer using PullRequest.Destination.Repository.Slug directly.
 // URL format: https://bitbucket.org/{workspace}/{repo}/pull-requests/{id}
 func extractRepoFromCloudPRLink(href string) string {
 	parts := strings.Split(href, "/")
