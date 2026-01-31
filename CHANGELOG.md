@@ -6,6 +6,17 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-01-31
+
+### Added
+- Support build numbers as input for pipeline commands: `bkt pipeline view 10` (#38).
+- Bitbucket Pipelines CI configuration for dogfooding on Bitbucket Cloud mirror.
+- Documented `BKT_HTTP_DEBUG` environment variable for API troubleshooting.
+
+### Fixed
+- Fixed 400 "unexpected.response.body" error on `bkt pipeline view` and `bkt pipeline logs` commands. Bitbucket Cloud requires UUID braces to be URL-encoded (#38).
+- Fixed 406 error on `bkt pipeline logs` by setting correct Accept header for octet-stream response.
+
 ## [0.5.4] - 2026-01-30
 
 ### Added
