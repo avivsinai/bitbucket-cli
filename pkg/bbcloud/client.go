@@ -53,9 +53,10 @@ func New(opts Options) (*Client, error) {
 
 // User represents a Bitbucket Cloud user profile.
 type User struct {
-	UUID     string `json:"uuid"`
-	Username string `json:"username"`
-	Display  string `json:"display_name"`
+	UUID      string `json:"uuid"`
+	Username  string `json:"username"`
+	AccountID string `json:"account_id"`
+	Display   string `json:"display_name"`
 }
 
 // CurrentUser retrieves the authenticated user.
@@ -518,4 +519,68 @@ func (c *Client) CommitStatuses(ctx context.Context, workspace, repoSlug, commit
 	}
 
 	return statuses, nil
+}
+
+// WorkspacePullRequestsOptions configures workspace-level PR listings.
+type WorkspacePullRequestsOptions struct {
+	State string
+	Limit int
+}
+
+// ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
+func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions) ([]PullRequest, error) {
+	if workspace == "" {
+		return nil, fmt.Errorf("workspace is required")
+	}
+	if username == "" {
+		return nil, fmt.Errorf("username is required")
+	}
+
+	pageLen := opts.Limit
+	if pageLen <= 0 || pageLen > 100 {
+		pageLen = 20
+	}
+
+	var params []string
+	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
+	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
+		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
+	}
+
+	path := fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
+		url.PathEscape(workspace),
+		url.PathEscape(username),
+		strings.Join(params, "&"),
+	)
+
+	var prs []PullRequest
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var page pullRequestListPage
+		if err := c.http.Do(req, &page); err != nil {
+			return nil, err
+		}
+
+		prs = append(prs, page.Values...)
+
+		if opts.Limit > 0 && len(prs) >= opts.Limit {
+			prs = prs[:opts.Limit]
+			break
+		}
+
+		if page.Next == "" {
+			break
+		}
+		nextURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		path = nextURL.RequestURI()
+	}
+
+	return prs, nil
 }

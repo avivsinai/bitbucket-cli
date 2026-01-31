@@ -23,11 +23,17 @@ type PullRequest struct {
 		Commit struct {
 			Hash string `json:"hash"`
 		} `json:"commit"`
+		Repository struct {
+			Slug string `json:"slug"`
+		} `json:"repository"`
 	} `json:"source"`
 	Destination struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
+		Repository struct {
+			Slug string `json:"slug"`
+		} `json:"repository"`
 	} `json:"destination"`
 	Links struct {
 		HTML struct {
