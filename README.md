@@ -296,6 +296,18 @@ make tidy       # Tidy go modules
 
 `go test ./...` runs fast smoke coverage that wires the CLI against an in-memory Bitbucket mock (see `pkg/cmd/smoke/cli_smoke_test.go`).
 
+## Troubleshooting
+
+### Debug HTTP Requests
+
+To see API request URLs and response status codes, set the `BKT_HTTP_DEBUG` environment variable:
+
+```bash
+BKT_HTTP_DEBUG=1 bkt pipeline view 10
+```
+
+This outputs request method/URL and response status, useful for diagnosing API errors.
+
 ## Support
 
 - **Questions / Ideas**: File an [issue](https://github.com/avivsinai/bitbucket-cli/issues/new?template=feature_request.md)

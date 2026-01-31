@@ -6,6 +6,36 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-01-31
+
+### Added
+- Support build numbers as input for pipeline commands: `bkt pipeline view 10` (#38).
+- Bitbucket Pipelines CI configuration for dogfooding on Bitbucket Cloud mirror.
+- Documented `BKT_HTTP_DEBUG` environment variable for API troubleshooting.
+
+### Fixed
+- Fixed 400 "unexpected.response.body" error on `bkt pipeline view` and `bkt pipeline logs` commands. Bitbucket Cloud requires UUID braces to be URL-encoded (#38).
+- Fixed 406 error on `bkt pipeline logs` by setting correct Accept header for octet-stream response.
+
+## [0.5.4] - 2026-01-30
+
+### Added
+- `bkt pipeline list` now displays build number (`#N`) and timestamp for each pipeline run (#36).
+
+### Changed
+- Pipeline list now sorts by newest first (`-created_on`) instead of oldest first.
+
+## [0.5.3] - 2026-01-27
+
+### Added
+- New `bkt` skill for Claude Code and Codex CLI (#28).
+
+### Fixed
+- Preserve base URL path when resolving request paths.
+- Update Bitbucket Cloud auth to use Atlassian API tokens.
+
+## [0.5.2] - 2026-01-18
+
 ### Changed
 - Clarified Bitbucket Cloud context creation in README, showing that `--host api.bitbucket.org` is required and adding a tip to use `bkt auth status` to discover the correct host value.
 

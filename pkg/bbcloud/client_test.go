@@ -23,6 +23,9 @@ func TestListPipelinesPaginates(t *testing.T) {
 			if r.URL.Query().Get("pagelen") == "" {
 				t.Fatalf("expected pagelen query in first request")
 			}
+			if r.URL.Query().Get("sort") != "-created_on" {
+				t.Fatalf("expected sort=-created_on query in first request")
+			}
 			payload := PipelinePage{
 				Values: []Pipeline{{UUID: "1"}, {UUID: "2"}},
 				Next:   serverURL + "/repositories/work/repo/pipelines/?pagelen=20&page=2",
@@ -68,6 +71,9 @@ func TestListPipelinesRespectsLimit(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		if count == 1 {
+			if r.URL.Query().Get("sort") != "-created_on" {
+				t.Fatalf("expected sort=-created_on query in first request")
+			}
 			payload := PipelinePage{
 				Values: []Pipeline{{UUID: "1"}, {UUID: "2"}},
 				Next:   serverURL + "/repositories/work/repo/pipelines/?pagelen=20&page=2",
@@ -310,5 +316,27 @@ func TestCommitStatusesPathEncoding(t *testing.T) {
 	_, err = client.CommitStatuses(ctx, "my-workspace", "my-repo", "abc123def456")
 	if err != nil {
 		t.Fatalf("CommitStatuses: %v", err)
+	}
+}
+
+func TestNormalizeUUID(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"abc-123", "{abc-123}"},
+		{"{abc-123}", "{abc-123}"},
+		{"abc-123}", "{abc-123}"},
+		{"{abc-123", "{abc-123}"},
+		{"{}", "{}"},
+		{"", "{}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := normalizeUUID(tt.input)
+			if got != tt.expected {
+				t.Errorf("normalizeUUID(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
 	}
 }
