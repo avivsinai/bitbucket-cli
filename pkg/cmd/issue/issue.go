@@ -665,7 +665,7 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions, issueID 
 	}
 
 	if !hasUpdates {
-		return fmt.Errorf("no updates specified; use flags like --title, --state, --assignee, etc.")
+		return fmt.Errorf("no updates specified: use flags like --title, --state, --assignee")
 	}
 
 	client, err := cmdutil.NewCloudClient(host)

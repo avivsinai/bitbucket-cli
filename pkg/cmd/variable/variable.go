@@ -229,9 +229,10 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		location := workspace
-		if scope == scopeRepository {
+		switch scope {
+		case scopeRepository:
 			location = workspace + "/" + repoSlug
-		} else if scope == scopeDeployment {
+		case scopeDeployment:
 			location = workspace + "/" + repoSlug + " (deployment: " + opts.Deployment + ")"
 		}
 		if len(summaries) == 0 {
@@ -376,9 +377,10 @@ func runGet(cmd *cobra.Command, f *cmdutil.Factory, opts *getOptions, variableNa
 	}
 
 	location := workspace
-	if scope == scopeRepository {
+	switch scope {
+	case scopeRepository:
 		location = workspace + "/" + repoSlug
-	} else if scope == scopeDeployment {
+	case scopeDeployment:
 		location = workspace + "/" + repoSlug + " (deployment: " + opts.Deployment + ")"
 	}
 
@@ -544,9 +546,10 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, opts *deleteOptions, vari
 	}
 
 	location := workspace
-	if scope == scopeRepository {
+	switch scope {
+	case scopeRepository:
 		location = workspace + "/" + repoSlug
-	} else if scope == scopeDeployment {
+	case scopeDeployment:
 		location = workspace + "/" + repoSlug + " (deployment: " + opts.Deployment + ")"
 	}
 
@@ -859,9 +862,10 @@ func runSet(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions, variableNa
 	}
 
 	location := workspace
-	if scope == scopeRepository {
+	switch scope {
+	case scopeRepository:
 		location = workspace + "/" + repoSlug
-	} else if scope == scopeDeployment {
+	case scopeDeployment:
 		location = workspace + "/" + repoSlug + " (deployment: " + opts.Deployment + ")"
 	}
 
@@ -899,13 +903,15 @@ func validateVariableKey(key string) error {
 	}
 
 	// Must start with a letter
-	if !((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')) {
+	if (key[0] < 'a' || key[0] > 'z') && (key[0] < 'A' || key[0] > 'Z') {
 		return fmt.Errorf("variable key must start with a letter: %q", key)
 	}
 
 	// Must contain only letters, numbers, and underscores
 	for i, c := range key {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+		isLetter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		isDigit := c >= '0' && c <= '9'
+		if !isLetter && !isDigit && c != '_' {
 			return fmt.Errorf("variable key contains invalid character at position %d: %q", i, key)
 		}
 	}
@@ -1091,9 +1097,10 @@ func runSetFromEnvFile(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions)
 	}
 
 	location := workspace
-	if scope == scopeRepository {
+	switch scope {
+	case scopeRepository:
 		location = workspace + "/" + repoSlug
-	} else if scope == scopeDeployment {
+	case scopeDeployment:
 		location = workspace + "/" + repoSlug + " (deployment: " + opts.Deployment + ")"
 	}
 
@@ -1143,7 +1150,7 @@ func parseEnvFile(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open env file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	result := make(map[string]string)
 	scanner := bufio.NewScanner(file)

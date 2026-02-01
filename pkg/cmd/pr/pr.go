@@ -1466,11 +1466,11 @@ func executeStatusCheck(r *checksResult) error {
 
 		// Handle cancellation gracefully
 		if errors.Is(err, context.Canceled) {
-			fmt.Fprintln(r.ios.ErrOut, "\nOperation cancelled")
+			_, _ = fmt.Fprintln(r.ios.ErrOut, "\nOperation cancelled")
 			return nil
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			fmt.Fprintln(r.ios.ErrOut, "\nTimeout waiting for builds to complete")
+			_, _ = fmt.Fprintln(r.ios.ErrOut, "\nTimeout waiting for builds to complete")
 			// Check if any builds are still pending
 			timedOutWithPending = !allBuildsComplete(statuses)
 		}
@@ -1544,7 +1544,7 @@ func pollUntilComplete(
 				return nil, fmt.Errorf("fetch failed after %d attempts: %w", consecutiveErrors, err)
 			}
 			// Log error to stderr (doesn't corrupt structured output on stdout)
-			fmt.Fprintf(ios.ErrOut, "  ⚠ Error fetching status (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
+			_, _ = fmt.Fprintf(ios.ErrOut, "  ⚠ Error fetching status (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
 			// Use iteration + consecutiveErrors to back off faster on errors
 			errorBackoff := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration+consecutiveErrors)
 			select {
@@ -1598,7 +1598,7 @@ func pollUntilComplete(
 				}
 				waitMsg = fmt.Sprintf("\n  Waiting for %d build(s)... (next poll in %s, Ctrl-C to cancel)", inProgress, nextInterval.Round(time.Second))
 			}
-			fmt.Fprintln(ios.Out, waitMsg)
+			_, _ = fmt.Fprintln(ios.Out, waitMsg)
 		}
 
 		iteration++
