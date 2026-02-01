@@ -22,6 +22,20 @@ import (
 )
 
 func TestListRequiresMineWithoutRepo(t *testing.T) {
+	// Change to a temp directory without a git repo to prevent
+	// applyRemoteDefaults from overwriting test context values.
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
 	tests := []struct {
 		name          string
 		context       *config.Context
@@ -226,6 +240,20 @@ func TestListDashboardDC(t *testing.T) {
 }
 
 func TestListWorkspaceCloud(t *testing.T) {
+	// Change to a temp directory without a git repo to prevent
+	// applyRemoteDefaults from overwriting test context values.
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
 	prs := []bbcloud.PullRequest{
 		{
 			ID:    1,
@@ -316,7 +344,7 @@ func TestListWorkspaceCloud(t *testing.T) {
 	cmd.SilenceUsage = true
 	cmd.SetArgs([]string{"--mine"})
 
-	err := cmd.Execute()
+	err = cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2442,6 +2470,20 @@ func TestRunEditCloud(t *testing.T) {
 }
 
 func TestListWorkspaceCloudUsernameFallback(t *testing.T) {
+	// Change to a temp directory without a git repo to prevent
+	// applyRemoteDefaults from overwriting test context values.
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
 	tests := []struct {
 		name           string
 		userResponse   bbcloud.User
@@ -2733,6 +2775,20 @@ func TestListDashboardDCForkScenario(t *testing.T) {
 }
 
 func TestListWorkspaceCloudURLFallback(t *testing.T) {
+	// Change to a temp directory without a git repo to prevent
+	// applyRemoteDefaults from overwriting test context values.
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
 	// Test that URL parsing fallback works when Destination.Repository.Slug is empty
 	prs := []bbcloud.PullRequest{
 		{
@@ -2822,7 +2878,7 @@ func TestListWorkspaceCloudURLFallback(t *testing.T) {
 	cmd.SilenceUsage = true
 	cmd.SetArgs([]string{"--mine"})
 
-	err := cmd.Execute()
+	err = cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
