@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-02-01
+
+### Added
+- `bkt pr list --mine` flag to list your PRs across all repositories in a workspace (Cloud) or project (Data Center) (#35). Thanks @steveardis!
+
 ## [0.5.5] - 2026-01-31
 
 ### Added
