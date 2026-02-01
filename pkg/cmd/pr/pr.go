@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
@@ -100,8 +101,17 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	case "dc":
 		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
 		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-		if projectKey == "" || repoSlug == "" {
-			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+
+		// If no repo specified, use the dashboard endpoint (requires --mine)
+		if repoSlug == "" {
+			if !opts.Mine {
+				return fmt.Errorf("--mine is required when not specifying a repository")
+			}
+			return runListDashboardDC(cmd, f, ios, host, opts)
+		}
+
+		if projectKey == "" {
+			return fmt.Errorf("context must supply project; use --project if needed")
 		}
 
 		client, err := cmdutil.NewDCClient(host)
@@ -156,8 +166,20 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	case "cloud":
 		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
 		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-		if workspace == "" || repoSlug == "" {
-			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+
+		// If no repo specified, use the workspace endpoint (requires --mine)
+		if repoSlug == "" {
+			if !opts.Mine {
+				return fmt.Errorf("--mine is required when not specifying a repository")
+			}
+			if workspace == "" {
+				return fmt.Errorf("context must supply workspace; use --workspace if needed")
+			}
+			return runListWorkspaceCloud(cmd, f, ios, host, workspace, opts)
+		}
+
+		if workspace == "" {
+			return fmt.Errorf("context must supply workspace; use --workspace if needed")
 		}
 
 		client, err := cmdutil.NewCloudClient(host)
@@ -209,6 +231,148 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
+}
+
+// runListDashboardDC lists pull requests for the authenticated user across all repositories (Data Center).
+func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, host *config.Host, opts *listOptions) error {
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+
+	prs, err := client.ListDashboardPullRequests(ctx, bbdc.DashboardPullRequestsOptions{
+		State: opts.State,
+		Role:  "AUTHOR",
+		Limit: opts.Limit,
+	})
+	if err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"pull_requests": prs,
+	}
+
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(prs) == 0 {
+			_, err := fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+			return err
+		}
+
+		for _, pr := range prs {
+			author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+			// Use ToRef.Repository (destination) to show where the PR merges into,
+			// which is more useful for fork-based PRs than the source repo
+			repoInfo := ""
+			if pr.ToRef.Repository.Slug != "" {
+				repoInfo = pr.ToRef.Repository.Slug
+				if pr.ToRef.Repository.Project != nil && pr.ToRef.Repository.Project.Key != "" {
+					repoInfo = pr.ToRef.Repository.Project.Key + "/" + repoInfo
+				}
+			}
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				return err
+			}
+			if repoInfo != "" {
+				if _, err := fmt.Fprintf(ios.Out, "    %s\t%s -> %s\tby %s\n", repoInfo, pr.FromRef.DisplayID, pr.ToRef.DisplayID, author); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// runListWorkspaceCloud lists pull requests for the authenticated user across all repositories (Cloud).
+func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, host *config.Host, workspace string, opts *listOptions) error {
+	client, err := cmdutil.NewCloudClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+
+	// Fetch the current user to get the actual Bitbucket username (not the email used for auth)
+	currentUser, err := client.CurrentUser(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	// Determine username for API call. Username may be empty for newer Bitbucket
+	// accounts, so fall back to AccountID, then configured host username.
+	username := currentUser.Username
+	if username == "" {
+		username = currentUser.AccountID
+	}
+	if username == "" && host.Username != "" && !strings.Contains(host.Username, "@") {
+		username = host.Username
+	}
+	if username == "" {
+		return fmt.Errorf("could not determine username; Bitbucket Cloud account may lack username field")
+	}
+
+	prs, err := client.ListWorkspacePullRequests(ctx, workspace, username, bbcloud.WorkspacePullRequestsOptions{
+		State: opts.State,
+		Limit: opts.Limit,
+	})
+	if err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"workspace":     workspace,
+		"pull_requests": prs,
+	}
+
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(prs) == 0 {
+			_, err := fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+			return err
+		}
+
+		for _, pr := range prs {
+			author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
+			// Use Destination.Repository.Slug (where PR merges into) as primary source,
+			// fall back to URL parsing for backwards compatibility
+			repoInfo := pr.Destination.Repository.Slug
+			if repoInfo == "" {
+				repoInfo = extractRepoFromCloudPRLink(pr.Links.HTML.Href)
+			}
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				return err
+			}
+			if repoInfo != "" {
+				if _, err := fmt.Fprintf(ios.Out, "    %s\t%s -> %s\tby %s\n", repoInfo, pr.Source.Branch.Name, pr.Destination.Branch.Name, author); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name, author); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// extractRepoFromCloudPRLink extracts the repository slug from a Bitbucket Cloud PR URL.
+// This is a fallback method; prefer using PullRequest.Destination.Repository.Slug directly.
+// URL format: https://bitbucket.org/{workspace}/{repo}/pull-requests/{id}
+func extractRepoFromCloudPRLink(href string) string {
+	parts := strings.Split(href, "/")
+	// Expected: ["https:", "", "bitbucket.org", "workspace", "repo", "pull-requests", "id"]
+	if len(parts) >= 5 {
+		return parts[4]
+	}
+	return ""
 }
 
 type viewOptions struct {
