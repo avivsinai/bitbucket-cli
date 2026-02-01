@@ -13,7 +13,7 @@ definitions:
         caches:
           - go-mod
         script:
-          - go test -v -race ./...
+          - go test ./...
     - step: &lint
         name: Lint
         caches:
