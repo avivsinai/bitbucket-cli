@@ -25,6 +25,11 @@
 - Aim for coverage of flag parsing, API adapters, and error paths; mock HTTP interactions where necessary.
 - Use `go test ./pkg/...` to focus on library packages during iteration.
 
+## Releasing
+- See [docs/RELEASE.md](./docs/RELEASE.md) for the full release handbook.
+- **Do not** manually create GitHub releases—CI handles this automatically when you push a tag.
+- Process: update `CHANGELOG.md`, commit, `git tag vX.Y.Z`, `git push origin master --tags`.
+
 ## Commit & Pull Request Guidelines
 - Commit messages follow the conventional prefix style (`feat:`, `fix:`, `docs:`) as seen in `feat: initial commit`.
 - Keep commits focused and descriptive; reference issues with `Refs #123` in the body when applicable.
