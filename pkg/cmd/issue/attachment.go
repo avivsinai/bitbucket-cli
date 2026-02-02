@@ -229,14 +229,6 @@ func runAttachmentUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *attachmen
 	ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
 	defer cancel()
 
-	type uploadResult struct {
-		File    string `json:"file"`
-		Success bool   `json:"success"`
-		Name    string `json:"name,omitempty"`
-	}
-
-	var results []uploadResult
-
 	for _, filePath := range files {
 		file, err := os.Open(filePath)
 		if err != nil {
@@ -250,12 +242,6 @@ func runAttachmentUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *attachmen
 		if err != nil {
 			return fmt.Errorf("failed to upload %s: %w", filePath, err)
 		}
-
-		results = append(results, uploadResult{
-			File:    filePath,
-			Success: true,
-			Name:    attachment.Name,
-		})
 
 		if _, err := fmt.Fprintf(ios.Out, "Uploaded: %s\n", attachment.Name); err != nil {
 			return err
