@@ -307,6 +307,19 @@ bkt issue comment <id> --list             # List comments
 bkt issue status                          # Issues assigned to/created by you
 ```
 
+### Attachments
+```bash
+bkt issue attachment list <id>            # List attachments on an issue
+bkt issue attachment upload <id> <files>...  # Upload file(s)
+bkt issue attachment download <id> <filename>  # Download specific file
+bkt issue attachment download <id> --all  # Download all attachments
+bkt issue attachment download <id> --pattern "*.png"  # Download by pattern
+bkt issue attachment download <id> --all --dir ./attachments  # To directory
+bkt issue attachment download <id> --all --skip-existing  # Skip existing files
+bkt issue attachment delete <id> <filename>  # Delete (prompts for confirm)
+bkt issue attachment delete <id> <filename> --confirm  # Skip confirmation
+```
+
 ## Webhook Commands
 
 ```bash
