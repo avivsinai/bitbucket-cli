@@ -404,3 +404,212 @@ func TestDeleteIssueAttachmentValidation(t *testing.T) {
 		})
 	}
 }
+
+// --- API Error Response Tests ---
+
+func TestListIssueAttachmentsAPIError(t *testing.T) {
+	tests := []struct {
+		name          string
+		status        int
+		body          string
+		errorContains string
+	}{
+		{
+			name:          "not found",
+			status:        http.StatusNotFound,
+			body:          `{"error": {"message": "Issue not found"}}`,
+			errorContains: "404",
+		},
+		{
+			name:          "forbidden",
+			status:        http.StatusForbidden,
+			body:          `{"error": {"message": "Access denied"}}`,
+			errorContains: "403",
+		},
+		{
+			name:          "structured error",
+			status:        http.StatusBadRequest,
+			body:          `{"errors": [{"message": "Invalid issue ID"}]}`,
+			errorContains: "Invalid issue ID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{BaseURL: server.URL})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			ctx := context.Background()
+			_, err = client.ListIssueAttachments(ctx, "workspace", "repo", 42)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
+
+func TestUploadIssueAttachmentAPIError(t *testing.T) {
+	tests := []struct {
+		name          string
+		status        int
+		body          string
+		errorContains string
+	}{
+		{
+			name:          "file too large",
+			status:        http.StatusRequestEntityTooLarge,
+			body:          `{"errors": [{"message": "File exceeds maximum size of 10MB"}]}`,
+			errorContains: "File exceeds maximum size",
+		},
+		{
+			name:          "unsupported media type",
+			status:        http.StatusUnsupportedMediaType,
+			body:          `{"errors": [{"message": "File type not allowed"}]}`,
+			errorContains: "File type not allowed",
+		},
+		{
+			name:          "issue not found",
+			status:        http.StatusNotFound,
+			body:          `{"errors": [{"message": "Issue does not exist"}]}`,
+			errorContains: "Issue does not exist",
+		},
+		{
+			name:          "permission denied",
+			status:        http.StatusForbidden,
+			body:          `{"errors": [{"message": "You don't have permission to add attachments"}]}`,
+			errorContains: "permission",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{BaseURL: server.URL})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			ctx := context.Background()
+			_, err = client.UploadIssueAttachment(ctx, "workspace", "repo", 42, "test.txt", strings.NewReader("content"))
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
+
+func TestDownloadIssueAttachmentAPIError(t *testing.T) {
+	tests := []struct {
+		name          string
+		status        int
+		body          string
+		errorContains string
+	}{
+		{
+			name:          "attachment not found",
+			status:        http.StatusNotFound,
+			body:          `{"errors": [{"message": "Attachment not found"}]}`,
+			errorContains: "Attachment not found",
+		},
+		{
+			name:          "forbidden",
+			status:        http.StatusForbidden,
+			body:          `{"errors": [{"message": "Access denied"}]}`,
+			errorContains: "Access denied",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{BaseURL: server.URL})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			ctx := context.Background()
+			var buf bytes.Buffer
+			err = client.DownloadIssueAttachment(ctx, "workspace", "repo", 42, "missing.txt", &buf)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
+
+func TestDeleteIssueAttachmentAPIError(t *testing.T) {
+	tests := []struct {
+		name          string
+		status        int
+		body          string
+		errorContains string
+	}{
+		{
+			name:          "attachment not found",
+			status:        http.StatusNotFound,
+			body:          `{"errors": [{"message": "Attachment not found"}]}`,
+			errorContains: "Attachment not found",
+		},
+		{
+			name:          "forbidden",
+			status:        http.StatusForbidden,
+			body:          `{"errors": [{"message": "You don't have permission to delete attachments"}]}`,
+			errorContains: "permission",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{BaseURL: server.URL})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			ctx := context.Background()
+			err = client.DeleteIssueAttachment(ctx, "workspace", "repo", 42, "file.txt")
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Errorf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
