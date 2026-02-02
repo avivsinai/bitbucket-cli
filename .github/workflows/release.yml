@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Prevent race conditions: only one release per tag, cancel stale runs
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: macos-latest
