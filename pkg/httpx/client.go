@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -578,4 +579,95 @@ func (c *Client) applyAdaptiveThrottle() {
 		sleep = 5 * time.Second
 	}
 	time.Sleep(sleep)
+}
+
+// MultipartFile represents a file for multipart/form-data upload.
+type MultipartFile struct {
+	FieldName string    // Form field name (e.g., "files")
+	FileName  string    // Original filename
+	Reader    io.Reader // File content
+}
+
+// NewMultipartRequest builds a multipart/form-data request for file uploads.
+// The request body is buffered in memory to support retries.
+func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, files []MultipartFile) (*http.Request, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
+	var rel *url.URL
+	var err error
+
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		rel, err = url.Parse(path)
+		if err != nil {
+			return nil, fmt.Errorf("parse request URL: %w", err)
+		}
+	} else {
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		rel, err = url.Parse(path)
+		if err != nil {
+			return nil, fmt.Errorf("parse request path: %w", err)
+		}
+	}
+
+	if rel.Path == "" {
+		rel.Path = "/"
+	}
+
+	u := *c.baseURL
+	basePath := c.baseURL.Path
+	if strings.HasPrefix(path, "/") && basePath != "" {
+		if strings.HasPrefix(rel.Path, basePath) {
+			u.Path = rel.Path
+		} else {
+			u.Path = strings.TrimSuffix(basePath, "/") + rel.Path
+		}
+	} else {
+		resolved := c.baseURL.ResolveReference(rel)
+		u = *resolved
+	}
+	u.RawQuery = rel.RawQuery
+
+	// Buffer the multipart content to support retries
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+
+	for _, f := range files {
+		part, err := mw.CreateFormFile(f.FieldName, f.FileName)
+		if err != nil {
+			return nil, fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := io.Copy(part, f.Reader); err != nil {
+			return nil, fmt.Errorf("copy file content: %w", err)
+		}
+	}
+
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	payload := buf.Bytes()
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+	req.ContentLength = int64(len(payload))
+
+	// Set GetBody for retry support
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
+
+	if c.username != "" || c.password != "" {
+		req.SetBasicAuth(c.username, c.password)
+	}
+
+	return req, nil
 }
