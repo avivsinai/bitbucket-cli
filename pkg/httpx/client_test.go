@@ -221,6 +221,130 @@ func TestClientNewRequestNoDoubledBasePath(t *testing.T) {
 	}
 }
 
+func TestNewMultipartRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "" {
+			t.Error("missing Content-Type header")
+		}
+		if r.Header.Get("Accept") != "application/json" {
+			t.Error("missing or incorrect Accept header")
+		}
+		if r.Header.Get("User-Agent") != "bkt-cli" {
+			t.Error("missing or incorrect User-Agent header")
+		}
+
+		// Verify multipart content
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+
+		file, header, err := r.FormFile("files")
+		if err != nil {
+			t.Fatalf("FormFile: %v", err)
+		}
+		defer func() { _ = file.Close() }()
+
+		if header.Filename != "test.txt" {
+			t.Errorf("expected filename test.txt, got %s", header.Filename)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  "test.txt",
+			Reader:    nil,
+		},
+	}
+	// We need to provide actual content for the test
+	files[0].Reader = http.NoBody
+
+	req, err := client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err != nil {
+		t.Fatalf("NewMultipartRequest: %v", err)
+	}
+
+	if err := client.Do(req, nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+}
+
+func TestNewMultipartRequestContentType(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  "test.txt",
+			Reader:    http.NoBody,
+		},
+	}
+
+	req, err := client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err != nil {
+		t.Fatalf("NewMultipartRequest: %v", err)
+	}
+
+	contentType := req.Header.Get("Content-Type")
+	if contentType == "" {
+		t.Fatal("Content-Type header not set")
+	}
+	if len(contentType) < 30 {
+		t.Fatalf("Content-Type should include boundary, got: %s", contentType)
+	}
+}
+
+func TestNewMultipartRequestNilReader(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  "test.txt",
+			Reader:    nil,
+		},
+	}
+
+	_, err = client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err == nil {
+		t.Fatal("expected error for nil reader")
+	}
+	if err.Error() != `reader is nil for file "test.txt"` {
+		t.Errorf("expected nil reader error, got %q", err.Error())
+	}
+}
+
+func TestNewMultipartRequestEmptyFiles(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", []MultipartFile{})
+	if err == nil {
+		t.Fatal("expected error for empty files slice")
+	}
+	if err.Error() != "at least one file is required" {
+		t.Errorf("expected empty files error, got %q", err.Error())
+	}
+}
+
 func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
 	tests := []struct {
 		name    string

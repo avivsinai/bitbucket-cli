@@ -226,6 +226,12 @@ bkt issue close 42                               # Close an issue
 bkt issue reopen 42                              # Reopen a closed issue
 bkt issue comment 42 -b "Fixed in v1.2.0"        # Add a comment
 bkt issue status                                 # Show your assigned/created issues
+
+# Attachments
+bkt issue attachment list 42                     # List attachments
+bkt issue attachment upload 42 screenshot.png    # Upload file(s)
+bkt issue attachment download 42 --all           # Download all attachments
+bkt issue attachment delete 42 old-file.txt      # Delete an attachment
 ```
 
 Note: The issue tracker is only available for Bitbucket Cloud. Bitbucket Data Center uses Jira for issue tracking.

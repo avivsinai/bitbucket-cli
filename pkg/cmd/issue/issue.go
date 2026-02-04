@@ -33,6 +33,7 @@ uses Jira for issue tracking.`,
 	cmd.AddCommand(newDeleteCmd(f))
 	cmd.AddCommand(newCommentCmd(f))
 	cmd.AddCommand(newStatusCmd(f))
+	cmd.AddCommand(newAttachmentCmd(f))
 
 	return cmd
 }
