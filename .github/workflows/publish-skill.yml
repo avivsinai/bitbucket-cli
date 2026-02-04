@@ -6,11 +6,18 @@ on:
     paths:
       - 'skills/**'
 
+# Prevent concurrent publishes to avoid version conflicts
+concurrency:
+  group: skill-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v6
         with:
@@ -24,16 +31,27 @@ jobs:
           mkdir -p ~/.skild
           echo '${{ secrets.SKILD_AUTH_JSON }}' > ~/.skild/registry-auth.json
 
-      - name: Get next version
+      - name: Get next version from registry
         id: version
         run: |
-          CURRENT=$(grep -oP 'version:\s*\K[\d.]+' skills/bkt/SKILL.md)
+          # Query registry for latest published version, fall back to SKILL.md if not found
+          REGISTRY_VERSION=$(npx skild info @avivsinai/bkt --json 2>/dev/null | jq -r '.version // empty' || true)
+
+          if [ -n "$REGISTRY_VERSION" ]; then
+            echo "Found registry version: $REGISTRY_VERSION"
+            CURRENT="$REGISTRY_VERSION"
+          else
+            echo "No registry version found, using SKILL.md"
+            CURRENT=$(grep -oP 'version:\s*\K[\d.]+' skills/bkt/SKILL.md)
+          fi
+
           MAJOR=$(echo $CURRENT | cut -d. -f1)
           MINOR=$(echo $CURRENT | cut -d. -f2)
           PATCH=$(echo $CURRENT | cut -d. -f3)
           NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
+
           echo "version=$NEXT" >> $GITHUB_OUTPUT
-          echo "Current: $CURRENT -> Next: $NEXT"
+          echo "Publishing: $CURRENT -> $NEXT"
 
       - name: Publish skill
         run: |
@@ -42,3 +60,21 @@ jobs:
             --alias bkt \
             --alias bitbucket-cli \
             --skill-version ${{ steps.version.outputs.version }}
+
+      - name: Update SKILL.md versions
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          # Update all SKILL.md copies to match published version
+          for file in skills/bkt/SKILL.md .claude/skills/bkt/SKILL.md .codex/skills/bkt/SKILL.md; do
+            if [ -f "$file" ]; then
+              sed -i "s/^version: .*/version: $VERSION/" "$file"
+            fi
+          done
+
+      - name: Commit version update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add skills/bkt/SKILL.md .claude/skills/bkt/SKILL.md .codex/skills/bkt/SKILL.md
+          git diff --staged --quiet || git commit -m "chore(skill): update version to ${{ steps.version.outputs.version }} [skip ci]"
+          git push
