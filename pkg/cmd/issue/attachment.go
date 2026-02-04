@@ -211,13 +211,17 @@ func runAttachmentUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *attachmen
 		return fmt.Errorf("repository slug required; set with --repo or configure the context default")
 	}
 
-	// Validate all files exist before uploading
+	// Validate all files exist and are not directories before uploading
 	for _, filePath := range files {
-		if _, err := os.Stat(filePath); err != nil {
+		info, err := os.Stat(filePath)
+		if err != nil {
 			if os.IsNotExist(err) {
 				return fmt.Errorf("file not found: %s", filePath)
 			}
 			return fmt.Errorf("cannot access file %s: %w", filePath, err)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("cannot upload directory: %s", filePath)
 		}
 	}
 
@@ -406,7 +410,13 @@ func runAttachmentDownload(cmd *cobra.Command, f *cmdutil.Factory, opts *attachm
 
 	// Download files
 	for _, name := range filesToDownload {
-		outputPath := filepath.Join(opts.Dir, name)
+		// Sanitize attachment name to prevent path traversal attacks
+		safeName := filepath.Base(name)
+		if safeName == "." || safeName == ".." || safeName == "" {
+			return fmt.Errorf("invalid attachment name: %s", name)
+		}
+
+		outputPath := filepath.Join(opts.Dir, safeName)
 		if opts.Output != "" {
 			outputPath = opts.Output
 		}

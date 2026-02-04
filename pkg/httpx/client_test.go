@@ -307,6 +307,44 @@ func TestNewMultipartRequestContentType(t *testing.T) {
 	}
 }
 
+func TestNewMultipartRequestNilReader(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  "test.txt",
+			Reader:    nil,
+		},
+	}
+
+	_, err = client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err == nil {
+		t.Fatal("expected error for nil reader")
+	}
+	if err.Error() != `reader is nil for file "test.txt"` {
+		t.Errorf("expected nil reader error, got %q", err.Error())
+	}
+}
+
+func TestNewMultipartRequestEmptyFiles(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", []MultipartFile{})
+	if err == nil {
+		t.Fatal("expected error for empty files slice")
+	}
+	if err.Error() != "at least one file is required" {
+		t.Errorf("expected empty files error, got %q", err.Error())
+	}
+}
+
 func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
 	tests := []struct {
 		name    string

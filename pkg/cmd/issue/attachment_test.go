@@ -142,6 +142,23 @@ func TestAttachmentUploadNonExistentFile(t *testing.T) {
 	}
 }
 
+func TestAttachmentUploadDirectory(t *testing.T) {
+	f := newTestFactory()
+	cmd := newAttachmentUploadCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	// Use a directory that exists on the system
+	cmd.SetArgs([]string{"42", "/tmp"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when trying to upload a directory")
+	}
+	if !strings.Contains(err.Error(), "cannot upload directory") {
+		t.Errorf("expected 'cannot upload directory' error, got %q", err.Error())
+	}
+}
+
 // --- Attachment Download Command Tests ---
 
 func TestAttachmentDownloadRequiresIssueID(t *testing.T) {

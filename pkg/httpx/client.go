@@ -631,11 +631,20 @@ func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, f
 	}
 	u.RawQuery = rel.RawQuery
 
-	// Buffer the multipart content to support retries
+	// Buffer the multipart content to support retries.
+	// Note: This buffers the entire payload in memory, which is acceptable
+	// for typical attachment sizes but may need review for very large files.
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 
+	if len(files) == 0 {
+		return nil, fmt.Errorf("at least one file is required")
+	}
+
 	for _, f := range files {
+		if f.Reader == nil {
+			return nil, fmt.Errorf("reader is nil for file %q", f.FileName)
+		}
 		part, err := mw.CreateFormFile(f.FieldName, f.FileName)
 		if err != nil {
 			return nil, fmt.Errorf("create form file: %w", err)
