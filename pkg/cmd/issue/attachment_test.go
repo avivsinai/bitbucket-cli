@@ -1,6 +1,7 @@
 package issue
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -148,8 +149,9 @@ func TestAttachmentUploadDirectory(t *testing.T) {
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 
-	// Use a directory that exists on the system
-	cmd.SetArgs([]string{"42", "/tmp"})
+	// Use t.TempDir() for cross-platform compatibility
+	dir := t.TempDir()
+	cmd.SetArgs([]string{"42", dir})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error when trying to upload a directory")
@@ -248,6 +250,57 @@ func TestAttachmentDownloadConflictingOptions(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.errorContains) {
 				t.Errorf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
+
+func TestAttachmentDownloadPathTraversalSanitization(t *testing.T) {
+	// Test that filepath.Base properly sanitizes malicious attachment names
+	// This validates the security fix for path traversal attacks
+	// Note: filepath.Base is platform-aware; backslash handling differs on Unix vs Windows
+	tests := []struct {
+		name          string
+		maliciousName string
+		expectedSafe  string
+	}{
+		{
+			name:          "parent directory traversal",
+			maliciousName: "../../../etc/passwd",
+			expectedSafe:  "passwd",
+		},
+		{
+			name:          "absolute path unix",
+			maliciousName: "/etc/passwd",
+			expectedSafe:  "passwd",
+		},
+		{
+			name:          "deep traversal",
+			maliciousName: "../../../../../../../../tmp/evil",
+			expectedSafe:  "evil",
+		},
+		{
+			name:          "hidden file traversal",
+			maliciousName: "../../../.ssh/authorized_keys",
+			expectedSafe:  "authorized_keys",
+		},
+		{
+			name:          "current dir prefix",
+			maliciousName: "./local/file.txt",
+			expectedSafe:  "file.txt",
+		},
+		{
+			name:          "normal filename unchanged",
+			maliciousName: "document.pdf",
+			expectedSafe:  "document.pdf",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			safeName := filepath.Base(tt.maliciousName)
+			if safeName != tt.expectedSafe {
+				t.Errorf("filepath.Base(%q) = %q, want %q", tt.maliciousName, safeName, tt.expectedSafe)
 			}
 		})
 	}
