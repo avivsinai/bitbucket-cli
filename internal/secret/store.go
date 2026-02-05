@@ -1,12 +1,14 @@
 package secret
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/99designs/keyring"
 )
@@ -19,6 +21,34 @@ const (
 	envBackend       = "KEYRING_BACKEND"
 	envFileDir       = "KEYRING_FILE_DIR"
 )
+
+// keyringTimeout is the maximum time to wait for keyring operations.
+// This prevents indefinite hangs when GUI-based keyrings (KWallet, gnome-keyring)
+// try to show unlock prompts in headless/SSH environments.
+const keyringTimeout = 3 * time.Second
+
+// ErrKeyringTimeout indicates a keyring operation timed out.
+var ErrKeyringTimeout = errors.New("keyring operation timed out")
+
+// isHeadless returns true if the environment is likely unable to show GUI prompts.
+// This specifically targets SSH sessions without X11/Wayland forwarding, where
+// GUI-based keyring prompts (KWallet, gnome-keyring) would hang indefinitely.
+// Local TTY sessions with D-Bus are NOT considered headless, as gnome-keyring
+// can work via D-Bus even without a display.
+func isHeadless() bool {
+	hasDisplay := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+	hasDBus := os.Getenv("DBUS_SESSION_BUS_ADDRESS") != ""
+
+	// SSH session without display forwarding - this is the main hang case
+	isSSH := os.Getenv("SSH_TTY") != "" || os.Getenv("SSH_CLIENT") != "" || os.Getenv("SSH_CONNECTION") != ""
+	if isSSH && !hasDisplay {
+		return true
+	}
+
+	// No display AND no D-Bus session (container, cron, systemd service, etc.)
+	// If D-Bus is available, keyring may work without GUI prompts
+	return !hasDisplay && !hasDBus
+}
 
 // Store wraps access to the configured keyring backend.
 type Store struct {
@@ -91,8 +121,12 @@ func Open(opts ...Option) (*Store, error) {
 		}
 	}
 
-	kr, err := keyring.Open(cfg)
+	kr, err := openKeyringWithTimeout(cfg)
 	if err != nil {
+		if errors.Is(err, ErrKeyringTimeout) {
+			hint := "keyring prompt may be blocked (headless/SSH environment?)"
+			return nil, fmt.Errorf("open keyring: %w; %s. Use --allow-insecure-store or set %s=1", err, hint, envAllowInsecure)
+		}
 		if errors.Is(err, keyring.ErrNoAvailImpl) && !usesFileBackend(cfg.AllowedBackends) {
 			return nil, fmt.Errorf("open keyring: %w (set %s=1 or rerun with --allow-insecure-store to permit encrypted file fallback)", err, envAllowInsecure)
 		}
@@ -102,16 +136,43 @@ func Open(opts ...Option) (*Store, error) {
 	return &Store{kr: kr}, nil
 }
 
+// openKeyringWithTimeout opens the keyring with a timeout to prevent hangs
+// when GUI-based keyrings try to show prompts in headless environments.
+func openKeyringWithTimeout(cfg keyring.Config) (keyring.Keyring, error) {
+	type result struct {
+		kr  keyring.Keyring
+		err error
+	}
+
+	ch := make(chan result, 1)
+	go func() {
+		kr, err := keyring.Open(cfg)
+		ch <- result{kr, err}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), keyringTimeout)
+	defer cancel()
+
+	select {
+	case res := <-ch:
+		return res.kr, res.err
+	case <-ctx.Done():
+		return nil, ErrKeyringTimeout
+	}
+}
+
 // Set writes a secret value.
 func (s *Store) Set(key, value string) error {
 	if s == nil || s.kr == nil {
 		return errors.New("secret store not initialized")
 	}
 
-	return s.kr.Set(keyring.Item{
-		Key:   key,
-		Data:  []byte(value),
-		Label: fmt.Sprintf("bkt %s", key),
+	return s.withTimeout(func() error {
+		return s.kr.Set(keyring.Item{
+			Key:   key,
+			Data:  []byte(value),
+			Label: fmt.Sprintf("bkt %s", key),
+		})
 	})
 }
 
@@ -121,7 +182,12 @@ func (s *Store) Get(key string) (string, error) {
 		return "", errors.New("secret store not initialized")
 	}
 
-	item, err := s.kr.Get(key)
+	var item keyring.Item
+	err := s.withTimeout(func() error {
+		var getErr error
+		item, getErr = s.kr.Get(key)
+		return getErr
+	})
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return "", os.ErrNotExist
@@ -138,11 +204,31 @@ func (s *Store) Delete(key string) error {
 		return errors.New("secret store not initialized")
 	}
 
-	err := s.kr.Remove(key)
+	err := s.withTimeout(func() error {
+		return s.kr.Remove(key)
+	})
 	if errors.Is(err, keyring.ErrKeyNotFound) {
 		return nil
 	}
 	return err
+}
+
+// withTimeout runs fn with a timeout to prevent keyring operations from hanging.
+func (s *Store) withTimeout(fn func() error) error {
+	ch := make(chan error, 1)
+	go func() {
+		ch <- fn()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), keyringTimeout)
+	defer cancel()
+
+	select {
+	case err := <-ch:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("%w; keyring prompt may be blocked (headless/SSH environment?). Use --allow-insecure-store or set %s=1", ErrKeyringTimeout, envAllowInsecure)
+	}
 }
 
 // TokenKey returns the keyring identifier for a host token.
@@ -179,6 +265,14 @@ func defaultBackends() []keyring.BackendType {
 	case "windows":
 		return []keyring.BackendType{keyring.WinCredBackend}
 	default:
+		// In headless environments (SSH without X11, containers, etc.),
+		// skip GUI-based backends that would hang waiting for unlock prompts.
+		if isHeadless() {
+			return []keyring.BackendType{
+				keyring.KeyCtlBackend,
+				keyring.PassBackend,
+			}
+		}
 		return []keyring.BackendType{
 			keyring.SecretServiceBackend,
 			keyring.KWalletBackend,
