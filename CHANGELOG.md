@@ -6,6 +6,26 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-02-06
+
+### Fixed
+- Made keyring operations more reliable in interactive environments by using a longer default timeout, while keeping a short timeout for headless/SSH/CI to prevent hangs. Added `BKT_KEYRING_TIMEOUT` for configuration (#46).
+
+## [0.7.1] - 2026-02-05
+
+### Fixed
+- Prevented auth login hangs in headless/SSH environments when keyring backends block on GUI prompts (#44).
+- Fixed skill publish version conflicts in CI.
+
+## [0.7.0] - 2026-02-04
+
+### Added
+- Added issue attachment management commands (`bkt issue attachment ...`) (#41).
+
+### Fixed
+- Improved attachment handling safety, tests, and documentation (#41).
+- Prevented a release race condition in CI with concurrency control.
+
 ## [0.6.0] - 2026-02-01
 
 ### Added
