@@ -34,8 +34,11 @@ jobs:
       - name: Get next version from registry
         id: version
         run: |
-          # Query registry for latest published version, fall back to SKILL.md if not found
-          REGISTRY_VERSION=$(npx skild info @avivsinai/bkt --json 2>/dev/null | jq -r '.version // empty' || true)
+          # Query the registry API for latest published version
+          # distTags may be an array of {tag,version} or an object {latest:"x.y.z"}
+          REGISTRY_JSON=$(curl -sf "https://registry.skild.sh/skills/avivsinai/bkt?include=versions" || true)
+          REGISTRY_VERSION=$(echo "$REGISTRY_JSON" \
+            | jq -r '(.distTags | if type == "array" then [.[]|select(.tag=="latest")][0].version else .latest end) // empty' 2>/dev/null || true)
 
           if [ -n "$REGISTRY_VERSION" ]; then
             echo "Found registry version: $REGISTRY_VERSION"
