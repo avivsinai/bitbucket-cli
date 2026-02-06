@@ -11,6 +11,10 @@ concurrency:
   group: skill-publish
   cancel-in-progress: false
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -74,10 +78,17 @@ jobs:
             fi
           done
 
-      - name: Commit version update
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add skills/bkt/SKILL.md .claude/skills/bkt/SKILL.md .codex/skills/bkt/SKILL.md
-          git diff --staged --quiet || git commit -m "chore(skill): update version to ${{ steps.version.outputs.version }} [skip ci]"
-          git push
+      - name: Create version bump PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(skill): update version to ${{ steps.version.outputs.version }} [skip ci]"
+          title: "chore(skill): bump SKILL.md to ${{ steps.version.outputs.version }}"
+          body: |
+            Auto-generated after publishing `@avivsinai/bkt@${{ steps.version.outputs.version }}` to the skill registry.
+          branch: chore/skill-version-bump
+          delete-branch: true
+          add-paths: |
+            skills/bkt/SKILL.md
+            .claude/skills/bkt/SKILL.md
+            .codex/skills/bkt/SKILL.md
