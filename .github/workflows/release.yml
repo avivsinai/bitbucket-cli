@@ -100,7 +100,7 @@ jobs:
             fi
           done
 
-      - name: Create and merge version bump PR
+      - name: Create version bump PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -117,11 +117,13 @@ jobs:
           git commit -m "chore(skill): update version to ${VERSION} [skip ci]"
           git push -f origin chore/skill-version-bump
 
-          # Create PR and immediately merge with admin privileges
+          # Create PR and try to auto-merge; if branch protection blocks it,
+          # leave the PR open for a maintainer to merge
           PR_URL=$(gh pr create \
             --title "chore(skill): bump SKILL.md to ${VERSION}" \
             --body "Auto-generated after publishing \`@avivsinai/bkt@${VERSION}\` to the skill registry." \
             --base master \
             --head chore/skill-version-bump)
 
-          gh pr merge "$PR_URL" --squash --admin --delete-branch
+          gh pr merge "$PR_URL" --squash --admin --delete-branch \
+            || echo "Auto-merge not available — PR left open for maintainer: $PR_URL"
