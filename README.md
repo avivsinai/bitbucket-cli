@@ -168,6 +168,9 @@ Secret Service/KWallet on Linux) while host metadata lives in
 `BKT_ALLOW_INSECURE_STORE=1`) to permit the encrypted file backend on systems
 without a native keychain.
 
+If your keyring requires an interactive unlock prompt, you can increase the keyring timeout via
+`BKT_KEYRING_TIMEOUT` (for example `BKT_KEYRING_TIMEOUT=2m`).
+
 ### 2. Create and activate a context
 
 #### Bitbucket Data Center

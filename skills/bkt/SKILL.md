@@ -216,6 +216,7 @@ bkt pr list --json | jq '.pull_requests[0].title'
 
 - `BKT_CONFIG_DIR` — Config directory override
 - `BKT_ALLOW_INSECURE_STORE` — Allow file-based credential storage
+- `BKT_KEYRING_TIMEOUT` — Keyring operation timeout (for example `2m`)
 
 ## References
 
