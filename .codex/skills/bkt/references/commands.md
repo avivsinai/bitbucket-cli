@@ -475,3 +475,4 @@ All commands support:
 
 - `BKT_CONFIG_DIR` — Config directory override
 - `BKT_ALLOW_INSECURE_STORE` — Allow file-based credential storage (set to `1`)
+- `BKT_KEYRING_TIMEOUT` — Keyring operation timeout (for example `2m`)

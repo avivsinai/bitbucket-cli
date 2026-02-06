@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,36 +19,87 @@ const serviceName = "bkt"
 const (
 	envAllowInsecure = "BKT_ALLOW_INSECURE_STORE"
 	envPassphrase    = "BKT_KEYRING_PASSPHRASE"
+	envTimeout       = "BKT_KEYRING_TIMEOUT"
 	envBackend       = "KEYRING_BACKEND"
 	envFileDir       = "KEYRING_FILE_DIR"
 )
 
-// keyringTimeout is the maximum time to wait for keyring operations.
-// This prevents indefinite hangs when GUI-based keyrings (KWallet, gnome-keyring)
-// try to show unlock prompts in headless/SSH environments.
-const keyringTimeout = 3 * time.Second
+const (
+	keyringTimeoutHeadless    = 3 * time.Second
+	keyringTimeoutInteractive = 60 * time.Second
+)
 
 // ErrKeyringTimeout indicates a keyring operation timed out.
 var ErrKeyringTimeout = errors.New("keyring operation timed out")
 
-// isHeadless returns true if the environment is likely unable to show GUI prompts.
-// This specifically targets SSH sessions without X11/Wayland forwarding, where
-// GUI-based keyring prompts (KWallet, gnome-keyring) would hang indefinitely.
-// Local TTY sessions with D-Bus are NOT considered headless, as gnome-keyring
-// can work via D-Bus even without a display.
+// isHeadless returns true if the environment is likely unable to handle keyring
+// unlock prompts without hanging.
+//
+// On Linux this specifically targets SSH sessions without X11/Wayland forwarding,
+// and other environments without a display or D-Bus session (cron/containers).
+// On macOS/Windows, DISPLAY/DBus heuristics don't apply, so we treat SSH and
+// CI sessions as headless to fail fast.
 func isHeadless() bool {
+	// SSH session without display forwarding - this is the main hang case
+	isSSH := os.Getenv("SSH_TTY") != "" || os.Getenv("SSH_CLIENT") != "" || os.Getenv("SSH_CONNECTION") != ""
+	if isSSH {
+		// On non-Linux platforms DISPLAY/Wayland doesn't indicate GUI availability.
+		if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+			return true
+		}
+		hasDisplay := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+		return !hasDisplay
+	}
+
+	// On macOS and Windows, local terminals can show GUI prompts without DISPLAY/DBus.
+	// Treat CI/non-interactive sessions as headless to fail fast.
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return envEnabled(os.Getenv("CI"))
+	}
+
 	hasDisplay := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
 	hasDBus := os.Getenv("DBUS_SESSION_BUS_ADDRESS") != ""
 
-	// SSH session without display forwarding - this is the main hang case
-	isSSH := os.Getenv("SSH_TTY") != "" || os.Getenv("SSH_CLIENT") != "" || os.Getenv("SSH_CONNECTION") != ""
-	if isSSH && !hasDisplay {
-		return true
+	// No display AND no D-Bus session (container, cron, systemd service, etc.)
+	// If D-Bus is available, keyring may work without GUI prompts.
+	return !hasDisplay && !hasDBus
+}
+
+func keyringTimeout() time.Duration {
+	if d, ok := parseTimeoutEnv(strings.TrimSpace(os.Getenv(envTimeout))); ok {
+		return d
+	}
+	if isHeadless() {
+		return keyringTimeoutHeadless
+	}
+	return keyringTimeoutInteractive
+}
+
+func parseTimeoutEnv(raw string) (time.Duration, bool) {
+	if raw == "" {
+		return 0, false
 	}
 
-	// No display AND no D-Bus session (container, cron, systemd service, etc.)
-	// If D-Bus is available, keyring may work without GUI prompts
-	return !hasDisplay && !hasDBus
+	// Accept both Go-style duration values (e.g. "60s", "2m") and plain seconds ("60").
+	if d, err := time.ParseDuration(raw); err == nil {
+		if d > 0 {
+			return d, true
+		}
+		return 0, false
+	}
+
+	secs, err := strconv.Atoi(raw)
+	if err != nil || secs <= 0 {
+		return 0, false
+	}
+	return time.Duration(secs) * time.Second, true
+}
+
+func timeoutHint() string {
+	if isHeadless() {
+		return fmt.Sprintf("keyring prompt may be blocked (headless/SSH environment?). Use --allow-insecure-store or set %s=1", envAllowInsecure)
+	}
+	return fmt.Sprintf("keyring prompt may need more time. Increase timeout via %s (e.g. 60s or 2m)", envTimeout)
 }
 
 // Store wraps access to the configured keyring backend.
@@ -124,8 +176,7 @@ func Open(opts ...Option) (*Store, error) {
 	kr, err := openKeyringWithTimeout(cfg)
 	if err != nil {
 		if errors.Is(err, ErrKeyringTimeout) {
-			hint := "keyring prompt may be blocked (headless/SSH environment?)"
-			return nil, fmt.Errorf("open keyring: %w; %s. Use --allow-insecure-store or set %s=1", err, hint, envAllowInsecure)
+			return nil, fmt.Errorf("open keyring: %w; %s", err, timeoutHint())
 		}
 		if errors.Is(err, keyring.ErrNoAvailImpl) && !usesFileBackend(cfg.AllowedBackends) {
 			return nil, fmt.Errorf("open keyring: %w (set %s=1 or rerun with --allow-insecure-store to permit encrypted file fallback)", err, envAllowInsecure)
@@ -150,7 +201,7 @@ func openKeyringWithTimeout(cfg keyring.Config) (keyring.Keyring, error) {
 		ch <- result{kr, err}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), keyringTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), keyringTimeout())
 	defer cancel()
 
 	select {
@@ -220,14 +271,14 @@ func (s *Store) withTimeout(fn func() error) error {
 		ch <- fn()
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), keyringTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), keyringTimeout())
 	defer cancel()
 
 	select {
 	case err := <-ch:
 		return err
 	case <-ctx.Done():
-		return fmt.Errorf("%w; keyring prompt may be blocked (headless/SSH environment?). Use --allow-insecure-store or set %s=1", ErrKeyringTimeout, envAllowInsecure)
+		return fmt.Errorf("%w; %s", ErrKeyringTimeout, timeoutHint())
 	}
 }
 
