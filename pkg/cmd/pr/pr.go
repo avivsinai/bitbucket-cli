@@ -554,8 +554,7 @@ func firstPRLinkDC(pr *bbdc.PullRequest, kind string) string {
 	if pr == nil {
 		return ""
 	}
-	switch kind {
-	case "self":
+	if kind == "self" {
 		for _, link := range pr.Links.Self {
 			if strings.TrimSpace(link.Href) != "" {
 				return link.Href

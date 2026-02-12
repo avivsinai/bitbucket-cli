@@ -100,10 +100,8 @@ func TestValidateVariableKey(t *testing.T) {
 						t.Errorf("expected error containing %q, got %q", tt.errContains, err.Error())
 					}
 				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}

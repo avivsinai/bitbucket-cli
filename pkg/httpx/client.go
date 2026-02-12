@@ -419,7 +419,7 @@ func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response)
 
 	delay := c.retry.InitialBackoff
 	if attempts > 1 {
-		delay = delay * time.Duration(1<<(attempts-1))
+		delay *= time.Duration(1 << (attempts - 1))
 	}
 	if delay > c.retry.MaxBackoff {
 		delay = c.retry.MaxBackoff
