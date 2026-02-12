@@ -1129,13 +1129,14 @@ func runSetFromEnvFile(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions)
 			}
 		}
 
-		if created > 0 && updated > 0 {
+		switch {
+		case created > 0 && updated > 0:
 			_, err := fmt.Fprintf(ios.Out, "Created %d and updated %d variables in %s.\n", created, updated, location)
 			return err
-		} else if created > 0 {
+		case created > 0:
 			_, err := fmt.Fprintf(ios.Out, "Created %d variable(s) in %s.\n", created, location)
 			return err
-		} else {
+		default:
 			_, err := fmt.Fprintf(ios.Out, "Updated %d variable(s) in %s.\n", updated, location)
 			return err
 		}

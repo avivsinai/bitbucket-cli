@@ -659,7 +659,7 @@ func TestRunChecksDataCenter(t *testing.T) {
 				t.Error("expected PR endpoint to be called")
 			}
 
-			if tt.prResponse.FromRef.LatestCommit != "" && len(tt.statusResponse) >= 0 && !statusCalled {
+			if tt.prResponse.FromRef.LatestCommit != "" && !statusCalled {
 				t.Error("expected status endpoint to be called")
 			}
 
@@ -819,7 +819,7 @@ func TestRunChecksCloud(t *testing.T) {
 				t.Error("expected PR endpoint to be called")
 			}
 
-			if tt.prResponse.Source.Commit.Hash != "" && len(tt.statusResponse) >= 0 && !statusCalled {
+			if tt.prResponse.Source.Commit.Hash != "" && !statusCalled {
 				t.Error("expected status endpoint to be called")
 			}
 

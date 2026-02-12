@@ -807,8 +807,7 @@ the context does not define defaults.`,
 }
 
 func firstLinkDC(repo bbdc.Repository, kind string) string {
-	switch kind {
-	case "web":
+	if kind == "web" {
 		if len(repo.Links.Web) > 0 {
 			return repo.Links.Web[0].Href
 		}
