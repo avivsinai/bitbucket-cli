@@ -44,14 +44,14 @@ func TestListRepositoriesPaginates(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch count {
 		case 1:
-			json.NewEncoder(w).Encode(paged[Repository]{
+			_ = json.NewEncoder(w).Encode(paged[Repository]{
 				Values:        []Repository{{Slug: "repo1"}},
 				IsLastPage:    false,
 				NextPageStart: 1,
 				Limit:         1,
 			})
 		case 2:
-			json.NewEncoder(w).Encode(paged[Repository]{
+			_ = json.NewEncoder(w).Encode(paged[Repository]{
 				Values:     []Repository{{Slug: "repo2"}},
 				IsLastPage: true,
 				Limit:      1,
@@ -82,7 +82,7 @@ func TestListRepositoriesRespectsLimit(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(paged[Repository]{
+		_ = json.NewEncoder(w).Encode(paged[Repository]{
 			Values:        []Repository{{Slug: "repo1"}, {Slug: "repo2"}, {Slug: "repo3"}},
 			IsLastPage:    false,
 			NextPageStart: 3,
@@ -116,7 +116,7 @@ func TestGetRepository(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Repository{Slug: "my-repo", Name: "My Repo", ID: 42})
+		_ = json.NewEncoder(w).Encode(Repository{Slug: "my-repo", Name: "My Repo", ID: 42})
 	})
 
 	client := newTestClient(t, handler)
@@ -147,7 +147,7 @@ func TestGetPullRequest(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(PullRequest{ID: 42, Title: "Fix bug", State: "OPEN"})
+		_ = json.NewEncoder(w).Encode(PullRequest{ID: 42, Title: "Fix bug", State: "OPEN"})
 	})
 
 	client := newTestClient(t, handler)
@@ -166,7 +166,7 @@ func TestListPullRequestsWithStateFilter(t *testing.T) {
 			t.Errorf("expected state=MERGED, got %q", r.URL.Query().Get("state"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(paged[PullRequest]{
+		_ = json.NewEncoder(w).Encode(paged[PullRequest]{
 			Values:     []PullRequest{{ID: 1, State: "MERGED"}, {ID: 2, State: "MERGED"}},
 			IsLastPage: true,
 		})
@@ -189,13 +189,13 @@ func TestListPullRequestsPaginates(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch count {
 		case 1:
-			json.NewEncoder(w).Encode(paged[PullRequest]{
+			_ = json.NewEncoder(w).Encode(paged[PullRequest]{
 				Values:        []PullRequest{{ID: 1}},
 				IsLastPage:    false,
 				NextPageStart: 1,
 			})
 		case 2:
-			json.NewEncoder(w).Encode(paged[PullRequest]{
+			_ = json.NewEncoder(w).Encode(paged[PullRequest]{
 				Values:     []PullRequest{{ID: 2}},
 				IsLastPage: true,
 			})
@@ -221,7 +221,7 @@ func TestCommitStatuses(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values": []map[string]any{
 				{"state": "SUCCESSFUL", "key": "build-1", "name": "CI"},
 			},
@@ -255,7 +255,7 @@ func TestCurrentUser(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(User{Name: "admin", Slug: "admin", ID: 1})
+		_ = json.NewEncoder(w).Encode(User{Name: "admin", Slug: "admin", ID: 1})
 	})
 
 	client := newTestClient(t, handler)
@@ -275,7 +275,7 @@ func TestClientSendsBasicAuth(t *testing.T) {
 			t.Errorf("expected basic auth admin:token123, got %s:%s (ok=%v)", user, pass, ok)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(User{Name: "admin"})
+		_ = json.NewEncoder(w).Encode(User{Name: "admin"})
 	})
 
 	server := httptest.NewServer(handler)
