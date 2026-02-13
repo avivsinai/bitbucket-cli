@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +59,7 @@ func TestPRDeclineDataCenter(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 
 	stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "decline", "42")
 	if err != nil {
@@ -119,7 +118,7 @@ func TestPRDeclineWithDeleteSource(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 
 	stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "decline", "10", "--delete-source")
 	if err != nil {
@@ -170,7 +169,7 @@ func TestPRReopenDataCenter(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 
 	stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "reopen", "42")
 	if err != nil {
@@ -277,6 +276,5 @@ func runCLI(t *testing.T, cfg *config.Config, args ...string) (string, string, e
 	rootCmd.SilenceUsage = true
 
 	err = rootCmd.ExecuteContext(context.Background())
-	_ = fmt.Sprint() // satisfy import
 	return stdout.String(), stderr.String(), err
 }

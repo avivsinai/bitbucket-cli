@@ -17,13 +17,13 @@ As of the February 2026 coverage audit, overall statement coverage is **9.8%** a
 | `pkg/cmd/api` | 44.2% | `api_test.go` | YAML, JSON, streaming tested; `--jq`, `--template`, HTTP methods untested |
 | `pkg/prompter` | 39.5% | `prompter_test.go` | Confirm retries tested; `Input()` untested |
 | `pkg/cmdutil` | 23.2% | `context_test.go` | `ResolveHost` tested; `ResolveContext`, output helpers, URL utils untested |
-| `pkg/bbcloud` | 10.2% | `client_test.go` | Only `ListPipelines` pagination tested |
+| `pkg/bbcloud` | 34.1% | `client_test.go`, `pullrequests_test.go` | Pagination for pipelines, repos, PRs tested; decline/reopen tested; GetPullRequest tested |
+| `pkg/bbdc` | 14.0% | `pullrequests_test.go` | ListRepositories/ListPullRequests pagination, GetPullRequest path escaping, decline/reopen tested |
+| `pkg/cmd/pr` | 22.8% | `pr_test.go` | Decline, reopen, delete-source smoke tests; argument validation |
 | `pkg/cmd/repo` | 7.7% | `repo_test.go` | Clone URL selection tested; list/create/browse untested |
 | `pkg/cmd/smoke` | n/a | `cli_smoke_test.go` | End-to-end smoke tests for repo list, project list |
 | `internal/config` | **0%** | none | 255 lines, all CRUD operations untested |
 | `internal/secret` | **0%** | none | 270 lines, keyring backend selection untested |
-| `pkg/bbdc` | **0%** | none | 322 lines, entire DC API client untested |
-| `pkg/cmd/pr` | **0%** | none | 1,966 lines across 6 files, largest command package |
 | `pkg/cmd/auth` | **0%** | none | 537 lines, credential flow untested |
 | `pkg/cmd/branch` | **0%** | none | 700 lines across 3 files |
 | `pkg/cmd/status` | **0%** | none | 462 lines across 3 files |
