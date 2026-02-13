@@ -132,6 +132,48 @@ func (c *Client) GetPullRequest(ctx context.Context, workspace, repoSlug string,
 	return &pr, nil
 }
 
+// DeclinePullRequest declines (rejects) a pull request.
+func (c *Client) DeclinePullRequest(ctx context.Context, workspace, repoSlug string, id int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/decline",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, nil)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
+// ReopenPullRequest reopens a previously declined pull request by updating its state to OPEN.
+func (c *Client) ReopenPullRequest(ctx context.Context, workspace, repoSlug string, id int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	body := map[string]any{
+		"state": "OPEN",
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "PUT", path, body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
 // CreatePullRequestInput configures PR creation.
 type CreatePullRequestInput struct {
 	Title       string

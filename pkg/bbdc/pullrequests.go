@@ -162,6 +162,50 @@ func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug st
 	return c.http.Do(req, nil)
 }
 
+// DeclinePullRequest declines (rejects) a pull request.
+func (c *Client) DeclinePullRequest(ctx context.Context, projectKey, repoSlug string, prID int, version int) error {
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("project key and repository slug are required")
+	}
+
+	body := map[string]any{
+		"version": version,
+	}
+
+	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/decline",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		prID,
+	), body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
+// ReopenPullRequest reopens a previously declined pull request.
+func (c *Client) ReopenPullRequest(ctx context.Context, projectKey, repoSlug string, prID int, version int) error {
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("project key and repository slug are required")
+	}
+
+	body := map[string]any{
+		"version": version,
+	}
+
+	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/reopen",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		prID,
+	), body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
 // PullRequestDiff streams the diff for the given pull request into w.
 func (c *Client) PullRequestDiff(ctx context.Context, projectKey, repoSlug string, id int, w io.Writer) error {
 	if projectKey == "" || repoSlug == "" {
