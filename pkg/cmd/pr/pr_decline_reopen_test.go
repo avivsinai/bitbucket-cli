@@ -31,7 +31,7 @@ func TestPRDeclineDataCenter(t *testing.T) {
 		switch {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/pull-requests/42"):
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":      42,
 				"title":   "Test PR",
 				"state":   "OPEN",
@@ -50,7 +50,7 @@ func TestPRDeclineDataCenter(t *testing.T) {
 			declineMethod = r.Method
 			declinePath = r.URL.Path
 			var body map[string]any
-			json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewDecoder(r.Body).Decode(&body)
 			if v, ok := body["version"].(float64); !ok || int(v) != 7 {
 				t.Errorf("expected version=7, got %v", body["version"])
 			}
@@ -95,7 +95,7 @@ func TestPRDeclineWithDeleteSource(t *testing.T) {
 		switch {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/pull-requests/10"):
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":      10,
 				"title":   "Test PR",
 				"state":   "OPEN",
@@ -151,7 +151,7 @@ func TestPRReopenDataCenter(t *testing.T) {
 		switch {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/pull-requests/42"):
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":      42,
 				"title":   "Test PR",
 				"state":   "DECLINED",
@@ -160,7 +160,7 @@ func TestPRReopenDataCenter(t *testing.T) {
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pull-requests/42/reopen"):
 			reopenCalled = true
 			var body map[string]any
-			json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewDecoder(r.Body).Decode(&body)
 			if v, ok := body["version"].(float64); !ok || int(v) != 8 {
 				t.Errorf("expected version=8, got %v", body["version"])
 			}

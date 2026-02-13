@@ -32,7 +32,7 @@ func TestGetPullRequest(t *testing.T) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":    7,
 			"title": "Test PR",
 			"state": "OPEN",
@@ -87,12 +87,12 @@ func TestListPullRequestsPaginates(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch count {
 		case 1:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values": []map[string]any{{"id": 1}, {"id": 2}},
 				"next":   serverURL + "/repositories/ws/repo/pullrequests?pagelen=20&page=2",
 			})
 		case 2:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values": []map[string]any{{"id": 3}},
 			})
 		default:
@@ -128,7 +128,7 @@ func TestListPullRequestsRespectsLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values": []map[string]any{{"id": 1}, {"id": 2}, {"id": 3}},
 			"next":   serverURL + "/repositories/ws/repo/pullrequests?page=2",
 		})
@@ -160,12 +160,12 @@ func TestListRepositoriesPaginates(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch count {
 		case 1:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values": []map[string]any{{"slug": "repo1"}},
 				"next":   serverURL + "/repositories/ws?pagelen=20&page=2",
 			})
 		case 2:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values": []map[string]any{{"slug": "repo2"}},
 			})
 		default:
@@ -198,7 +198,7 @@ func TestListRepositoriesRespectsLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values": []map[string]any{{"slug": "r1"}, {"slug": "r2"}, {"slug": "r3"}},
 			"next":   serverURL + "/repositories/ws?page=2",
 		})

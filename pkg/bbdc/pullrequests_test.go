@@ -31,7 +31,7 @@ func TestGetPullRequestPathEscaping(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":    1,
 			"title": "Test PR",
 			"state": "OPEN",
@@ -80,13 +80,13 @@ func TestListPullRequestsPaginates(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch count {
 		case 1:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values":        []map[string]any{{"id": 1, "title": "PR 1"}, {"id": 2, "title": "PR 2"}},
 				"isLastPage":    false,
 				"nextPageStart": 2,
 			})
 		case 2:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values":     []map[string]any{{"id": 3, "title": "PR 3"}},
 				"isLastPage": true,
 			})
@@ -112,7 +112,7 @@ func TestListPullRequestsRespectsLimit(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values":        []map[string]any{{"id": 1}, {"id": 2}, {"id": 3}},
 			"isLastPage":    false,
 			"nextPageStart": 3,
@@ -133,7 +133,7 @@ func TestListPullRequestsPassesStateParam(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values":     []map[string]any{},
 			"isLastPage": true,
 		})
@@ -180,13 +180,13 @@ func TestListRepositoriesPaginates(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch count {
 		case 1:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values":        []map[string]any{{"slug": "repo1"}},
 				"isLastPage":    false,
 				"nextPageStart": 1,
 			})
 		case 2:
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values":     []map[string]any{{"slug": "repo2"}},
 				"isLastPage": true,
 			})
@@ -212,7 +212,7 @@ func TestListRepositoriesRespectsLimit(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values":        []map[string]any{{"slug": "repo1"}, {"slug": "repo2"}, {"slug": "repo3"}},
 			"isLastPage":    false,
 			"nextPageStart": 3,
@@ -235,7 +235,7 @@ func TestDeclinePullRequest(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
-		json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -286,7 +286,7 @@ func TestReopenPullRequest(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
-		json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.WriteHeader(http.StatusOK)
 	}))
 
