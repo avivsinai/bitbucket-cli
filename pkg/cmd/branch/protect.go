@@ -109,8 +109,8 @@ func runProtectList(cmd *cobra.Command, f *cmdutil.Factory, opts *protectOptions
 		return fmt.Errorf("branch protect list currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -162,8 +162,8 @@ func runProtectAdd(cmd *cobra.Command, f *cmdutil.Factory, opts *protectOptions)
 		return fmt.Errorf("branch protect add currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -212,8 +212,8 @@ func runProtectRemove(cmd *cobra.Command, f *cmdutil.Factory, opts *protectOptio
 		return fmt.Errorf("branch protect remove currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}

@@ -12,8 +12,7 @@ read-only snapshots.
 
 ## Reporting a vulnerability
 
-Please email [security@avivsinai.dev](mailto:security@avivsinai.dev) with
-"[bkt]" in the subject. Include:
+Please email **avivsinai@gmail.com** with "[bkt]" in the subject. Include:
 
 - A detailed description of the issue and the potential impact
 - Steps to reproduce (or proof of concept)

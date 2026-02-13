@@ -1,0 +1,271 @@
+# Gitleaks configuration for bitbucket-cli
+# Based on https://github.com/Typeform/gitleaks-config
+# https://github.com/gitleaks/gitleaks
+
+title = "gitleaks config for bitbucket-cli"
+
+# Require gitleaks v8.25.0+ for compatibility with default rules
+minVersion = "v8.25.0"
+
+[extend]
+# Extend the base config with all default rules
+useDefault = true
+
+[[allowlists]]
+description = "Allowlist for test fixtures and known false positives"
+regexTarget = "secret"
+
+# Paths to exclude from scanning
+# NOTE: Broad exclusions should be reviewed periodically. Consider using
+# .gitleaksignore with fingerprints for specific false positives instead.
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''(.*?)(jpg|gif|doc|pdf|bin|png|svg)$''',
+  '''testdata\/''',
+  '''fixtures\/''',
+  '''go\.(mod|sum)$''',
+  '''vendor\.json''',
+  '''Gopkg\.(lock|toml)''',
+  '''package-lock\.json''',
+  '''package\.json''',
+  '''yarn\.lock''',
+  '''node_modules\/''',
+  '''vendor\/''',
+]
+
+# Common test values and patterns that are not real secrets
+# IMPORTANT: Avoid adding real-looking passwords here. Use path exclusions
+# or .gitleaksignore fingerprints for specific files instead.
+regexes = [
+  '''test-api-key''',
+  '''fake-token''',
+  '''dummy-secret''',
+  '''example\.com''',
+  '''localhost''',
+  '''127\.0\.0\.1''',
+  '''192\.168\..*''',
+  '''0\.0\.0\.0''',
+]
+
+# Allow dependency lock files and generated content
+stopwords = [
+  "EXAMPLE",
+  "example",
+  "CHANGEME",
+  "changeme",
+  "PLACEHOLDER",
+  "placeholder",
+]
+
+# ============================================================================
+# Custom rules for Bitbucket-specific secrets
+# ============================================================================
+
+[[rules]]
+id = "bitbucket-app-password"
+description = "Bitbucket App Password"
+regex = '''(?i)(bitbucket[_-]?(app[_-]?)?(password|token))\s*[:=]\s*['"]?([A-Za-z0-9]{20,})['"]?'''
+entropy = 3.5
+secretGroup = 4
+keywords = ["bitbucket", "password", "token", "app"]
+
+[[rules]]
+id = "bitbucket-credentials"
+description = "Potential Bitbucket credentials in config"
+regex = '''(?i)(bitbucket[_-]?(password|user|secret))\s*[:=]\s*['"]?([^'"\s]{8,})['"]?'''
+secretGroup = 3
+
+# ============================================================================
+# Generic credential detection rules (from Typeform gitleaks-config)
+# https://github.com/Typeform/gitleaks-config
+# ============================================================================
+
+[[rules]]
+description = "Authorization Bearer tokens"
+id = "authorization-bearer-token"
+regex = '''(?i)Bearer(?:\s)+(\S{8,})'''
+secretGroup = 1
+entropy = 3.8
+tags = ["key", "HTTP", "bearer"]
+
+[[rules]]
+description = "Hardcoded credentials in Go files"
+id = "credentials-go"
+path = '''(.*?)\.go$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token)(?:\w|\s*?)(?:=|:=)(?:\s*?)["'`](.{4,120}?)["'`]'''
+secretGroup = 1
+entropy = 3
+tags = ["credentials", "hardcoded", "go"]
+
+[[rules]]
+description = "Hardcoded credentials in JavaScript or TypeScript files"
+id = "credentials-javascript"
+path = '''(.*?)\.(?:j|t)s$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token)(?:\w|\s*?)(?:=){1}(?:\s{0,10})["'`](.*?)["'`]'''
+secretGroup = 1
+entropy = 3
+tags = ["credentials", "hardcoded", "js"]
+
+[[rules]]
+description = "Hardcoded credentials in Python files"
+id = "credentials-python"
+path = '''(.*?)\.py$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token)(?:.{0,20})(?:=){1}(?:\s)*?["'](.{4,120})["']'''
+secretGroup = 1
+entropy = 3
+tags = ["credentials", "hardcoded", "python"]
+
+[[rules]]
+description = "Hardcoded credentials in Shell scripts"
+id = "credentials-shell"
+path = '''(.*?)\.(sh|bash|zsh)$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token)(?:.{0,20})(?:=){1}(?:\s)*?["']?(.{4,120})["']?'''
+secretGroup = 1
+entropy = 3
+tags = ["credentials", "hardcoded", "shell"]
+
+[[rules]]
+description = "Hardcoded credentials in YAML files (quoted)"
+id = "credentials-yaml-quoted"
+path = '''(.*?)\.ya?ml$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token)(?:.{0,20})(?::){1}(?:\s{0,10})(?:["'](.{4,120})["'])'''
+secretGroup = 1
+entropy = 3
+tags = ["credentials", "hardcoded", "yaml"]
+[[rules.allowlists]]
+description = "Skip YAML variables and encrypted values"
+regexes = [
+  '''\${(?:.)+}''',
+  '''{{(?:.)*?}}''',
+  '''ENC\[AES256_GCM,data:''',
+]
+
+[[rules]]
+description = "Hardcoded credentials in YAML files (unquoted)"
+id = "credentials-yaml-unquoted"
+path = '''(.*?)\.ya?ml$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token)(?:\w|\s*?)(?::){1}(?:\s*?)((?:\w|\S)+)'''
+secretGroup = 1
+entropy = 3.5
+tags = ["credentials", "hardcoded", "yaml"]
+[[rules.allowlists]]
+description = "Skip YAML variables and template values"
+regexes = [
+  ''':$''',
+  '''\${(?:.)+}''',
+  '''{{(?:.)*?}}''',
+  '''={{$''',
+]
+
+[[rules]]
+description = "Hardcoded credentials in Terraform files"
+id = "credentials-terraform"
+path = '''(.*?)\.tf$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token)(?:.{0,20})(?:=){1}(?:\s)*?"(.{4,120})"'''
+secretGroup = 1
+entropy = 3
+tags = ["credentials", "hardcoded", "terraform"]
+[[rules.allowlists]]
+description = "Skip variable substitution"
+regexes = [
+  '''\${(?:.)*?}''',
+]
+
+# ============================================================================
+# Database connection strings
+# ============================================================================
+
+[[rules]]
+id = "mysql-connection-string"
+description = "MySQL connection string with credentials"
+regex = '''mysql://([^:]+):([^@]+)@[^/]+/'''
+secretGroup = 2
+tags = ["database", "mysql"]
+
+[[rules]]
+id = "postgres-connection-string"
+description = "PostgreSQL connection string with credentials"
+regex = '''postgres(?:ql)?://([^:]+):([^@]+)@[^/]+/'''
+secretGroup = 2
+tags = ["database", "postgres"]
+
+[[rules]]
+id = "mongodb-connection-string"
+description = "MongoDB connection string with credentials"
+regex = '''mongodb(?:\+srv)?://([^:]+):([^@]+)@'''
+secretGroup = 2
+tags = ["database", "mongodb"]
+
+# ============================================================================
+# Additional rules based on GitGuardian findings
+# ============================================================================
+
+[[rules]]
+id = "generic-auth-tuple"
+description = "Generic authentication tuple (user:password@host)"
+# Matches user:pass@ patterns not covered by specific DB rules
+regex = '''([a-zA-Z0-9_-]+):([^@\s]{8,})@[a-zA-Z0-9.-]+'''
+secretGroup = 2
+entropy = 2.5
+tags = ["credentials", "auth-tuple"]
+[[rules.allowlists]]
+description = "Skip email-like patterns and known safe patterns"
+regexes = [
+  '''@gmail\.com''',
+  '''@github\.com''',
+  '''@example\.com''',
+]
+
+[[rules]]
+description = "Hardcoded credentials in JSON files"
+id = "credentials-json"
+path = '''(.*?)\.json$'''
+regex = '''(?i)["'](?:secret|key|password|pwd|pass|token|api_key|apikey|auth)["']\s*:\s*["']([^"']{8,})["']'''
+secretGroup = 1
+entropy = 3
+tags = ["credentials", "hardcoded", "json"]
+[[rules.allowlists]]
+description = "Skip package manifests and lock files"
+paths = [
+  '''package\.json$''',
+  '''package-lock\.json$''',
+  '''composer\.json$''',
+  '''tsconfig\.json$''',
+]
+
+[[rules]]
+description = "Hardcoded credentials in .env files"
+id = "credentials-env"
+path = '''(.*?)\.env(\..*)?$'''
+regex = '''(?i)(?:secret|key|password|pwd|pass|token|api_key|apikey)(?:\w*)=["']?([^"'\s\n]{8,})["']?'''
+secretGroup = 1
+entropy = 2.5
+tags = ["credentials", "hardcoded", "env"]
+[[rules.allowlists]]
+description = "Skip example env files and placeholders"
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.sample$''',
+  '''\.env\.template$''',
+]
+regexes = [
+  '''CHANGEME''',
+  '''PLACEHOLDER''',
+  '''your-.*-here''',
+  '''<.*>''',
+]
+
+[[rules]]
+id = "fernet-key"
+description = "Fernet encryption key (base64 encoded)"
+# Fernet keys are 32 bytes = 44 chars base64 ending in =
+regex = '''(?i)(?:fernet[_-]?key|FERNET_KEY)\s*[:=]\s*["']?([A-Za-z0-9+/]{43}=)["']?'''
+secretGroup = 1
+tags = ["credentials", "encryption", "fernet"]
+
+[[rules]]
+id = "jwt-token"
+description = "JSON Web Token"
+# JWT format: base64.base64.base64
+regex = '''eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*'''
+tags = ["credentials", "jwt"]

@@ -17,3 +17,5 @@ bin/
 # macOS
 .DS_Store
 
+.agent-mail/
+.amqrc

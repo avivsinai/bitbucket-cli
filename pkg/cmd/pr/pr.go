@@ -2,18 +2,31 @@ package pr
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/avivsinai/bitbucket-cli/pkg/types"
+)
+
+// Sentinel errors for checks command
+var (
+	ErrNoSourceCommit = errors.New("pull request has no source commit")
 )
 
 // NewCmdPR returns the pull request command tree.
@@ -26,6 +39,7 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newListCmd(f))
 	cmd.AddCommand(newViewCmd(f))
 	cmd.AddCommand(newCreateCmd(f))
+	cmd.AddCommand(newEditCmd(f))
 	cmd.AddCommand(newCheckoutCmd(f))
 	cmd.AddCommand(newDiffCmd(f))
 	cmd.AddCommand(newApproveCmd(f))
@@ -38,6 +52,7 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newTaskCmd(f))
 	cmd.AddCommand(newReactionCmd(f))
 	cmd.AddCommand(newSuggestionCmd(f))
+	cmd.AddCommand(newChecksCmd(f))
 
 	return cmd
 }
@@ -86,10 +101,19 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-		if projectKey == "" || repoSlug == "" {
-			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+
+		// If no repo specified, use the dashboard endpoint (requires --mine)
+		if repoSlug == "" {
+			if !opts.Mine {
+				return fmt.Errorf("--mine is required when not specifying a repository")
+			}
+			return runListDashboardDC(cmd, f, ios, host, opts)
+		}
+
+		if projectKey == "" {
+			return fmt.Errorf("context must supply project; use --project if needed")
 		}
 
 		client, err := cmdutil.NewDCClient(host)
@@ -109,7 +133,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			filtered := prs[:0]
 			current := strings.ToLower(host.Username)
 			for _, pr := range prs {
-				author := strings.ToLower(firstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
+				author := strings.ToLower(cmdutil.FirstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
 				if author == current {
 					filtered = append(filtered, pr)
 				}
@@ -130,7 +154,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			}
 
 			for _, pr := range prs {
-				author := firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+				author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
 				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
 					return err
 				}
@@ -142,10 +166,22 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		})
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-		if workspace == "" || repoSlug == "" {
-			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+
+		// If no repo specified, use the workspace endpoint (requires --mine)
+		if repoSlug == "" {
+			if !opts.Mine {
+				return fmt.Errorf("--mine is required when not specifying a repository")
+			}
+			if workspace == "" {
+				return fmt.Errorf("context must supply workspace; use --workspace if needed")
+			}
+			return runListWorkspaceCloud(cmd, f, ios, host, workspace, opts)
+		}
+
+		if workspace == "" {
+			return fmt.Errorf("context must supply workspace; use --workspace if needed")
 		}
 
 		client, err := cmdutil.NewCloudClient(host)
@@ -183,7 +219,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			}
 
 			for _, pr := range prs {
-				author := firstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
+				author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
 				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
 					return err
 				}
@@ -197,6 +233,148 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
+}
+
+// runListDashboardDC lists pull requests for the authenticated user across all repositories (Data Center).
+func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, host *config.Host, opts *listOptions) error {
+	client, err := cmdutil.NewDCClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+
+	prs, err := client.ListDashboardPullRequests(ctx, bbdc.DashboardPullRequestsOptions{
+		State: opts.State,
+		Role:  "AUTHOR",
+		Limit: opts.Limit,
+	})
+	if err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"pull_requests": prs,
+	}
+
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(prs) == 0 {
+			_, err := fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+			return err
+		}
+
+		for _, pr := range prs {
+			author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+			// Use ToRef.Repository (destination) to show where the PR merges into,
+			// which is more useful for fork-based PRs than the source repo
+			repoInfo := ""
+			if pr.ToRef.Repository.Slug != "" {
+				repoInfo = pr.ToRef.Repository.Slug
+				if pr.ToRef.Repository.Project != nil && pr.ToRef.Repository.Project.Key != "" {
+					repoInfo = pr.ToRef.Repository.Project.Key + "/" + repoInfo
+				}
+			}
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				return err
+			}
+			if repoInfo != "" {
+				if _, err := fmt.Fprintf(ios.Out, "    %s\t%s -> %s\tby %s\n", repoInfo, pr.FromRef.DisplayID, pr.ToRef.DisplayID, author); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// runListWorkspaceCloud lists pull requests for the authenticated user across all repositories (Cloud).
+func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, host *config.Host, workspace string, opts *listOptions) error {
+	client, err := cmdutil.NewCloudClient(host)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+
+	// Fetch the current user to get the actual Bitbucket username (not the email used for auth)
+	currentUser, err := client.CurrentUser(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	// Determine username for API call. Username may be empty for newer Bitbucket
+	// accounts, so fall back to AccountID, then configured host username.
+	username := currentUser.Username
+	if username == "" {
+		username = currentUser.AccountID
+	}
+	if username == "" && host.Username != "" && !strings.Contains(host.Username, "@") {
+		username = host.Username
+	}
+	if username == "" {
+		return fmt.Errorf("could not determine username; Bitbucket Cloud account may lack username field")
+	}
+
+	prs, err := client.ListWorkspacePullRequests(ctx, workspace, username, bbcloud.WorkspacePullRequestsOptions{
+		State: opts.State,
+		Limit: opts.Limit,
+	})
+	if err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"workspace":     workspace,
+		"pull_requests": prs,
+	}
+
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		if len(prs) == 0 {
+			_, err := fmt.Fprintf(ios.Out, "No pull requests (%s).\n", strings.ToUpper(opts.State))
+			return err
+		}
+
+		for _, pr := range prs {
+			author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
+			// Use Destination.Repository.Slug (where PR merges into) as primary source,
+			// fall back to URL parsing for backwards compatibility
+			repoInfo := pr.Destination.Repository.Slug
+			if repoInfo == "" {
+				repoInfo = extractRepoFromCloudPRLink(pr.Links.HTML.Href)
+			}
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				return err
+			}
+			if repoInfo != "" {
+				if _, err := fmt.Fprintf(ios.Out, "    %s\t%s -> %s\tby %s\n", repoInfo, pr.Source.Branch.Name, pr.Destination.Branch.Name, author); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name, author); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// extractRepoFromCloudPRLink extracts the repository slug from a Bitbucket Cloud PR URL.
+// This is a fallback method; prefer using PullRequest.Destination.Repository.Slug directly.
+// URL format: https://bitbucket.org/{workspace}/{repo}/pull-requests/{id}
+func extractRepoFromCloudPRLink(href string) string {
+	parts := strings.Split(href, "/")
+	// Expected: ["https:", "", "bitbucket.org", "workspace", "repo", "pull-requests", "id"]
+	if len(parts) >= 5 {
+		return parts[4]
+	}
+	return ""
 }
 
 type viewOptions struct {
@@ -245,8 +423,8 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -287,7 +465,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 			if _, err := fmt.Fprintf(ios.Out, "State: %s\n", pr.State); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID); err != nil {
@@ -304,7 +482,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 					return err
 				}
 				for _, reviewer := range pr.Reviewers {
-					if _, err := fmt.Fprintf(ios.Out, "  %s\n", firstNonEmpty(reviewer.User.FullName, reviewer.User.Name)); err != nil {
+					if _, err := fmt.Fprintf(ios.Out, "  %s\n", cmdutil.FirstNonEmpty(reviewer.User.FullName, reviewer.User.Name)); err != nil {
 						return err
 					}
 				}
@@ -313,8 +491,8 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		})
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -355,7 +533,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 			if _, err := fmt.Fprintf(ios.Out, "State: %s\n", pr.State); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", firstNonEmpty(pr.Author.DisplayName, pr.Author.Username)); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "Author: %s\n", cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintf(ios.Out, "From: %s\nTo:   %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name); err != nil {
@@ -378,8 +556,7 @@ func firstPRLinkDC(pr *bbdc.PullRequest, kind string) string {
 	if pr == nil {
 		return ""
 	}
-	switch kind {
-	case "self":
+	if kind == "self" {
 		for _, link := range pr.Links.Self {
 			if strings.TrimSpace(link.Href) != "" {
 				return link.Href
@@ -452,8 +629,8 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -484,8 +661,8 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		return nil
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -514,6 +691,178 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}
+
+type editOptions struct {
+	Project     string
+	Workspace   string
+	Repo        string
+	ID          int
+	Title       string
+	Description string
+	Body        string
+}
+
+func newEditCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &editOptions{}
+	cmd := &cobra.Command{
+		Use:   "edit <id>",
+		Short: "Edit a pull request",
+		Long:  "Edit a pull request's title and/or description.",
+		Example: `  # Update pull request title
+  bkt pr edit 123 --title "New feature: user authentication"
+
+  # Update pull request description
+  bkt pr edit 123 --body "This PR adds OAuth2 support"
+
+  # Update both title and description
+  bkt pr edit 123 -t "Fix login bug" -b "Resolves issue with session timeout"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid pull request id %q", args[0])
+			}
+			opts.ID = id
+
+			// --body and --description are mutually exclusive aliases
+			if cmd.Flags().Changed("body") && cmd.Flags().Changed("description") {
+				return fmt.Errorf("specify only one of --body or --description")
+			}
+
+			// --body is an alias for --description (for gh ergonomics)
+			if cmd.Flags().Changed("body") {
+				opts.Description = opts.Body
+			}
+
+			// Require at least one field to update
+			if !cmd.Flags().Changed("title") && !cmd.Flags().Changed("description") && !cmd.Flags().Changed("body") {
+				return fmt.Errorf("at least one of --title, --body, or --description is required")
+			}
+
+			return runEdit(cmd, f, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override.")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud).")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override.")
+	cmd.Flags().StringVarP(&opts.Title, "title", "t", "", "Set the new title.")
+	cmd.Flags().StringVarP(&opts.Description, "description", "", "", "Set the new description.")
+	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Set the new body (alias for --description).")
+
+	return cmd
+}
+
+func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		// Fetch current PR to get version (optimistic locking) and current values
+		pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		// Compute new values: use flag value if changed, otherwise keep existing
+		newTitle := pr.Title
+		if cmd.Flags().Changed("title") {
+			newTitle = opts.Title
+		}
+		newDesc := pr.Description
+		if cmd.Flags().Changed("description") || cmd.Flags().Changed("body") {
+			newDesc = opts.Description
+		}
+
+		updatedPR, err := client.UpdatePullRequest(ctx, projectKey, repoSlug, opts.ID, pr.Version, bbdc.UpdatePROptions{
+			Title:       newTitle,
+			Description: newDesc,
+			Reviewers:   pr.Reviewers,
+			FromRef:     &pr.FromRef,
+			ToRef:       &pr.ToRef,
+		})
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"project":      projectKey,
+			"repo":         repoSlug,
+			"pull_request": updatedPR,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			_, err := fmt.Fprintf(ios.Out, "✓ Updated pull request #%d\n", updatedPR.ID)
+			return err
+		})
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		// Build input with only changed fields
+		input := bbcloud.UpdatePullRequestInput{}
+		if cmd.Flags().Changed("title") {
+			input.Title = &opts.Title
+		}
+		if cmd.Flags().Changed("description") || cmd.Flags().Changed("body") {
+			input.Description = &opts.Description
+		}
+
+		updatedPR, err := client.UpdatePullRequest(ctx, workspace, repoSlug, opts.ID, input)
+		if err != nil {
+			return err
+		}
+
+		payload := map[string]any{
+			"workspace":    workspace,
+			"repo":         repoSlug,
+			"pull_request": updatedPR,
+		}
+
+		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+			_, err := fmt.Fprintf(ios.Out, "✓ Updated pull request #%d\n", updatedPR.ID)
+			return err
+		})
 
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
@@ -562,8 +911,8 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 		return fmt.Errorf("pr checkout currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -630,8 +979,8 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 		return fmt.Errorf("pr diff currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -775,8 +1124,8 @@ func runMerge(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *mergeOptions
 		return fmt.Errorf("pr merge currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -852,8 +1201,8 @@ func runDecline(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *declineOpt
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -897,8 +1246,8 @@ func runDecline(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *declineOpt
 		return nil
 
 	case "cloud":
-		workspace := firstNonEmpty(opts.Workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -961,8 +1310,8 @@ func runReopen(cmd *cobra.Command, f *cmdutil.Factory, id int, project, workspac
 
 	switch host.Kind {
 	case "dc":
-		projectKey := firstNonEmpty(project, ctxCfg.ProjectKey)
-		repoSlug := firstNonEmpty(repo, ctxCfg.DefaultRepo)
+		projectKey := cmdutil.FirstNonEmpty(project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(repo, ctxCfg.DefaultRepo)
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
@@ -990,8 +1339,8 @@ func runReopen(cmd *cobra.Command, f *cmdutil.Factory, id int, project, workspac
 		return nil
 
 	case "cloud":
-		ws := firstNonEmpty(workspace, ctxCfg.Workspace)
-		repoSlug := firstNonEmpty(repo, ctxCfg.DefaultRepo)
+		ws := cmdutil.FirstNonEmpty(workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(repo, ctxCfg.DefaultRepo)
 		if ws == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
@@ -1062,8 +1411,8 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 		return fmt.Errorf("pr comment currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -1086,19 +1435,564 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 	return nil
 }
 
+type checksOptions struct {
+	Project     string
+	Workspace   string
+	Repo        string
+	ID          int
+	Web         bool
+	Wait        bool
+	FailFast    bool
+	Interval    time.Duration
+	MaxInterval time.Duration
+	Timeout     time.Duration
+}
+
+func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &checksOptions{}
+	cmd := &cobra.Command{
+		Use:     "checks <id>",
+		Aliases: []string{"builds"},
+		Short:   "Show build/CI status for a pull request",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid pull request id %q", args[0])
+			}
+			opts.ID = id
+
+			// Validate flag combinations: polling flags require --wait
+			if !opts.Wait {
+				if cmd.Flags().Changed("interval") {
+					return fmt.Errorf("--interval requires --wait")
+				}
+				if cmd.Flags().Changed("max-interval") {
+					return fmt.Errorf("--max-interval requires --wait")
+				}
+				if cmd.Flags().Changed("timeout") {
+					return fmt.Errorf("--timeout requires --wait")
+				}
+				if opts.FailFast {
+					return fmt.Errorf("--fail-fast requires --wait")
+				}
+			}
+
+			// Validate interval values to prevent API hammering
+			if opts.Wait {
+				if opts.Interval <= 0 {
+					return fmt.Errorf("--interval must be positive")
+				}
+				if opts.MaxInterval <= 0 {
+					return fmt.Errorf("--max-interval must be positive")
+				}
+				if opts.MaxInterval < opts.Interval {
+					return fmt.Errorf("--max-interval must be >= --interval")
+				}
+			}
+
+			return runChecks(cmd, f, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().BoolVar(&opts.Web, "web", false, "Open the build URL in your browser (first build)")
+	cmd.Flags().BoolVar(&opts.Wait, "wait", false, "Wait for all builds to complete")
+	cmd.Flags().BoolVar(&opts.FailFast, "fail-fast", false, "Exit immediately when a check fails (requires --wait)")
+	cmd.Flags().DurationVar(&opts.Interval, "interval", 10*time.Second, "Initial polling interval when using --wait")
+	cmd.Flags().DurationVar(&opts.MaxInterval, "max-interval", 2*time.Minute, "Maximum polling interval (backoff cap)")
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 30*time.Minute, "Maximum time to wait for builds (0 for no timeout)")
+
+	return cmd
+}
+
+func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+
+	colorEnabled := ios.ColorEnabled()
+
+	// Check if structured output is requested (--json/--yaml/--template/--jq)
+	outputSettings, err := cmdutil.ResolveOutputSettings(cmd)
+	if err != nil {
+		return err
+	}
+	quietPoll := outputSettings.Format != "" || outputSettings.Template != "" || outputSettings.JQ != ""
+
+	// Set up context with signal handling for graceful cancellation
+	ctx := cmd.Context()
+	if opts.Wait {
+		var stop context.CancelFunc
+		ctx, stop = signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
+		// Apply timeout if specified
+		if opts.Timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+			defer cancel()
+		}
+	}
+
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer fetchCancel()
+
+		pr, err := client.GetPullRequest(fetchCtx, projectKey, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		commitSHA := pr.FromRef.LatestCommit
+		if commitSHA == "" {
+			return ErrNoSourceCommit
+		}
+
+		return executeStatusCheck(&checksResult{
+			ctx:          ctx,
+			ios:          ios,
+			cmd:          cmd,
+			opts:         opts,
+			colorEnabled: colorEnabled,
+			commitSHA:    commitSHA,
+			browserOpen:  f.BrowserOpener().Open,
+			quietPoll:    quietPoll,
+			payload: map[string]any{
+				"project":      projectKey,
+				"repo":         repoSlug,
+				"pull_request": opts.ID,
+				"commit":       commitSHA,
+			},
+			fetchFunc: func() ([]types.CommitStatus, error) {
+				statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
+				defer statusCancel()
+				return client.CommitStatuses(statusCtx, commitSHA)
+			},
+		})
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer fetchCancel()
+
+		pr, err := client.GetPullRequest(fetchCtx, workspace, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		commitSHA := pr.Source.Commit.Hash
+		if commitSHA == "" {
+			return ErrNoSourceCommit
+		}
+
+		return executeStatusCheck(&checksResult{
+			ctx:          ctx,
+			ios:          ios,
+			cmd:          cmd,
+			opts:         opts,
+			colorEnabled: colorEnabled,
+			commitSHA:    commitSHA,
+			browserOpen:  f.BrowserOpener().Open,
+			quietPoll:    quietPoll,
+			payload: map[string]any{
+				"workspace":    workspace,
+				"repo":         repoSlug,
+				"pull_request": opts.ID,
+				"commit":       commitSHA,
+			},
+			fetchFunc: func() ([]types.CommitStatus, error) {
+				statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
+				defer statusCancel()
+				return client.CommitStatuses(statusCtx, workspace, repoSlug, commitSHA)
+			},
+		})
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}
+
+// checksResult holds the parameters for executing status checks after the fetch function is set up
+type checksResult struct {
+	ctx          context.Context
+	ios          *iostreams.IOStreams
+	cmd          *cobra.Command
+	opts         *checksOptions
+	fetchFunc    func() ([]types.CommitStatus, error)
+	colorEnabled bool
+	commitSHA    string
+	payload      map[string]any
+	browserOpen  func(string) error
+	quietPoll    bool // suppress poll output for structured output (--json/--yaml)
+}
+
+// executeStatusCheck handles the common logic for both DC and Cloud:
+// polling/fetching, error handling, output, and exit code.
+func executeStatusCheck(r *checksResult) error {
+	var statuses []types.CommitStatus
+	var err error
+	var timedOutWithPending bool
+
+	if r.opts.Wait {
+		// Use alternate screen buffer for cleaner watch output (skip for structured output)
+		if !r.quietPoll {
+			r.ios.StartAlternateScreenBuffer()
+		}
+		statuses, err = pollUntilComplete(r.ctx, r.ios, r.opts, r.fetchFunc, r.colorEnabled, r.commitSHA, r.quietPoll)
+		if !r.quietPoll {
+			r.ios.StopAlternateScreenBuffer()
+		}
+
+		// Handle cancellation gracefully
+		if errors.Is(err, context.Canceled) {
+			_, _ = fmt.Fprintln(r.ios.ErrOut, "\nOperation cancelled")
+			return nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			_, _ = fmt.Fprintln(r.ios.ErrOut, "\nTimeout waiting for builds to complete")
+			// Check if any builds are still pending
+			timedOutWithPending = !allBuildsComplete(statuses)
+		}
+	} else {
+		statuses, err = r.fetchFunc()
+	}
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+
+	r.payload["statuses"] = statuses
+
+	if r.opts.Web && len(statuses) > 0 {
+		if link := statuses[0].URL; link != "" {
+			if err := r.browserOpen(link); err != nil {
+				return fmt.Errorf("open browser: %w", err)
+			}
+		}
+	}
+
+	// Skip final print if we used wait mode without TTY (already printed during polling)
+	// With TTY, alternate screen buffer means final print shows on main screen
+	skipFinalPrint := r.opts.Wait && !r.ios.IsStdoutTTY()
+
+	writeErr := cmdutil.WriteOutput(r.cmd, r.ios.Out, r.payload, func() error {
+		if skipFinalPrint {
+			return nil
+		}
+		return printStatuses(r.ios, r.opts.ID, r.commitSHA, statuses, r.colorEnabled)
+	})
+	if writeErr != nil {
+		return writeErr
+	}
+
+	// Return appropriate exit code based on final state
+	if r.opts.Wait {
+		// Timeout with pending checks: exit code 8
+		if timedOutWithPending {
+			return cmdutil.ErrPending
+		}
+		// Any build failed: exit code 1 (silent - details already visible)
+		if anyBuildFailed(statuses) {
+			return cmdutil.ErrSilent
+		}
+	}
+	return nil
+}
+
+// pollUntilComplete polls for build statuses until all are complete or context is cancelled.
+// Uses exponential backoff with jitter to avoid overwhelming the API.
+// When quietPoll is true, suppresses all output (for structured output like --json).
+func pollUntilComplete(
+	ctx context.Context,
+	ios *iostreams.IOStreams,
+	opts *checksOptions,
+	fetch func() ([]types.CommitStatus, error),
+	colorEnabled bool,
+	commitSHA string,
+	quietPoll bool,
+) ([]types.CommitStatus, error) {
+	iteration := 0
+	consecutiveErrors := 0
+	const maxConsecutiveErrors = 3
+
+	for {
+		statuses, err := fetch()
+		if err != nil {
+			consecutiveErrors++
+			// After multiple consecutive errors, back off more aggressively
+			if consecutiveErrors >= maxConsecutiveErrors {
+				return nil, fmt.Errorf("fetch failed after %d attempts: %w", consecutiveErrors, err)
+			}
+			// Log error to stderr (doesn't corrupt structured output on stdout)
+			_, _ = fmt.Fprintf(ios.ErrOut, "  ⚠ Error fetching status (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
+			// Use iteration + consecutiveErrors to back off faster on errors
+			errorBackoff := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration+consecutiveErrors)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(errorBackoff):
+				continue
+			}
+		}
+		consecutiveErrors = 0 // Reset on success
+
+		// Print current status (skip for structured output to avoid corrupting JSON/YAML)
+		if !quietPoll {
+			if iteration > 0 {
+				ios.ClearScreen()
+			}
+			if err := printStatuses(ios, opts.ID, commitSHA, statuses, colorEnabled); err != nil {
+				return nil, err
+			}
+		}
+
+		// On first iteration, if no builds exist, exit immediately (don't poll forever)
+		if iteration == 0 && len(statuses) == 0 {
+			return statuses, nil
+		}
+
+		if allBuildsComplete(statuses) {
+			return statuses, nil
+		}
+
+		// Exit early on first failure if --fail-fast is set
+		if opts.FailFast && anyBuildFailed(statuses) {
+			return statuses, nil
+		}
+
+		// Calculate next polling interval with exponential backoff and jitter
+		nextInterval := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration)
+
+		// Show waiting message (skip for structured output)
+		if !quietPoll {
+			var waitMsg string
+			if len(statuses) == 0 {
+				// No builds found yet - explain we're waiting for them to appear
+				waitMsg = fmt.Sprintf("\n  Waiting for builds to appear... (next poll in %s, Ctrl-C to cancel)", nextInterval.Round(time.Second))
+			} else {
+				inProgress := 0
+				for _, s := range statuses {
+					if !isTerminalState(s.State) {
+						inProgress++
+					}
+				}
+				waitMsg = fmt.Sprintf("\n  Waiting for %d build(s)... (next poll in %s, Ctrl-C to cancel)", inProgress, nextInterval.Round(time.Second))
+			}
+			_, _ = fmt.Fprintln(ios.Out, waitMsg)
+		}
+
+		iteration++
+
+		select {
+		case <-ctx.Done():
+			return statuses, ctx.Err()
+		case <-time.After(nextInterval):
+			continue
+		}
+	}
+}
+
+// printStatuses prints build statuses with optional color coding
+func printStatuses(ios *iostreams.IOStreams, prID int, commitSHA string, statuses []types.CommitStatus, colorEnabled bool) error {
+	if _, err := fmt.Fprintf(ios.Out, "Build Status for PR #%d (commit %s):\n", prID, commitSHA[:min(12, len(commitSHA))]); err != nil {
+		return err
+	}
+
+	if len(statuses) == 0 {
+		_, err := fmt.Fprintln(ios.Out, "  No builds found.")
+		return err
+	}
+
+	for _, s := range statuses {
+		name := cmdutil.FirstNonEmpty(s.Name, s.Key)
+		icon := stateIcon(s.State)
+		colorPrefix, colorSuffix := stateColor(s.State, colorEnabled)
+		if _, err := fmt.Fprintf(ios.Out, "  %s%s %s: %s%s\n", colorPrefix, icon, name, s.State, colorSuffix); err != nil {
+			return err
+		}
+		if s.URL != "" {
+			if _, err := fmt.Fprintf(ios.Out, "      %s\n", s.URL); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func stateIcon(state string) string {
+	switch strings.ToUpper(state) {
+	case "SUCCESSFUL", "SUCCESS":
+		return "✓"
+	case "FAILED", "FAILURE":
+		return "✗"
+	case "INPROGRESS", "IN_PROGRESS", "PENDING":
+		return "○"
+	case "STOPPED":
+		return "■"
+	case "CANCELLED":
+		return "⊘"
+	default:
+		return "?"
+	}
+}
+
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+)
+
+func stateColor(state string, colorEnabled bool) (prefix, suffix string) {
+	if !colorEnabled {
+		return "", ""
+	}
+	switch strings.ToUpper(state) {
+	case "SUCCESSFUL", "SUCCESS":
+		return colorGreen, colorReset
+	case "FAILED", "FAILURE":
+		return colorRed, colorReset
+	case "INPROGRESS", "IN_PROGRESS", "PENDING", "CANCELLED", "STOPPED":
+		return colorYellow, colorReset
+	default:
+		return "", ""
+	}
+}
+
+// isTerminalState returns true if the build state is final (not in progress)
+func isTerminalState(state string) bool {
+	switch strings.ToUpper(state) {
+	case "SUCCESSFUL", "SUCCESS", "FAILED", "FAILURE", "STOPPED", "CANCELLED":
+		return true
+	default:
+		return false
+	}
+}
+
+// allBuildsComplete returns true if all statuses are in a terminal state
+func allBuildsComplete(statuses []types.CommitStatus) bool {
+	if len(statuses) == 0 {
+		return false // No builds means we should keep waiting
+	}
+	for _, s := range statuses {
+		if !isTerminalState(s.State) {
+			return false
+		}
+	}
+	return true
+}
+
+// anyBuildFailed returns true if any build has failed
+func anyBuildFailed(statuses []types.CommitStatus) bool {
+	for _, s := range statuses {
+		switch strings.ToUpper(s.State) {
+		case "FAILED", "FAILURE":
+			return true
+		}
+	}
+	return false
+}
+
+// backoffMultiplier is the factor by which the polling interval increases each iteration
+const backoffMultiplier = 1.5
+
+// jitterFraction is the maximum random adjustment (±15%) applied to intervals
+const jitterFraction = 0.15
+
+// calculatePollInterval computes the next polling interval using exponential backoff with jitter.
+// The formula is: min(baseInterval * multiplier^iteration, maxInterval) ± jitter
+func calculatePollInterval(baseInterval, maxInterval time.Duration, iteration int) time.Duration {
+	if iteration <= 0 {
+		return addJitter(baseInterval)
+	}
+
+	// Calculate exponential backoff: base * 1.5^iteration
+	interval := float64(baseInterval)
+	for i := 0; i < iteration; i++ {
+		interval *= backoffMultiplier
+		if interval >= float64(maxInterval) {
+			interval = float64(maxInterval)
+			break
+		}
+	}
+
+	// Cap at max interval
+	if interval > float64(maxInterval) {
+		interval = float64(maxInterval)
+	}
+
+	return addJitter(time.Duration(interval))
+}
+
+// addJitter applies ±15% random jitter to a duration to prevent thundering herd.
+// Uses crypto/rand for better randomness distribution.
+func addJitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return d
+	}
+
+	// Calculate jitter range: ±15% of the duration
+	jitterRange := int64(float64(d) * jitterFraction * 2) // Total range is 2x the fraction
+	if jitterRange <= 0 {
+		return d
+	}
+
+	// Generate random value in range [0, jitterRange)
+	n, err := rand.Int(rand.Reader, big.NewInt(jitterRange))
+	if err != nil {
+		// Fallback to no jitter on error
+		return d
+	}
+
+	// Apply jitter: subtract half the range, then add random value
+	// This gives us a value in [-jitterFraction, +jitterFraction]
+	jitter := n.Int64() - (jitterRange / 2)
+	result := time.Duration(int64(d) + jitter)
+
+	// Ensure we don't go below 1 second minimum
+	if result < time.Second {
+		result = time.Second
+	}
+
+	return result
+}
+
 func runGit(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }

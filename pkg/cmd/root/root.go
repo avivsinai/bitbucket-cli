@@ -9,12 +9,14 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/branch"
 	contextcmd "github.com/avivsinai/bitbucket-cli/pkg/cmd/context"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/extension"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/issue"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/perms"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pipeline"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pr"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/project"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/repo"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/status"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/variable"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/webhook"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
@@ -35,7 +37,8 @@ Common flows:
   bkt auth login https://bitbucket.example.com
   bkt pr list --mine
   bkt status pr 123 --json`,
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -54,11 +57,13 @@ Common flows:
 		repo.NewCmdRepo(f),
 		project.NewCmdProject(f),
 		pr.NewCmdPR(f),
+		issue.NewCmdIssue(f),
 		branch.NewCmdBranch(f),
 		perms.NewCommand(f),
 		webhook.NewCommand(f),
 		status.NewCmdStatus(f),
 		pipeline.NewCmdPipeline(f),
+		variable.NewCommand(f),
 		api.NewCmdAPI(f),
 		extension.NewCmdExtension(f),
 	)

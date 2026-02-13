@@ -127,8 +127,8 @@ func runReactionList(cmd *cobra.Command, f *cmdutil.Factory, opts *reactionOptio
 		return fmt.Errorf("reaction list currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -175,8 +175,8 @@ func runReactionAdd(cmd *cobra.Command, f *cmdutil.Factory, opts *reactionOption
 		return fmt.Errorf("reaction add currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}
@@ -212,8 +212,8 @@ func runReactionRemove(cmd *cobra.Command, f *cmdutil.Factory, opts *reactionOpt
 		return fmt.Errorf("reaction remove currently supports Data Center contexts only")
 	}
 
-	projectKey := firstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := firstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 	}

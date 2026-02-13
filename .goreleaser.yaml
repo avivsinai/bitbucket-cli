@@ -9,6 +9,7 @@ builds:
       - CGO_ENABLED={{- if eq .Os "darwin" }}1{{- else }}0{{- end }}
     goos:
       - linux
+      - darwin
       - windows
     goarch:
       - amd64
@@ -93,6 +94,17 @@ release:
 
     **Full Changelog**: https://github.com/avivsinai/bitbucket-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
 
+    ### Homebrew (macOS/Linux)
+    ```bash
+    brew install avivsinai/tap/bitbucket-cli
+    ```
+
+    ### Scoop (Windows)
+    ```powershell
+    scoop bucket add avivsinai https://github.com/avivsinai/scoop-bucket
+    scoop install bitbucket-cli
+    ```
+
     ### Go Install
     ```bash
     go install github.com/avivsinai/bitbucket-cli/cmd/bkt@{{ .Tag }}
@@ -115,7 +127,39 @@ nfpms:
     package_name: bkt
     file_name_template: 'bkt_{{ .Version }}_{{ .Arch }}'
     formats: [deb]
-    maintainer: Aviv Sinai <opensource@avivsinai.dev>
+    maintainer: Aviv Sinai <avivsinai@gmail.com>
     description: Bitbucket CLI
     homepage: https://github.com/avivsinai/bitbucket-cli
     license: MIT
+
+brews:
+  - name: bitbucket-cli
+    repository:
+      owner: avivsinai
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/avivsinai/bitbucket-cli
+    description: "CLI for Bitbucket Cloud - manage repos, PRs, and pipelines from the terminal"
+    license: MIT
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
+    install: |
+      bin.install "bkt"
+    test: |
+      system "#{bin}/bkt", "version"
+
+scoops:
+  - name: bitbucket-cli
+    repository:
+      owner: avivsinai
+      name: scoop-bucket
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: bucket
+    homepage: https://github.com/avivsinai/bitbucket-cli
+    description: "CLI for Bitbucket Cloud & Data Center - manage repos, PRs, and pipelines"
+    license: MIT
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com

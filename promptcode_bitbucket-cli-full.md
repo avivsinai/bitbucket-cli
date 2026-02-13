@@ -134,14 +134,14 @@ bitbucket-cli/
 File: .github/CODEOWNERS (54 tokens)
 ```
 # Default owners
-*       @avivsinai
+*       @example
 
 # Client libraries
-pkg/bbdc/    @avivsinai
-pkg/bbcloud/ @avivsinai
+pkg/bbdc/    @example
+pkg/bbcloud/ @example
 
 # CLI commands
-pkg/cmd/     @avivsinai
+pkg/cmd/     @example
 
 ```
 
@@ -154,13 +154,13 @@ updates:
     schedule:
       interval: "weekly"
     assignees:
-      - avivsinai
+      - example
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     assignees:
-      - avivsinai
+      - example
 
 ```
 
@@ -447,7 +447,7 @@ sboms:
 brews:
   - name: bkt
     tap:
-      owner: avivsinai
+      owner: example
       name: homebrew-tap
     folder: Formula
     description: Bitbucket CLI with gh-style ergonomics
@@ -461,7 +461,7 @@ nfpms:
     package_name: bkt
     file_name_template: 'bkt_{{ .Version }}_{{ .Arch }}'
     formats: [deb]
-    maintainer: Aviv Sinai <opensource@avivsinai.dev>
+    maintainer: Example Maintainer <opensource@example.com>
     description: Bitbucket CLI
     homepage: https://github.com/avivsinai/bitbucket-cli
     license: MIT
@@ -630,7 +630,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project stewards at
-[opensource@avivsinai.dev](mailto:opensource@avivsinai.dev). All complaints will
+[opensource@example.com](mailto:opensource@example.com). All complaints will
 be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
@@ -862,7 +862,7 @@ implementation details.
 
 ## Contact
 
-Email [security@avivsinai.dev](mailto:security@avivsinai.dev). We prefer
+Email [security@example.com](mailto:security@example.com). We prefer
 coordinated disclosure.
 
 ```
@@ -937,8 +937,8 @@ File: GOVERNANCE.md (307 tokens)
 
 - **Maintainers**: responsible for roadmap curation, triage, and releases.
   Current maintainers:
-  - Aviv Sinai (@avivsinai)
-  - Project Stewards group (<opensource@avivsinai.dev>)
+  - Example Maintainer (@example)
+  - Project Stewards group (<opensource@example.com>)
 - **Reviewers**: contributors with merge rights on specific areas (commands,
   clients, docs). Reviewers can approve PRs but maintainers perform final merges.
 - **Contributors**: anyone sending PRs, docs updates, or filing issues.
@@ -1302,7 +1302,7 @@ File: LICENSE (221 tokens)
 ```
 MIT License
 
-Copyright (c) 2025 Aviv Sinai
+Copyright (c) 2025 Example Maintainer
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -12548,7 +12548,7 @@ read-only snapshots.
 
 ## Reporting a vulnerability
 
-Please email [security@avivsinai.dev](mailto:security@avivsinai.dev) with
+Please email [security@example.com](mailto:security@example.com) with
 "[bkt]" in the subject. Include:
 
 - A detailed description of the issue and the potential impact
@@ -12584,7 +12584,7 @@ File: SUPPORT.md (121 tokens)
 - **Questions / ideas**: open a GitHub Discussion or start a thread in
   `#bkt-cli` on the community Slack (invite in the README).
 - **Bugs**: file an issue using the "Bug report" template.
-- **Security reports**: email [security@avivsinai.dev](mailto:security@avivsinai.dev).
+- **Security reports**: email [security@example.com](mailto:security@example.com).
 - **Commercial support**: not currently offered. If this becomes critical for
   your organization, open a discussion so we can evaluate options.
 

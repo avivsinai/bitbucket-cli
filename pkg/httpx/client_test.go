@@ -128,7 +128,8 @@ func TestClientNewRequestPreservesQuery(t *testing.T) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	if got := req.URL.String(); got != "https://example.com/rest/projects?limit=25&start=0" {
+	// Paths starting with "/" should be joined to the base URL path, not replace it
+	if got := req.URL.String(); got != "https://example.com/api/rest/projects?limit=25&start=0" {
 		t.Fatalf("unexpected URL: %s", got)
 	}
 	if req.URL.RawQuery != "limit=25&start=0" {
@@ -147,7 +148,8 @@ func TestClientNewRequestHandlesRelativeWithoutSlash(t *testing.T) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	if got := req.URL.String(); got != "https://example.com/rest/repos" {
+	// Paths without leading "/" get one added, then joined to base path
+	if got := req.URL.String(); got != "https://example.com/api/rest/repos" {
 		t.Fatalf("unexpected URL: %s", got)
 	}
 }
@@ -198,5 +200,213 @@ func TestClientBackoffRespectsContextCancellation(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("expected single request, got %d", hits)
+	}
+}
+
+func TestClientNewRequestNoDoubledBasePath(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Pass path that already includes /2.0 - should NOT become /2.0/2.0/repositories
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/2.0/repositories", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	expected := "https://api.bitbucket.org/2.0/repositories"
+	if got := req.URL.String(); got != expected {
+		t.Fatalf("doubled base path: got %s, want %s", got, expected)
+	}
+}
+
+func TestNewMultipartRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "" {
+			t.Error("missing Content-Type header")
+		}
+		if r.Header.Get("Accept") != "application/json" {
+			t.Error("missing or incorrect Accept header")
+		}
+		if r.Header.Get("User-Agent") != "bkt-cli" {
+			t.Error("missing or incorrect User-Agent header")
+		}
+
+		// Verify multipart content
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+
+		file, header, err := r.FormFile("files")
+		if err != nil {
+			t.Fatalf("FormFile: %v", err)
+		}
+		defer func() { _ = file.Close() }()
+
+		if header.Filename != "test.txt" {
+			t.Errorf("expected filename test.txt, got %s", header.Filename)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  "test.txt",
+			Reader:    nil,
+		},
+	}
+	// We need to provide actual content for the test
+	files[0].Reader = http.NoBody
+
+	req, err := client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err != nil {
+		t.Fatalf("NewMultipartRequest: %v", err)
+	}
+
+	if err := client.Do(req, nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+}
+
+func TestNewMultipartRequestContentType(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  "test.txt",
+			Reader:    http.NoBody,
+		},
+	}
+
+	req, err := client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err != nil {
+		t.Fatalf("NewMultipartRequest: %v", err)
+	}
+
+	contentType := req.Header.Get("Content-Type")
+	if contentType == "" {
+		t.Fatal("Content-Type header not set")
+	}
+	if len(contentType) < 30 {
+		t.Fatalf("Content-Type should include boundary, got: %s", contentType)
+	}
+}
+
+func TestNewMultipartRequestNilReader(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  "test.txt",
+			Reader:    nil,
+		},
+	}
+
+	_, err = client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err == nil {
+		t.Fatal("expected error for nil reader")
+	}
+	if err.Error() != `reader is nil for file "test.txt"` {
+		t.Errorf("expected nil reader error, got %q", err.Error())
+	}
+}
+
+func TestNewMultipartRequestEmptyFiles(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", []MultipartFile{})
+	if err == nil {
+		t.Fatal("expected error for empty files slice")
+	}
+	if err.Error() != "at least one file is required" {
+		t.Errorf("expected empty files error, got %q", err.Error())
+	}
+}
+
+func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		status  int
+		wantMsg string
+	}{
+		{
+			name:    "captcha exception with clear message",
+			status:  http.StatusForbidden,
+			body:    `{"errors":[{"message":"CAPTCHA required. Your Bitbucket account has been locked.","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
+			wantMsg: "403 Forbidden: CAPTCHA required. Your Bitbucket account has been locked.",
+		},
+		{
+			name:    "captcha exception prioritized over generic error",
+			status:  http.StatusForbidden,
+			body:    `{"errors":[{"message":"XSRF check failed","exceptionName":""},{"message":"Account locked","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
+			wantMsg: "403 Forbidden: CAPTCHA verification required: Account locked",
+		},
+		{
+			name:    "normal error without captcha",
+			status:  http.StatusNotFound,
+			body:    `{"errors":[{"message":"Repository not found"}]}`,
+			wantMsg: "404 Not Found: Repository not found",
+		},
+		{
+			name:    "empty body",
+			status:  http.StatusForbidden,
+			body:    "",
+			wantMsg: "403 Forbidden",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{
+				BaseURL: server.URL,
+				Retry:   RetryPolicy{MaxAttempts: 1},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			req, err := client.NewRequest(context.Background(), http.MethodPost, "/test", nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+
+			err = client.Do(req, nil)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if err.Error() != tt.wantMsg {
+				t.Errorf("got %q, want %q", err.Error(), tt.wantMsg)
+			}
+		})
 	}
 }

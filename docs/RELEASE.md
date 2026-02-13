@@ -10,12 +10,14 @@
    - Determine the next semantic version based on the changes.
    - Tag the release: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
 
-3. **Automation**
-   - GitHub Actions (`release.yml`) runs GoReleaser to build:
+3. **Automation** (all handled by `release.yml` on tag push)
+   - GoReleaser builds:
      - Linux, macOS, and Windows binaries (amd64 + arm64)
      - Checksums (`bkt_${VERSION}_checksums.txt`)
      - SBOMs (`sbom-${VERSION}.cyclonedx.json` via Syft)
    - Artifacts are uploaded to the GitHub Release page.
+   - The `bkt` skill is published to the skild registry (auto-incremented version).
+   - A PR is created and auto-merged to bump `SKILL.md` to match the published version.
 
 4. **Post-release**
    - Verify the release artifacts and SBOMs.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -153,7 +154,25 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 		rel.Path = "/"
 	}
 
-	u := c.baseURL.ResolveReference(rel)
+	// Join paths properly: for relative paths starting with "/", we want to
+	// append to the base URL path, not replace it. Go's ResolveReference
+	// treats "/foo" as an absolute path that replaces the base path.
+	u := *c.baseURL
+	basePath := c.baseURL.Path
+	if strings.HasPrefix(path, "/") && basePath != "" {
+		// Guard: if path already starts with base path, don't double it.
+		// This handles cases where callers pass "/2.0/repositories" when base is
+		// already "https://api.bitbucket.org/2.0" - we don't want "/2.0/2.0/repositories".
+		if strings.HasPrefix(rel.Path, basePath) {
+			u.Path = rel.Path
+		} else {
+			u.Path = strings.TrimSuffix(basePath, "/") + rel.Path
+		}
+	} else {
+		resolved := c.baseURL.ResolveReference(rel)
+		u = *resolved
+	}
+	u.RawQuery = rel.RawQuery
 
 	var payload []byte
 	if body != nil {
@@ -321,10 +340,12 @@ func (c *Client) Do(req *http.Request, v any) error {
 }
 
 func decodeError(resp *http.Response) error {
+	type apiErrEntry struct {
+		Message       string `json:"message"`
+		ExceptionName string `json:"exceptionName"`
+	}
 	type apiErr struct {
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
+		Errors []apiErrEntry `json:"errors"`
 	}
 
 	var payload apiErr
@@ -335,7 +356,21 @@ func decodeError(resp *http.Response) error {
 	}
 
 	if len(payload.Errors) > 0 {
-		return fmt.Errorf("%s: %s", resp.Status, payload.Errors[0].Message)
+		// Prioritize user-actionable errors like CAPTCHA over generic ones
+		bestErr := payload.Errors[0]
+		for _, e := range payload.Errors {
+			if isCaptchaException(e.ExceptionName) {
+				bestErr = e
+				break
+			}
+		}
+
+		msg := bestErr.Message
+		// Add hint for CAPTCHA-locked accounts
+		if isCaptchaException(bestErr.ExceptionName) && !strings.Contains(strings.ToLower(msg), "captcha") {
+			msg = "CAPTCHA verification required: " + msg
+		}
+		return fmt.Errorf("%s: %s", resp.Status, msg)
 	}
 
 	if err == nil && len(data) > 0 {
@@ -343,6 +378,11 @@ func decodeError(resp *http.Response) error {
 	}
 
 	return fmt.Errorf("%s", resp.Status)
+}
+
+// isCaptchaException checks if the exception name indicates a CAPTCHA-locked account.
+func isCaptchaException(exceptionName string) bool {
+	return strings.Contains(strings.ToLower(exceptionName), "captcharequired")
 }
 
 func cloneRequest(req *http.Request) (*http.Request, error) {
@@ -379,7 +419,7 @@ func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response)
 
 	delay := c.retry.InitialBackoff
 	if attempts > 1 {
-		delay = delay * time.Duration(1<<(attempts-1))
+		delay *= time.Duration(1 << (attempts - 1))
 	}
 	if delay > c.retry.MaxBackoff {
 		delay = c.retry.MaxBackoff
@@ -539,4 +579,104 @@ func (c *Client) applyAdaptiveThrottle() {
 		sleep = 5 * time.Second
 	}
 	time.Sleep(sleep)
+}
+
+// MultipartFile represents a file for multipart/form-data upload.
+type MultipartFile struct {
+	FieldName string    // Form field name (e.g., "files")
+	FileName  string    // Original filename
+	Reader    io.Reader // File content
+}
+
+// NewMultipartRequest builds a multipart/form-data request for file uploads.
+// The request body is buffered in memory to support retries.
+func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, files []MultipartFile) (*http.Request, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
+	var rel *url.URL
+	var err error
+
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		rel, err = url.Parse(path)
+		if err != nil {
+			return nil, fmt.Errorf("parse request URL: %w", err)
+		}
+	} else {
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		rel, err = url.Parse(path)
+		if err != nil {
+			return nil, fmt.Errorf("parse request path: %w", err)
+		}
+	}
+
+	if rel.Path == "" {
+		rel.Path = "/"
+	}
+
+	u := *c.baseURL
+	basePath := c.baseURL.Path
+	if strings.HasPrefix(path, "/") && basePath != "" {
+		if strings.HasPrefix(rel.Path, basePath) {
+			u.Path = rel.Path
+		} else {
+			u.Path = strings.TrimSuffix(basePath, "/") + rel.Path
+		}
+	} else {
+		resolved := c.baseURL.ResolveReference(rel)
+		u = *resolved
+	}
+	u.RawQuery = rel.RawQuery
+
+	// Buffer the multipart content to support retries.
+	// Note: This buffers the entire payload in memory, which is acceptable
+	// for typical attachment sizes but may need review for very large files.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("at least one file is required")
+	}
+
+	for _, f := range files {
+		if f.Reader == nil {
+			return nil, fmt.Errorf("reader is nil for file %q", f.FileName)
+		}
+		part, err := mw.CreateFormFile(f.FieldName, f.FileName)
+		if err != nil {
+			return nil, fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := io.Copy(part, f.Reader); err != nil {
+			return nil, fmt.Errorf("copy file content: %w", err)
+		}
+	}
+
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	payload := buf.Bytes()
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+	req.ContentLength = int64(len(payload))
+
+	// Set GetBody for retry support
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
+
+	if c.username != "" || c.password != "" {
+		req.SetBasicAuth(c.username, c.password)
+	}
+
+	return req, nil
 }

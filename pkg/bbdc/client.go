@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
 // Options configure the Bitbucket Data Center client.
@@ -121,13 +122,8 @@ type Ref struct {
 }
 
 // CommitStatus describes build status for a commit.
-type CommitStatus struct {
-	State       string `json:"state"`
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	URL         string `json:"url"`
-	Description string `json:"description"`
-}
+// Type alias to shared types.CommitStatus for backward compatibility.
+type CommitStatus = types.CommitStatus
 
 type paged[T any] struct {
 	Size          int  `json:"size"`
@@ -319,4 +315,69 @@ func (c *Client) CommitStatuses(ctx context.Context, sha string) ([]CommitStatus
 		return nil, err
 	}
 	return resp.Values, nil
+}
+
+// DashboardPullRequestsOptions configures dashboard PR listings.
+type DashboardPullRequestsOptions struct {
+	State string
+	Role  string // AUTHOR, REVIEWER, or PARTICIPANT
+	Limit int
+}
+
+// ListDashboardPullRequests lists pull requests for the authenticated user across all repositories.
+func (c *Client) ListDashboardPullRequests(ctx context.Context, opts DashboardPullRequestsOptions) ([]PullRequest, error) {
+	const defaultPageSize = 25
+
+	var (
+		start = 0
+		all   []PullRequest
+	)
+
+	for {
+		pageSize := defaultPageSize
+		if opts.Limit > 0 {
+			remaining := opts.Limit - len(all)
+			if remaining <= 0 {
+				break
+			}
+			if remaining < pageSize {
+				pageSize = remaining
+			}
+		}
+
+		params := []string{fmt.Sprintf("limit=%d", pageSize)}
+		if opts.State != "" {
+			params = append(params, "state="+url.QueryEscape(strings.ToUpper(opts.State)))
+		}
+		if opts.Role != "" {
+			params = append(params, "role="+url.QueryEscape(strings.ToUpper(opts.Role)))
+		}
+
+		u := fmt.Sprintf("/rest/api/1.0/dashboard/pull-requests?%s&start=%d",
+			strings.Join(params, "&"),
+			start,
+		)
+		req, err := c.http.NewRequest(ctx, "GET", u, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp paged[PullRequest]
+		if err := c.http.Do(req, &resp); err != nil {
+			return nil, err
+		}
+
+		all = append(all, resp.Values...)
+
+		if resp.IsLastPage || len(resp.Values) == 0 {
+			break
+		}
+		start = resp.NextPageStart
+	}
+
+	if opts.Limit > 0 && len(all) > opts.Limit {
+		all = all[:opts.Limit]
+	}
+
+	return all, nil
 }

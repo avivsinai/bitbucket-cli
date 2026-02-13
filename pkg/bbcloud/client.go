@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
+	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
 // Options configure the Bitbucket Cloud client.
@@ -52,9 +53,10 @@ func New(opts Options) (*Client, error) {
 
 // User represents a Bitbucket Cloud user profile.
 type User struct {
-	UUID     string `json:"uuid"`
-	Username string `json:"username"`
-	Display  string `json:"display_name"`
+	UUID      string `json:"uuid"`
+	Username  string `json:"username"`
+	AccountID string `json:"account_id"`
+	Display   string `json:"display_name"`
 }
 
 // CurrentUser retrieves the authenticated user.
@@ -96,8 +98,9 @@ type Repository struct {
 
 // Pipeline represents a pipeline execution.
 type Pipeline struct {
-	UUID  string `json:"uuid"`
-	State struct {
+	UUID        string `json:"uuid"`
+	BuildNumber int    `json:"build_number"`
+	State       struct {
 		Result struct {
 			Name string `json:"name"`
 		} `json:"result"`
@@ -114,6 +117,12 @@ type Pipeline struct {
 	} `json:"target"`
 	CreatedOn   string `json:"created_on"`
 	CompletedOn string `json:"completed_on"`
+}
+
+// normalizeUUID ensures a UUID has curly braces, as required by Bitbucket Cloud API.
+func normalizeUUID(uuid string) string {
+	uuid = strings.Trim(uuid, "{}")
+	return "{" + uuid + "}"
 }
 
 // PipelinePage encapsulates paginated pipeline results.
@@ -133,7 +142,7 @@ func (c *Client) ListPipelines(ctx context.Context, workspace, repoSlug string, 
 		pageLen = 20
 	}
 
-	path := fmt.Sprintf("/repositories/%s/%s/pipelines/?pagelen=%d",
+	path := fmt.Sprintf("/repositories/%s/%s/pipelines/?pagelen=%d&sort=-created_on",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
 		pageLen,
@@ -367,7 +376,26 @@ func (c *Client) GetPipeline(ctx context.Context, workspace, repoSlug, uuid stri
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		strings.Trim(uuid, "{}"),
+		url.PathEscape(normalizeUUID(uuid)),
+	)
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var pipeline Pipeline
+	if err := c.http.Do(req, &pipeline); err != nil {
+		return nil, err
+	}
+	return &pipeline, nil
+}
+
+// GetPipelineByBuildNumber fetches a pipeline by its build number.
+func (c *Client) GetPipelineByBuildNumber(ctx context.Context, workspace, repoSlug string, buildNumber int) (*Pipeline, error) {
+	// Bitbucket Cloud API supports querying by build number via the same endpoint
+	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%d",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		buildNumber,
 	)
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)
 	if err != nil {
@@ -397,7 +425,7 @@ func (c *Client) ListPipelineSteps(ctx context.Context, workspace, repoSlug, pip
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		strings.Trim(pipelineUUID, "{}"),
+		url.PathEscape(normalizeUUID(pipelineUUID)),
 	)
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)
 	if err != nil {
@@ -420,21 +448,25 @@ type PipelineLog struct {
 	Log      string `json:"log"`
 }
 
+// CommitStatus describes build status for a commit.
+// Type alias to shared types.CommitStatus for backward compatibility.
+type CommitStatus = types.CommitStatus
+
 // GetPipelineLogs fetches logs for a pipeline step.
 func (c *Client) GetPipelineLogs(ctx context.Context, workspace, repoSlug, pipelineUUID, stepUUID string) ([]byte, error) {
-	pipelineUUID = strings.Trim(pipelineUUID, "{}")
-	stepUUID = strings.Trim(stepUUID, "{}")
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/%s/log",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		pipelineUUID,
-		stepUUID,
+		url.PathEscape(normalizeUUID(pipelineUUID)),
+		url.PathEscape(normalizeUUID(stepUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
+	// Override Accept header - logs endpoint returns octet-stream, not JSON
+	req.Header.Set("Accept", "application/octet-stream")
 
 	var buf strings.Builder
 	if err := c.http.Do(req, &buf); err != nil {
@@ -442,4 +474,113 @@ func (c *Client) GetPipelineLogs(ctx context.Context, workspace, repoSlug, pipel
 	}
 
 	return []byte(buf.String()), nil
+}
+
+// CommitStatuses returns build statuses for a commit.
+func (c *Client) CommitStatuses(ctx context.Context, workspace, repoSlug, commit string) ([]CommitStatus, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if commit == "" {
+		return nil, fmt.Errorf("commit SHA is required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/commit/%s/statuses",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		url.PathEscape(commit),
+	)
+
+	var statuses []CommitStatus
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp struct {
+			Values []CommitStatus `json:"values"`
+			Next   string         `json:"next"`
+		}
+		if err := c.http.Do(req, &resp); err != nil {
+			return nil, err
+		}
+
+		statuses = append(statuses, resp.Values...)
+
+		if resp.Next == "" {
+			break
+		}
+		nextURL, err := url.Parse(resp.Next)
+		if err != nil {
+			return nil, err
+		}
+		path = nextURL.RequestURI()
+	}
+
+	return statuses, nil
+}
+
+// WorkspacePullRequestsOptions configures workspace-level PR listings.
+type WorkspacePullRequestsOptions struct {
+	State string
+	Limit int
+}
+
+// ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
+func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions) ([]PullRequest, error) {
+	if workspace == "" {
+		return nil, fmt.Errorf("workspace is required")
+	}
+	if username == "" {
+		return nil, fmt.Errorf("username is required")
+	}
+
+	pageLen := opts.Limit
+	if pageLen <= 0 || pageLen > 100 {
+		pageLen = 20
+	}
+
+	var params []string
+	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
+	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
+		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
+	}
+
+	path := fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
+		url.PathEscape(workspace),
+		url.PathEscape(username),
+		strings.Join(params, "&"),
+	)
+
+	var prs []PullRequest
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var page pullRequestListPage
+		if err := c.http.Do(req, &page); err != nil {
+			return nil, err
+		}
+
+		prs = append(prs, page.Values...)
+
+		if opts.Limit > 0 && len(prs) >= opts.Limit {
+			prs = prs[:opts.Limit]
+			break
+		}
+
+		if page.Next == "" {
+			break
+		}
+		nextURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		path = nextURL.RequestURI()
+	}
+
+	return prs, nil
 }

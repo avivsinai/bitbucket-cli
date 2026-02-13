@@ -7,10 +7,17 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+
+# Prevent race conditions: only one release per tag, cancel stale runs
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -21,99 +28,102 @@ jobs:
           go-version: '1.24'
 
       - name: Install Syft
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh -s -- -b /usr/local/bin
+        run: brew install syft
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
-          version: latest
+          distribution: goreleaser
+          version: '~> v2'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
-  darwin:
-    runs-on: macos-latest
-    needs: release
-    strategy:
-      matrix:
-        include:
-          - goarch: amd64
-            arch_name: x86_64
-          - goarch: arm64
-            arch_name: arm64
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.24'
-
-      - name: Get version
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Build darwin binary
-        env:
-          CGO_ENABLED: 1
-          GOOS: darwin
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          go build -trimpath \
-            -ldflags "-s -w \
-              -X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags=${{ steps.version.outputs.version }} \
-              -X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=${{ github.sha }} \
-              -X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o bkt \
-            ./cmd/bkt
-
-      - name: Create archive
-        run: |
-          mkdir -p dist
-          tar -czvf dist/bkt_${{ steps.version.outputs.version }}_darwin_${{ matrix.arch_name }}.tar.gz \
-            bkt README.md LICENSE CHANGELOG.md
-
-      - name: Generate SBOM
-        run: |
-          brew install syft
-          syft dir:. -o cyclonedx-json=dist/bkt_${{ steps.version.outputs.version }}_darwin_${{ matrix.arch_name }}.tar.gz.sbom.cdx.json
-
-      - name: Upload to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload v${{ steps.version.outputs.version }} \
-            dist/bkt_${{ steps.version.outputs.version }}_darwin_${{ matrix.arch_name }}.tar.gz \
-            dist/bkt_${{ steps.version.outputs.version }}_darwin_${{ matrix.arch_name }}.tar.gz.sbom.cdx.json \
-            --clobber
-
-  update-checksums:
+  publish-skill:
     runs-on: ubuntu-latest
-    needs: darwin
+    needs: release
     steps:
       - uses: actions/checkout@v6
 
-      - name: Get version
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install skild
+        run: npm install -g skild
+
+      - name: Configure skild auth
+        run: |
+          mkdir -p ~/.skild
+          echo '${{ secrets.SKILD_AUTH_JSON }}' > ~/.skild/registry-auth.json
+
+      - name: Get next version from registry
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          # Query the registry API for latest published version
+          # distTags may be an array of {tag,version} or an object {latest:"x.y.z"}
+          REGISTRY_JSON=$(curl -sf "https://registry.skild.sh/skills/avivsinai/bkt?include=versions" || true)
+          REGISTRY_VERSION=$(echo "$REGISTRY_JSON" \
+            | jq -r '(.distTags | if type == "array" then [.[]|select(.tag=="latest")][0].version else .latest end) // empty' 2>/dev/null || true)
 
-      - name: Download all release assets
+          if [ -n "$REGISTRY_VERSION" ]; then
+            echo "Found registry version: $REGISTRY_VERSION"
+            CURRENT="$REGISTRY_VERSION"
+          else
+            echo "No registry version found, using SKILL.md"
+            CURRENT=$(grep -oP 'version:\s*\K[\d.]+' skills/bkt/SKILL.md)
+          fi
+
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
+          NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
+
+          echo "version=$NEXT" >> $GITHUB_OUTPUT
+          echo "Publishing: $CURRENT -> $NEXT"
+
+      - name: Publish skill
+        run: |
+          npx skild publish \
+            --dir skills/bkt \
+            --alias bkt \
+            --alias bitbucket-cli \
+            --skill-version ${{ steps.version.outputs.version }}
+
+      - name: Update SKILL.md versions
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          for file in skills/bkt/SKILL.md .claude/skills/bkt/SKILL.md .codex/skills/bkt/SKILL.md; do
+            if [ -f "$file" ]; then
+              sed -i "s/^version: .*/version: $VERSION/" "$file"
+            fi
+          done
+
+      - name: Create version bump PR
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p dist
-          gh release download v${{ steps.version.outputs.version }} -D dist
+          VERSION=${{ steps.version.outputs.version }}
 
-      - name: Regenerate checksums
-        run: |
-          cd dist
-          rm -f checksums.txt
-          sha256sum *.tar.gz *.zip *.deb 2>/dev/null | sort > checksums.txt
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Upload updated checksums
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload v${{ steps.version.outputs.version }} dist/checksums.txt --clobber
+          # Create branch and commit
+          git checkout -b chore/skill-version-bump
+          git add skills/bkt/SKILL.md .claude/skills/bkt/SKILL.md .codex/skills/bkt/SKILL.md
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore(skill): update version to ${VERSION} [skip ci]"
+          git push -f origin chore/skill-version-bump
+
+          # Create PR and try to auto-merge; if branch protection blocks it,
+          # leave the PR open for a maintainer to merge
+          PR_URL=$(gh pr create \
+            --title "chore(skill): bump SKILL.md to ${VERSION}" \
+            --body "Auto-generated after publishing \`@avivsinai/bkt@${VERSION}\` to the skill registry." \
+            --base master \
+            --head chore/skill-version-bump)
+
+          gh pr merge "$PR_URL" --squash --admin --delete-branch \
+            || echo "Auto-merge not available — PR left open for maintainer: $PR_URL"

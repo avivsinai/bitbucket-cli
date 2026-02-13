@@ -23,11 +23,17 @@ type PullRequest struct {
 		Commit struct {
 			Hash string `json:"hash"`
 		} `json:"commit"`
+		Repository struct {
+			Slug string `json:"slug"`
+		} `json:"repository"`
 	} `json:"source"`
 	Destination struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
+		Repository struct {
+			Slug string `json:"slug"`
+		} `json:"repository"`
 	} `json:"destination"`
 	Links struct {
 		HTML struct {
@@ -223,6 +229,49 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	)
 
 	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var pr PullRequest
+	if err := c.http.Do(req, &pr); err != nil {
+		return nil, err
+	}
+	return &pr, nil
+}
+
+// UpdatePullRequestInput configures PR updates. Use pointers to distinguish
+// between "not set" and "set to empty string" for clearing fields.
+type UpdatePullRequestInput struct {
+	Title       *string
+	Description *string
+}
+
+// UpdatePullRequest updates an existing pull request's title and/or description.
+func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug string, id int, input UpdatePullRequestInput) (*PullRequest, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+
+	body := make(map[string]any)
+	if input.Title != nil {
+		body["title"] = *input.Title
+	}
+	if input.Description != nil {
+		body["description"] = *input.Description
+	}
+
+	if len(body) == 0 {
+		return nil, fmt.Errorf("at least one field (title or description) must be provided")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+
+	req, err := c.http.NewRequest(ctx, "PUT", path, body)
 	if err != nil {
 		return nil, err
 	}

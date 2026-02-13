@@ -6,6 +6,109 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-02-06
+
+### Fixed
+- Made keyring operations more reliable in interactive environments by using a longer default timeout, while keeping a short timeout for headless/SSH/CI to prevent hangs. Added `BKT_KEYRING_TIMEOUT` for configuration (#46).
+
+## [0.7.1] - 2026-02-05
+
+### Fixed
+- Prevented auth login hangs in headless/SSH environments when keyring backends block on GUI prompts (#44).
+- Fixed skill publish version conflicts in CI.
+
+## [0.7.0] - 2026-02-04
+
+### Added
+- Added issue attachment management commands (`bkt issue attachment ...`) (#41).
+
+### Fixed
+- Improved attachment handling safety, tests, and documentation (#41).
+- Prevented a release race condition in CI with concurrency control.
+
+## [0.6.0] - 2026-02-01
+
+### Added
+- `bkt pr list --mine` flag to list your PRs across all repositories in a workspace (Cloud) or project (Data Center) (#35). Thanks @steveardis!
+
+## [0.5.5] - 2026-01-31
+
+### Added
+- Support build numbers as input for pipeline commands: `bkt pipeline view 10` (#38).
+- Bitbucket Pipelines CI configuration for dogfooding on Bitbucket Cloud mirror.
+- Documented `BKT_HTTP_DEBUG` environment variable for API troubleshooting.
+
+### Fixed
+- Fixed 400 "unexpected.response.body" error on `bkt pipeline view` and `bkt pipeline logs` commands. Bitbucket Cloud requires UUID braces to be URL-encoded (#38).
+- Fixed 406 error on `bkt pipeline logs` by setting correct Accept header for octet-stream response.
+
+## [0.5.4] - 2026-01-30
+
+### Added
+- `bkt pipeline list` now displays build number (`#N`) and timestamp for each pipeline run (#36).
+
+### Changed
+- Pipeline list now sorts by newest first (`-created_on`) instead of oldest first.
+
+## [0.5.3] - 2026-01-27
+
+### Added
+- New `bkt` skill for Claude Code and Codex CLI (#28).
+
+### Fixed
+- Preserve base URL path when resolving request paths.
+- Update Bitbucket Cloud auth to use Atlassian API tokens.
+
+## [0.5.2] - 2026-01-18
+
+### Changed
+- Clarified Bitbucket Cloud context creation in README, showing that `--host api.bitbucket.org` is required and adding a tip to use `bkt auth status` to discover the correct host value.
+
+## [0.4.1] - 2026-01-17
+
+### Fixed
+- Improved error messages for CAPTCHA-locked accounts. When a Bitbucket account
+  is locked due to failed authentication attempts, the CLI now displays the
+  actual CAPTCHA message instead of a generic "XSRF check failed" error (#16).
+- Fixed SSH URL auto-detection for `ssh://host:port/PROJECT/repo.git` format.
+  Previously, commands would default to a configured project instead of parsing
+  the project from the git remote URL (#17).
+
+### Changed
+- **Breaking**: Git remote now takes precedence over context config for
+  project/repo detection. If you are in a git repository that matches your
+  configured host, the CLI will use the project and repo from the git remote
+  URL, overriding any values set in your context config. Use explicit
+  `--project` and `--repo` flags to override this behavior.
+
+## [0.4.0] - 2026-01-17
+
+### Added
+- New `bkt issue` command group for Bitbucket Cloud issue tracker (Cloud-only).
+  - `bkt issue list`: List issues with filtering by state, kind, priority, assignee, milestone.
+  - `bkt issue view`: Display issue details with optional comments.
+  - `bkt issue create`: Create new issues with title, body, kind, priority, assignee, etc.
+  - `bkt issue edit`: Update existing issue fields.
+  - `bkt issue close`: Close an issue.
+  - `bkt issue reopen`: Reopen a closed issue.
+  - `bkt issue delete`: Delete an issue with confirmation prompt.
+  - `bkt issue comment`: Add or list comments on an issue.
+  - `bkt issue status`: Show issues assigned to or created by the current user.
+  - All commands support `--json` and `--yaml` output formats.
+- New `bkt pr checks` command to display build/CI status for pull requests.
+  - Supports both Bitbucket Data Center and Cloud APIs.
+  - Color-coded output: green for success, red for failure, yellow for in-progress.
+  - `--wait` flag polls until all builds complete (useful for CI automation).
+  - `--timeout` flag sets maximum wait time (default: 30 minutes).
+  - `--interval` flag configures initial polling frequency (default: 10 seconds).
+  - `--max-interval` flag sets backoff cap (default: 2 minutes).
+  - Exponential backoff (1.5x multiplier) to reduce API load during long builds.
+  - Random jitter (±15%) prevents thundering herd when multiple clients poll.
+  - Graceful handling of Ctrl-C interruption during polling.
+  - Automatic retry with backoff on transient errors (up to 3 attempts).
+  - Returns non-zero exit code when builds fail (for scripting).
+- Shared `CommitStatus` type in `pkg/types` for consistency between API clients.
+
 ## [0.2.1] - 2025-11-09
 
 ### Security

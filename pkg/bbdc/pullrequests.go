@@ -162,6 +162,80 @@ func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug st
 	return c.http.Do(req, nil)
 }
 
+// UpdatePROptions configures pull request updates.
+type UpdatePROptions struct {
+	Title       string
+	Description string
+	// Reviewers to preserve (from GET response). If nil, reviewers may be cleared.
+	Reviewers []PullRequestReviewer
+	// FromRef to preserve (from GET response). Required by DC API.
+	FromRef *Ref
+	// ToRef to preserve (from GET response). Required by DC API.
+	ToRef *Ref
+}
+
+// UpdatePullRequest updates an existing pull request's title and/or description.
+// Requires the current PR version for optimistic locking.
+// Note: DC's PUT endpoint replaces the entire PR; include Reviewers/FromRef/ToRef
+// from the GET response to prevent them from being cleared.
+func (c *Client) UpdatePullRequest(ctx context.Context, projectKey, repoSlug string, prID int, version int, opts UpdatePROptions) (*PullRequest, error) {
+	if projectKey == "" || repoSlug == "" {
+		return nil, fmt.Errorf("project key and repository slug are required")
+	}
+
+	body := map[string]any{
+		"version":     version,
+		"title":       opts.Title,
+		"description": opts.Description,
+	}
+
+	// Include reviewers to prevent them from being cleared
+	if opts.Reviewers != nil {
+		body["reviewers"] = opts.Reviewers
+	}
+
+	// Include refs to prevent API errors (DC may require these)
+	if opts.FromRef != nil {
+		fromRefBody := map[string]any{
+			"id": opts.FromRef.ID,
+			"repository": map[string]any{
+				"slug": opts.FromRef.Repository.Slug,
+			},
+		}
+		if opts.FromRef.Repository.Project != nil {
+			fromRefBody["repository"].(map[string]any)["project"] = map[string]any{"key": opts.FromRef.Repository.Project.Key}
+		}
+		body["fromRef"] = fromRefBody
+	}
+	if opts.ToRef != nil {
+		toRefBody := map[string]any{
+			"id": opts.ToRef.ID,
+			"repository": map[string]any{
+				"slug": opts.ToRef.Repository.Slug,
+			},
+		}
+		if opts.ToRef.Repository.Project != nil {
+			toRefBody["repository"].(map[string]any)["project"] = map[string]any{"key": opts.ToRef.Repository.Project.Key}
+		}
+		body["toRef"] = toRefBody
+	}
+
+	req, err := c.http.NewRequest(ctx, "PUT", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		prID,
+	), body)
+	if err != nil {
+		return nil, err
+	}
+
+	var pr PullRequest
+	if err := c.http.Do(req, &pr); err != nil {
+		return nil, err
+	}
+	return &pr, nil
+}
+
 // DeclinePullRequest declines (rejects) a pull request.
 func (c *Client) DeclinePullRequest(ctx context.Context, projectKey, repoSlug string, prID int, version int) error {
 	if projectKey == "" || repoSlug == "" {

@@ -25,9 +25,7 @@ func New(appVersion string) (*cmdutil.Factory, error) {
 	f.Prompter = prompter.New(ios)
 	f.Spinner = progress.NewSpinner(ios)
 
-	f.Config = func() (*config.Config, error) {
-		return config.Load()
-	}
+	f.Config = config.Load
 
 	return f, nil
 }

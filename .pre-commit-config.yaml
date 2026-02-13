@@ -1,0 +1,30 @@
+# Pre-commit hooks configuration
+# Install: brew install pre-commit
+# Setup: pre-commit install
+# Update hooks: pre-commit autoupdate
+# Skip hooks: SKIP=gitleaks git commit -m "message"
+
+repos:
+  # Gitleaks - Secret scanning
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+        args: ['--config=.gitleaks.toml']
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
