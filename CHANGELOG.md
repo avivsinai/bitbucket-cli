@@ -6,6 +6,13 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-02-16
+
+### Changed
+- Added Codecov integration for automated coverage tracking and badge in README.
+- Moved testing guidance from `docs/TESTING.md` into `CONTRIBUTING.md`.
+- Removed static `docs/TESTING.md` coverage audit in favor of dynamic Codecov reporting.
+
 ## [0.8.0] - 2026-02-16
 
 ### Added
@@ -171,7 +178,19 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.7.2...v0.8.0
+[0.7.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.5.5...v0.6.0
+[0.5.5]: https://github.com/avivsinai/bitbucket-cli/compare/v0.5.4...v0.5.5
+[0.5.4]: https://github.com/avivsinai/bitbucket-cli/compare/v0.5.3...v0.5.4
+[0.5.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.4.1...v0.5.2
+[0.4.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.2.1...v0.4.0
 [0.2.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/avivsinai/bitbucket-cli/releases/tag/v0.1.0
