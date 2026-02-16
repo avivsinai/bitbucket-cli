@@ -6,6 +6,19 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-02-16
+
+### Added
+- `bkt pr decline <id>` to decline (reject) a pull request, supporting both Data Center and Cloud (#51).
+- `bkt pr reopen <id>` to reopen a previously declined pull request (#51).
+- `--delete-source` flag on `bkt pr decline` to delete the source branch after declining (Data Center only).
+
+### Fixed
+- `--delete-source` now correctly targets the source branch's own repository for forked pull requests, preventing accidental deletion in the wrong repo.
+
+### Testing
+- Comprehensive test coverage improvements across 7 packages: config, httpx, bbcloud, bbdc, cmdutil, format, and TESTING.md.
+
 ## [0.7.2] - 2026-02-06
 
 ### Fixed
