@@ -23,6 +23,26 @@ requests, docs fixes, and release automation improvements.
 - For non-trivial changes, open an issue or discussion first so we can align on
   direction.
 
+## Testing
+
+Tests live alongside the code they exercise (`foo.go` → `foo_test.go`).
+
+```bash
+go test ./...                          # Run all tests
+go test ./pkg/bbdc/...                 # Run a single package
+go test -run TestListPullRequests ./pkg/bbdc/  # Run a specific test
+go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out  # Coverage report
+```
+
+### Conventions
+
+- **Table-driven tests** for functions with multiple input/output cases.
+- **`httptest.NewServer`** for API client tests — no real network calls.
+- **`t.Cleanup()`** / **`defer`** for resource teardown; **`t.TempDir()`** for temp files.
+- **`t.Setenv()`** for environment overrides (automatically restored after test).
+- Descriptive test names that explain the scenario, not just the function.
+- Both happy-path and error cases for every public function.
+
 ## Workflow
 
 1. Fork the repository and create a feature branch.
