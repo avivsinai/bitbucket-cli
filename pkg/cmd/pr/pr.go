@@ -44,6 +44,8 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newDiffCmd(f))
 	cmd.AddCommand(newApproveCmd(f))
 	cmd.AddCommand(newMergeCmd(f))
+	cmd.AddCommand(newDeclineCmd(f))
+	cmd.AddCommand(newReopenCmd(f))
 	cmd.AddCommand(newCommentCmd(f))
 	cmd.AddCommand(newReviewerGroupCmd(f))
 	cmd.AddCommand(newAutoMergeCmd(f))
@@ -1153,6 +1155,236 @@ func runMerge(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *mergeOptions
 		return err
 	}
 	return nil
+}
+
+type declineOptions struct {
+	Project      string
+	Workspace    string
+	Repo         string
+	DeleteSource bool
+}
+
+func newDeclineCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &declineOptions{}
+	cmd := &cobra.Command{
+		Use:   "decline <id>",
+		Short: "Decline a pull request",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid pull request id %q", args[0])
+			}
+			return runDecline(cmd, f, id, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().BoolVar(&opts.DeleteSource, "delete-source", false, "Delete the source branch after declining")
+
+	return cmd
+}
+
+func runDecline(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *declineOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, id)
+		if err != nil {
+			return err
+		}
+
+		if err := client.DeclinePullRequest(ctx, projectKey, repoSlug, id, pr.Version); err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintf(ios.Out, "Declined pull request #%d\n", id); err != nil {
+			return err
+		}
+
+		if opts.DeleteSource {
+			sourceBranch := pr.FromRef.DisplayID
+			if sourceBranch == "" {
+				sourceBranch = pr.FromRef.ID
+			}
+			if sourceBranch != "" {
+				// Use the source ref's own repository for deletion — it may
+				// differ from the destination repo when the PR comes from a fork.
+				srcProject := projectKey
+				srcRepo := repoSlug
+				if pr.FromRef.Repository.Project != nil && pr.FromRef.Repository.Project.Key != "" {
+					srcProject = pr.FromRef.Repository.Project.Key
+				}
+				if pr.FromRef.Repository.Slug != "" {
+					srcRepo = pr.FromRef.Repository.Slug
+				}
+				if err := client.DeleteBranch(ctx, srcProject, srcRepo, sourceBranch, false); err != nil {
+					return fmt.Errorf("declined PR but failed to delete source branch %q: %w", sourceBranch, err)
+				}
+				if _, err := fmt.Fprintf(ios.Out, "Deleted source branch %s\n", sourceBranch); err != nil {
+					return err
+				}
+			}
+		}
+
+		return nil
+
+	case "cloud":
+		if opts.DeleteSource {
+			return fmt.Errorf("--delete-source is not supported for Bitbucket Cloud")
+		}
+
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		if err := client.DeclinePullRequest(ctx, workspace, repoSlug, id); err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintf(ios.Out, "Declined pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}
+
+type reopenOptions struct {
+	Project   string
+	Workspace string
+	Repo      string
+}
+
+func newReopenCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &reopenOptions{}
+	cmd := &cobra.Command{
+		Use:   "reopen <id>",
+		Short: "Reopen a declined pull request",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid pull request id %q", args[0])
+			}
+			return runReopen(cmd, f, id, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+
+	return cmd
+}
+
+func runReopen(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *reopenOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, id)
+		if err != nil {
+			return err
+		}
+
+		if err := client.ReopenPullRequest(ctx, projectKey, repoSlug, id, pr.Version); err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintf(ios.Out, "Reopened pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	case "cloud":
+		ws := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if ws == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		if err := client.ReopenPullRequest(ctx, ws, repoSlug, id); err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintf(ios.Out, "Reopened pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
 }
 
 type commentOptions struct {
