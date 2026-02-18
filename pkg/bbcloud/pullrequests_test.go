@@ -305,3 +305,60 @@ func TestReopenPullRequestValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestCommentPullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "LGTM")
+	if err != nil {
+		t.Fatalf("CommentPullRequest: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/comments" {
+		t.Errorf("path = %s, want .../comments", gotPath)
+	}
+
+	content, ok := gotBody["content"].(map[string]any)
+	if !ok {
+		t.Fatalf("request body missing content object")
+	}
+	if raw, ok := content["raw"].(string); !ok || raw != "LGTM" {
+		t.Errorf("content.raw = %q, want LGTM", raw)
+	}
+}
+
+func TestCommentPullRequestValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+		text      string
+	}{
+		{"empty workspace", "", "repo", "text"},
+		{"empty repo", "ws", "", "text"},
+		{"empty text", "ws", "repo", ""},
+		{"blank text", "ws", "repo", "   "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.CommentPullRequest(context.Background(), tt.workspace, tt.repo, 1, tt.text); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}

@@ -1388,9 +1388,10 @@ func runReopen(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *reopenOptio
 }
 
 type commentOptions struct {
-	Project string
-	Repo    string
-	Text    string
+	Workspace string
+	Project   string
+	Repo      string
+	Text      string
 }
 
 func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
@@ -1408,6 +1409,7 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Comment text")
@@ -1427,32 +1429,59 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr comment currently supports Data Center contexts only")
-	}
 
-	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
 
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
+		defer cancel()
 
-	if err := client.CommentPullRequest(ctx, projectKey, repoSlug, id, opts.Text); err != nil {
-		return err
-	}
+		if err := client.CommentPullRequest(ctx, projectKey, repoSlug, id, opts.Text); err != nil {
+			return err
+		}
 
-	if _, err := fmt.Fprintf(ios.Out, "✓ Commented on pull request #%d\n", id); err != nil {
-		return err
+		if _, err := fmt.Fprintf(ios.Out, "✓ Commented on pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
+		defer cancel()
+
+		if err := client.CommentPullRequest(ctx, workspace, repoSlug, id, opts.Text); err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintf(ios.Out, "✓ Commented on pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
-	return nil
 }
 
 type checksOptions struct {

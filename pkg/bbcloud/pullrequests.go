@@ -282,3 +282,31 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 	}
 	return &pr, nil
 }
+
+// CommentPullRequest adds a comment to the pull request.
+func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, text string) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("comment text is required")
+	}
+
+	body := map[string]any{
+		"content": map[string]string{
+			"raw": text,
+		},
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
