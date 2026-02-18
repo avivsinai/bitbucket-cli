@@ -3,6 +3,7 @@ package bbcloud
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 )
@@ -309,4 +310,27 @@ func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug str
 	}
 
 	return c.http.Do(req, nil)
+}
+
+// PullRequestDiff streams the unified diff for the given pull request into w.
+func (c *Client) PullRequestDiff(ctx context.Context, workspace, repoSlug string, id int, w io.Writer) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if w == nil {
+		return fmt.Errorf("writer is required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/diff",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	return c.http.Do(req, w)
 }

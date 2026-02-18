@@ -935,10 +935,11 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 }
 
 type diffOptions struct {
-	Project string
-	Repo    string
-	ID      int
-	Stat    bool
+	Workspace string
+	Project   string
+	Repo      string
+	ID        int
+	Stat      bool
 }
 
 func newDiffCmd(f *cmdutil.Factory) *cobra.Command {
@@ -957,9 +958,10 @@ func newDiffCmd(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
-	cmd.Flags().BoolVar(&opts.Stat, "stat", false, "Show diff statistics instead of full patch")
+	cmd.Flags().BoolVar(&opts.Stat, "stat", false, "Show diff statistics instead of full patch (Data Center only)")
 
 	return cmd
 }
@@ -975,51 +977,80 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr diff currently supports Data Center contexts only")
-	}
 
-	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
 
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
-	defer cancel()
-
-	if opts.Stat {
-		stat, err := client.PullRequestDiffStat(ctx, projectKey, repoSlug, opts.ID)
+		client, err := cmdutil.NewDCClient(host)
 		if err != nil {
 			return err
 		}
-		payload := map[string]any{
-			"project":      projectKey,
-			"repo":         repoSlug,
-			"pull_request": opts.ID,
-			"stats":        stat,
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		if opts.Stat {
+			stat, err := client.PullRequestDiffStat(ctx, projectKey, repoSlug, opts.ID)
+			if err != nil {
+				return err
+			}
+			payload := map[string]any{
+				"project":      projectKey,
+				"repo":         repoSlug,
+				"pull_request": opts.ID,
+				"stats":        stat,
+			}
+			return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+				_, err := fmt.Fprintf(ios.Out, "Files: %d\nAdditions: %d\nDeletions: %d\n", stat.Files, stat.Additions, stat.Deletions)
+				return err
+			})
 		}
-		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-			_, err := fmt.Fprintf(ios.Out, "Files: %d\nAdditions: %d\nDeletions: %d\n", stat.Files, stat.Additions, stat.Deletions)
+
+		pager := f.PagerManager()
+		if pager.Enabled() {
+			w, err := pager.Start()
+			if err == nil {
+				defer func() { _ = pager.Stop() }()
+				return client.PullRequestDiff(ctx, projectKey, repoSlug, opts.ID, w)
+			}
+		}
+
+		return client.PullRequestDiff(ctx, projectKey, repoSlug, opts.ID, ios.Out)
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
 			return err
-		})
-	}
-
-	pager := f.PagerManager()
-	if pager.Enabled() {
-		w, err := pager.Start()
-		if err == nil {
-			defer func() { _ = pager.Stop() }()
-			return client.PullRequestDiff(ctx, projectKey, repoSlug, opts.ID, w)
 		}
-	}
 
-	return client.PullRequestDiff(ctx, projectKey, repoSlug, opts.ID, ios.Out)
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pager := f.PagerManager()
+		if pager.Enabled() {
+			w, err := pager.Start()
+			if err == nil {
+				defer func() { _ = pager.Stop() }()
+				return client.PullRequestDiff(ctx, workspace, repoSlug, opts.ID, w)
+			}
+		}
+
+		return client.PullRequestDiff(ctx, workspace, repoSlug, opts.ID, ios.Out)
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
 }
 
 func newApproveCmd(f *cmdutil.Factory) *cobra.Command {

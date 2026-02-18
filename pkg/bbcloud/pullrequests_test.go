@@ -3,8 +3,10 @@ package bbcloud_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -357,6 +359,63 @@ func TestCommentPullRequestValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := client.CommentPullRequest(context.Background(), tt.workspace, tt.repo, 1, tt.text); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
+
+func TestPullRequestDiff(t *testing.T) {
+	const wantDiff = "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n"
+	var gotMethod, gotPath, gotAccept string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAccept = r.Header.Get("Accept")
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(wantDiff))
+	}))
+
+	var buf strings.Builder
+	err := client.PullRequestDiff(context.Background(), "myworkspace", "my-repo", 7, &buf)
+	if err != nil {
+		t.Fatalf("PullRequestDiff: %v", err)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/diff" {
+		t.Errorf("path = %q, want /repositories/myworkspace/my-repo/pullrequests/7/diff", gotPath)
+	}
+	if gotAccept != "text/plain" {
+		t.Errorf("Accept = %q, want text/plain", gotAccept)
+	}
+	if buf.String() != wantDiff {
+		t.Errorf("diff body = %q, want %q", buf.String(), wantDiff)
+	}
+}
+
+func TestPullRequestDiffValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+		writer    io.Writer
+	}{
+		{"empty workspace", "", "repo", &buf},
+		{"empty repo", "ws", "", &buf},
+		{"nil writer", "ws", "repo", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.PullRequestDiff(context.Background(), tt.workspace, tt.repo, 1, tt.writer); err == nil {
 				t.Error("expected error")
 			}
 		})
