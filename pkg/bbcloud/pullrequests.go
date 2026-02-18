@@ -3,6 +3,7 @@ package bbcloud
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 )
@@ -281,4 +282,103 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 		return nil, err
 	}
 	return &pr, nil
+}
+
+// CommentPullRequest adds a comment to the pull request.
+func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, text string) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("comment text is required")
+	}
+
+	body := map[string]any{
+		"content": map[string]string{
+			"raw": text,
+		},
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
+// PullRequestDiff streams the unified diff for the given pull request into w.
+func (c *Client) PullRequestDiff(ctx context.Context, workspace, repoSlug string, id int, w io.Writer) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if w == nil {
+		return fmt.Errorf("writer is required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/diff",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	return c.http.Do(req, w)
+}
+
+// MergePullRequest merges the given pull request.
+func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug string, id int, message, strategy string, closeSource bool) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	body := map[string]any{
+		"close_source_branch": closeSource,
+	}
+	if message != "" {
+		body["message"] = message
+	}
+	if strategy != "" {
+		body["merge_strategy"] = strategy
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/merge",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
+// ApprovePullRequest approves the given pull request.
+func (c *Client) ApprovePullRequest(ctx context.Context, workspace, repoSlug string, id int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/approve",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, nil)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
 }

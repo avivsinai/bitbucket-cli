@@ -3,8 +3,10 @@ package bbcloud_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -300,6 +302,218 @@ func TestReopenPullRequestValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := client.ReopenPullRequest(context.Background(), tt.workspace, tt.repo, 1); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
+
+func TestCommentPullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "LGTM")
+	if err != nil {
+		t.Fatalf("CommentPullRequest: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/comments" {
+		t.Errorf("path = %s, want .../comments", gotPath)
+	}
+
+	content, ok := gotBody["content"].(map[string]any)
+	if !ok {
+		t.Fatalf("request body missing content object")
+	}
+	if raw, ok := content["raw"].(string); !ok || raw != "LGTM" {
+		t.Errorf("content.raw = %q, want LGTM", raw)
+	}
+}
+
+func TestCommentPullRequestValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+		text      string
+	}{
+		{"empty workspace", "", "repo", "text"},
+		{"empty repo", "ws", "", "text"},
+		{"empty text", "ws", "repo", ""},
+		{"blank text", "ws", "repo", "   "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.CommentPullRequest(context.Background(), tt.workspace, tt.repo, 1, tt.text); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
+
+func TestPullRequestDiff(t *testing.T) {
+	const wantDiff = "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n"
+	var gotMethod, gotPath, gotAccept string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAccept = r.Header.Get("Accept")
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(wantDiff))
+	}))
+
+	var buf strings.Builder
+	err := client.PullRequestDiff(context.Background(), "myworkspace", "my-repo", 7, &buf)
+	if err != nil {
+		t.Fatalf("PullRequestDiff: %v", err)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/diff" {
+		t.Errorf("path = %q, want /repositories/myworkspace/my-repo/pullrequests/7/diff", gotPath)
+	}
+	if gotAccept != "text/plain" {
+		t.Errorf("Accept = %q, want text/plain", gotAccept)
+	}
+	if buf.String() != wantDiff {
+		t.Errorf("diff body = %q, want %q", buf.String(), wantDiff)
+	}
+}
+
+func TestPullRequestDiffValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+		writer    io.Writer
+	}{
+		{"empty workspace", "", "repo", &buf},
+		{"empty repo", "ws", "", &buf},
+		{"nil writer", "ws", "repo", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.PullRequestDiff(context.Background(), tt.workspace, tt.repo, 1, tt.writer); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
+
+func TestMergePullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	err := client.MergePullRequest(context.Background(), "myworkspace", "my-repo", 7, "squash commit", "squash", true)
+	if err != nil {
+		t.Fatalf("MergePullRequest: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/merge" {
+		t.Errorf("path = %s, want .../7/merge", gotPath)
+	}
+	if gotBody["message"] != "squash commit" {
+		t.Errorf("body.message = %v, want %q", gotBody["message"], "squash commit")
+	}
+	if gotBody["merge_strategy"] != "squash" {
+		t.Errorf("body.merge_strategy = %v, want %q", gotBody["merge_strategy"], "squash")
+	}
+	if gotBody["close_source_branch"] != true {
+		t.Errorf("body.close_source_branch = %v, want true", gotBody["close_source_branch"])
+	}
+}
+
+func TestMergePullRequestValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+	}{
+		{"empty workspace", "", "repo"},
+		{"empty repo", "ws", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.MergePullRequest(context.Background(), tt.workspace, tt.repo, 1, "", "", false); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
+
+func TestApprovePullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.ApprovePullRequest(context.Background(), "myworkspace", "my-repo", 7); err != nil {
+		t.Fatalf("ApprovePullRequest: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/approve" {
+		t.Errorf("path = %s, want .../7/approve", gotPath)
+	}
+}
+
+func TestApprovePullRequestValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+	}{
+		{"empty workspace", "", "repo"},
+		{"empty repo", "ws", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.ApprovePullRequest(context.Background(), tt.workspace, tt.repo, 1); err == nil {
 				t.Error("expected error")
 			}
 		})
