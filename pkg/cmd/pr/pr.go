@@ -870,11 +870,12 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 }
 
 type checkoutOptions struct {
-	Project string
-	Repo    string
-	ID      int
-	Branch  string
-	Remote  string
+	Workspace string
+	Project   string
+	Repo      string
+	ID        int
+	Branch    string
+	Remote    string
 }
 
 func newCheckoutCmd(f *cmdutil.Factory) *cobra.Command {
@@ -893,6 +894,7 @@ func newCheckoutCmd(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Branch, "branch", "", "Local branch name (defaults to pr/<id>)")
@@ -907,31 +909,63 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr checkout currently supports Data Center contexts only")
-	}
-
-	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
 
 	branchName := opts.Branch
 	if branchName == "" {
 		branchName = fmt.Sprintf("pr/%d", opts.ID)
 	}
 
-	ref := fmt.Sprintf("refs/pull-requests/%d/from", opts.ID)
-	fetchArgs := []string{"fetch", opts.Remote, fmt.Sprintf("%s:%s", ref, branchName)}
-	if err := runGit(cmd.Context(), fetchArgs...); err != nil {
-		return err
-	}
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
 
-	if err := runGit(cmd.Context(), "checkout", branchName); err != nil {
-		return err
+		ref := fmt.Sprintf("refs/pull-requests/%d/from", opts.ID)
+		fetchArgs := []string{"fetch", opts.Remote, fmt.Sprintf("%s:%s", ref, branchName)}
+		if err := runGit(cmd.Context(), fetchArgs...); err != nil {
+			return err
+		}
+
+		return runGit(cmd.Context(), "checkout", branchName)
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		pr, err := client.GetPullRequest(ctx, workspace, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		sourceBranch := pr.Source.Branch.Name
+		if sourceBranch == "" {
+			return fmt.Errorf("could not determine source branch for pull request #%d", opts.ID)
+		}
+
+		fetchArgs := []string{"fetch", opts.Remote, fmt.Sprintf("%s:%s", sourceBranch, branchName)}
+		if err := runGit(cmd.Context(), fetchArgs...); err != nil {
+			return err
+		}
+
+		return runGit(cmd.Context(), "checkout", branchName)
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
-	return nil
 }
 
 type diffOptions struct {
