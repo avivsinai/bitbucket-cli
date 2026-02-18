@@ -1109,6 +1109,7 @@ func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int) error {
 }
 
 type mergeOptions struct {
+	Workspace   string
 	Message     string
 	Strategy    string
 	CloseSource bool
@@ -1131,6 +1132,7 @@ func newMergeCmd(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Message, "message", "", "Merge commit message override")
@@ -1151,41 +1153,68 @@ func runMerge(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *mergeOptions
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr merge currently supports Data Center contexts only")
-	}
 
-	projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
-	repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
-	}
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
 
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
 
-	pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, id)
-	if err != nil {
-		return err
-	}
+		pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, id)
+		if err != nil {
+			return err
+		}
 
-	if err := client.MergePullRequest(ctx, projectKey, repoSlug, id, pr.Version, bbdc.MergePROptions{
-		Message:           opts.Message,
-		Strategy:          opts.Strategy,
-		CloseSourceBranch: opts.CloseSource,
-	}); err != nil {
-		return err
-	}
+		if err := client.MergePullRequest(ctx, projectKey, repoSlug, id, pr.Version, bbdc.MergePROptions{
+			Message:           opts.Message,
+			Strategy:          opts.Strategy,
+			CloseSourceBranch: opts.CloseSource,
+		}); err != nil {
+			return err
+		}
 
-	if _, err := fmt.Fprintf(ios.Out, "✓ Merged pull request #%d\n", id); err != nil {
-		return err
+		if _, err := fmt.Fprintf(ios.Out, "✓ Merged pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		defer cancel()
+
+		if err := client.MergePullRequest(ctx, workspace, repoSlug, id, opts.Message, opts.Strategy, opts.CloseSource); err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintf(ios.Out, "✓ Merged pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
-	return nil
 }
 
 type declineOptions struct {

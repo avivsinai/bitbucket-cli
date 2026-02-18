@@ -334,3 +334,32 @@ func (c *Client) PullRequestDiff(ctx context.Context, workspace, repoSlug string
 
 	return c.http.Do(req, w)
 }
+
+// MergePullRequest merges the given pull request.
+func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug string, id int, message, strategy string, closeSource bool) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	body := map[string]any{
+		"close_source_branch": closeSource,
+	}
+	if message != "" {
+		body["message"] = message
+	}
+	if strategy != "" {
+		body["merge_strategy"] = strategy
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/merge",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}

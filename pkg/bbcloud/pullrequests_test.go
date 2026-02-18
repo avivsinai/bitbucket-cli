@@ -421,3 +421,58 @@ func TestPullRequestDiffValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestMergePullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	err := client.MergePullRequest(context.Background(), "myworkspace", "my-repo", 7, "squash commit", "squash", true)
+	if err != nil {
+		t.Fatalf("MergePullRequest: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/merge" {
+		t.Errorf("path = %s, want .../7/merge", gotPath)
+	}
+	if gotBody["message"] != "squash commit" {
+		t.Errorf("body.message = %v, want %q", gotBody["message"], "squash commit")
+	}
+	if gotBody["merge_strategy"] != "squash" {
+		t.Errorf("body.merge_strategy = %v, want %q", gotBody["merge_strategy"], "squash")
+	}
+	if gotBody["close_source_branch"] != true {
+		t.Errorf("body.close_source_branch = %v, want true", gotBody["close_source_branch"])
+	}
+}
+
+func TestMergePullRequestValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+	}{
+		{"empty workspace", "", "repo"},
+		{"empty repo", "ws", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.MergePullRequest(context.Background(), tt.workspace, tt.repo, 1, "", "", false); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
