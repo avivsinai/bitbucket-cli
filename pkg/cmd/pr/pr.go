@@ -1053,7 +1053,14 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 	}
 }
 
+type approveOptions struct {
+	Workspace string
+	Project   string
+	Repo      string
+}
+
 func newApproveCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &approveOptions{}
 	cmd := &cobra.Command{
 		Use:   "approve <id>",
 		Short: "Approve a pull request",
@@ -1063,13 +1070,18 @@ func newApproveCmd(f *cmdutil.Factory) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid pull request id %q", args[0])
 			}
-			return runApprove(cmd, f, id)
+			return runApprove(cmd, f, id, opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+
 	return cmd
 }
 
-func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int) error {
+func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *approveOptions) error {
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -1080,32 +1092,59 @@ func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int) error {
 	if err != nil {
 		return err
 	}
-	if host.Kind != "dc" {
-		return fmt.Errorf("pr approve currently supports Data Center contexts only")
-	}
 
-	projectKey := ctxCfg.ProjectKey
-	repoSlug := ctxCfg.DefaultRepo
-	if projectKey == "" || repoSlug == "" {
-		return fmt.Errorf("context must supply project and repo")
-	}
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
 
-	client, err := cmdutil.NewDCClient(host)
-	if err != nil {
-		return err
-	}
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
 
-	if err := client.ApprovePullRequest(ctx, projectKey, repoSlug, id); err != nil {
-		return err
-	}
+		if err := client.ApprovePullRequest(ctx, projectKey, repoSlug, id); err != nil {
+			return err
+		}
 
-	if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", id); err != nil {
-		return err
+		if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+
+		if err := client.ApprovePullRequest(ctx, workspace, repoSlug, id); err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", id); err != nil {
+			return err
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
-	return nil
 }
 
 type mergeOptions struct {

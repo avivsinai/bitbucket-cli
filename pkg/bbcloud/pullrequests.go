@@ -363,3 +363,22 @@ func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug strin
 
 	return c.http.Do(req, nil)
 }
+
+// ApprovePullRequest approves the given pull request.
+func (c *Client) ApprovePullRequest(ctx context.Context, workspace, repoSlug string, id int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/approve",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, nil)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}

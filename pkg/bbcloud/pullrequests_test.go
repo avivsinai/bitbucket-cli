@@ -476,3 +476,46 @@ func TestMergePullRequestValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestApprovePullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.ApprovePullRequest(context.Background(), "myworkspace", "my-repo", 7); err != nil {
+		t.Fatalf("ApprovePullRequest: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/approve" {
+		t.Errorf("path = %s, want .../7/approve", gotPath)
+	}
+}
+
+func TestApprovePullRequestValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+	}{
+		{"empty workspace", "", "repo"},
+		{"empty repo", "ws", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.ApprovePullRequest(context.Background(), tt.workspace, tt.repo, 1); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
