@@ -386,15 +386,16 @@ func configureFileBackend(cfg *keyring.Config, opts openOptions) error {
 		}
 	}
 
-	if passphrase != "" {
+	switch {
+	case passphrase != "":
 		cfg.FilePasswordFunc = keyring.FixedStringPrompt(passphrase)
-	} else if IsHeadless() {
+	case IsHeadless():
 		return fmt.Errorf(
 			"file backend requires a passphrase in headless environments; "+
 				"set %s (or KEYRING_FILE_PASSWORD) or use %s to bypass the keyring entirely",
 			envPassphrase, EnvToken,
 		)
-	} else {
+	default:
 		cfg.FilePasswordFunc = keyring.TerminalPrompt
 	}
 
