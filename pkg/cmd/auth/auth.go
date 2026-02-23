@@ -81,6 +81,10 @@ func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
 }
 
 func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error {
+	if secret.TokenFromEnv() != "" {
+		return fmt.Errorf("%s environment variable is set; token is externally managed. Unset %s to use auth login", secret.EnvToken, secret.EnvToken)
+	}
+
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -330,10 +334,11 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 	}
 
 	type hostSummary struct {
-		Key      string `json:"key"`
-		Kind     string `json:"kind"`
-		BaseURL  string `json:"base_url"`
-		Username string `json:"username,omitempty"`
+		Key         string `json:"key"`
+		Kind        string `json:"kind"`
+		BaseURL     string `json:"base_url"`
+		Username    string `json:"username,omitempty"`
+		TokenSource string `json:"token_source"`
 	}
 
 	type contextSummary struct {
@@ -351,14 +356,17 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 	}
 	sort.Strings(hostKeys)
 
+	tokenSource := resolvedTokenSource()
+
 	var hosts []hostSummary
 	for _, key := range hostKeys {
 		h := cfg.Hosts[key]
 		hosts = append(hosts, hostSummary{
-			Key:      key,
-			Kind:     h.Kind,
-			BaseURL:  h.BaseURL,
-			Username: h.Username,
+			Key:         key,
+			Kind:        h.Kind,
+			BaseURL:     h.BaseURL,
+			Username:    h.Username,
+			TokenSource: tokenSource,
 		})
 	}
 
@@ -410,6 +418,9 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 				if _, err := fmt.Fprintf(ios.Out, "    user: %s\n", h.Username); err != nil {
 					return err
 				}
+			}
+			if _, err := fmt.Fprintf(ios.Out, "    token source: %s\n", h.TokenSource); err != nil {
+				return err
 			}
 		}
 
@@ -474,6 +485,10 @@ func newLogoutCmd(f *cmdutil.Factory) *cobra.Command {
 }
 
 func runLogout(cmd *cobra.Command, f *cmdutil.Factory, opts *logoutOptions) error {
+	if secret.TokenFromEnv() != "" {
+		return fmt.Errorf("%s environment variable is set; token is externally managed. Unset %s to use auth logout", secret.EnvToken, secret.EnvToken)
+	}
+
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -597,4 +612,14 @@ func promptSecret(ios *iostreams.IOStreams, label string) (string, error) {
 func isTerminal(in io.Reader) bool {
 	file, ok := in.(*os.File)
 	return ok && term.IsTerminal(int(file.Fd()))
+}
+
+// resolvedTokenSource returns the active token resolution strategy.
+// When BKT_TOKEN is set it applies globally to all hosts; otherwise
+// the strategy is keyring-based (actual token presence is not checked).
+func resolvedTokenSource() string {
+	if secret.TokenFromEnv() != "" {
+		return secret.EnvToken
+	}
+	return "keyring"
 }

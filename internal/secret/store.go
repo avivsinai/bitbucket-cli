@@ -17,6 +17,10 @@ import (
 const serviceName = "bkt"
 
 const (
+	// EnvToken is the environment variable for runtime token injection.
+	// When set, it bypasses the keyring entirely.
+	EnvToken = "BKT_TOKEN"
+
 	envAllowInsecure = "BKT_ALLOW_INSECURE_STORE"
 	envPassphrase    = "BKT_KEYRING_PASSPHRASE"
 	envTimeout       = "BKT_KEYRING_TIMEOUT"
@@ -32,14 +36,19 @@ const (
 // ErrKeyringTimeout indicates a keyring operation timed out.
 var ErrKeyringTimeout = errors.New("keyring operation timed out")
 
-// isHeadless returns true if the environment is likely unable to handle keyring
+// TokenFromEnv returns the value of BKT_TOKEN if set, or empty string.
+func TokenFromEnv() string {
+	return strings.TrimSpace(os.Getenv(EnvToken))
+}
+
+// IsHeadless returns true if the environment is likely unable to handle keyring
 // unlock prompts without hanging.
 //
 // On Linux this specifically targets SSH sessions without X11/Wayland forwarding,
 // and other environments without a display or D-Bus session (cron/containers).
 // On macOS/Windows, DISPLAY/DBus heuristics don't apply, so we treat SSH and
 // CI sessions as headless to fail fast.
-func isHeadless() bool {
+func IsHeadless() bool {
 	// SSH session without display forwarding - this is the main hang case
 	isSSH := os.Getenv("SSH_TTY") != "" || os.Getenv("SSH_CLIENT") != "" || os.Getenv("SSH_CONNECTION") != ""
 	if isSSH {
@@ -69,7 +78,7 @@ func keyringTimeout() time.Duration {
 	if d, ok := parseTimeoutEnv(strings.TrimSpace(os.Getenv(envTimeout))); ok {
 		return d
 	}
-	if isHeadless() {
+	if IsHeadless() {
 		return keyringTimeoutHeadless
 	}
 	return keyringTimeoutInteractive
@@ -96,7 +105,7 @@ func parseTimeoutEnv(raw string) (time.Duration, bool) {
 }
 
 func timeoutHint() string {
-	if isHeadless() {
+	if IsHeadless() {
 		return fmt.Sprintf("keyring prompt may be blocked (headless/SSH environment?). Use --allow-insecure-store or set %s=1", envAllowInsecure)
 	}
 	return fmt.Sprintf("keyring prompt may need more time. Increase timeout via %s (e.g. 60s or 2m)", envTimeout)
@@ -318,7 +327,7 @@ func defaultBackends() []keyring.BackendType {
 	default:
 		// In headless environments (SSH without X11, containers, etc.),
 		// skip GUI-based backends that would hang waiting for unlock prompts.
-		if isHeadless() {
+		if IsHeadless() {
 			return []keyring.BackendType{
 				keyring.KeyCtlBackend,
 				keyring.PassBackend,
@@ -379,6 +388,12 @@ func configureFileBackend(cfg *keyring.Config, opts openOptions) error {
 
 	if passphrase != "" {
 		cfg.FilePasswordFunc = keyring.FixedStringPrompt(passphrase)
+	} else if IsHeadless() {
+		return fmt.Errorf(
+			"file backend requires a passphrase in headless environments; "+
+				"set %s (or KEYRING_FILE_PASSWORD) or use %s to bypass the keyring entirely",
+			envPassphrase, EnvToken,
+		)
 	} else {
 		cfg.FilePasswordFunc = keyring.TerminalPrompt
 	}

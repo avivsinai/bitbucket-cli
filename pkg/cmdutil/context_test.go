@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/secret"
 )
 
 func newTestFactory(cfg *config.Config) *Factory {
@@ -39,6 +40,50 @@ func TestResolveHostWithHostKey(t *testing.T) {
 	}
 	if host == nil || host.BaseURL != "https://bitbucket.example.com" {
 		t.Fatalf("unexpected host: %#v", host)
+	}
+}
+
+func TestLoadHostTokenBypassesKeyringWhenEnvTokenSet(t *testing.T) {
+	host := &config.Host{
+		Kind:               "dc",
+		BaseURL:            "https://bitbucket.example.com",
+		AllowInsecureStore: true,
+	}
+
+	t.Setenv(secret.EnvToken, "env-token")
+
+	// Make keyring usage fail in headless file-backend mode.
+	t.Setenv("KEYRING_BACKEND", "file")
+	t.Setenv("SSH_CONNECTION", "1")
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "")
+	t.Setenv("BKT_KEYRING_PASSPHRASE", "")
+	t.Setenv("KEYRING_FILE_PASSWORD", "")
+	t.Setenv("KEYRING_PASSWORD", "")
+
+	if err := loadHostToken("bkt", "bitbucket.example.com", host); err != nil {
+		t.Fatalf("loadHostToken returned error: %v", err)
+	}
+	if host.Token != "env-token" {
+		t.Fatalf("token = %q, want %q", host.Token, "env-token")
+	}
+}
+
+func TestLoadHostTokenEnvTokenTakesPrecedence(t *testing.T) {
+	host := &config.Host{
+		Kind:    "dc",
+		BaseURL: "https://bitbucket.example.com",
+		Token:   "stored-token",
+	}
+
+	t.Setenv(secret.EnvToken, "env-token")
+
+	if err := loadHostToken("bkt", "bitbucket.example.com", host); err != nil {
+		t.Fatalf("loadHostToken returned error: %v", err)
+	}
+	if host.Token != "env-token" {
+		t.Fatalf("token = %q, want %q", host.Token, "env-token")
 	}
 }
 
