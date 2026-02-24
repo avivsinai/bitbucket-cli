@@ -3,9 +3,27 @@ package bbcloud
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 )
+
+// RepositoryRef identifies a repository inside a pull request's source or
+// destination. The Bitbucket Cloud API returns full_name and clone links here,
+// which we need to resolve fork remotes during checkout.
+type RepositoryRef struct {
+	Slug     string `json:"slug"`
+	FullName string `json:"full_name"`
+	Links    struct {
+		HTML struct {
+			Href string `json:"href"`
+		} `json:"html"`
+		Clone []struct {
+			Href string `json:"href"`
+			Name string `json:"name"` // "https" or "ssh"
+		} `json:"clone"`
+	} `json:"links"`
+}
 
 // PullRequest models a Bitbucket Cloud pull request.
 type PullRequest struct {
@@ -23,17 +41,13 @@ type PullRequest struct {
 		Commit struct {
 			Hash string `json:"hash"`
 		} `json:"commit"`
-		Repository struct {
-			Slug string `json:"slug"`
-		} `json:"repository"`
+		Repository RepositoryRef `json:"repository"`
 	} `json:"source"`
 	Destination struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
-		Repository struct {
-			Slug string `json:"slug"`
-		} `json:"repository"`
+		Repository RepositoryRef `json:"repository"`
 	} `json:"destination"`
 	Links struct {
 		HTML struct {
@@ -281,4 +295,113 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 		return nil, err
 	}
 	return &pr, nil
+}
+
+// CommentPullRequest adds a comment to the pull request.
+func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, text string) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("comment text is required")
+	}
+
+	body := map[string]any{
+		"content": map[string]string{
+			"raw": text,
+		},
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
+// PullRequestDiff streams the unified diff for the given pull request into w.
+func (c *Client) PullRequestDiff(ctx context.Context, workspace, repoSlug string, id int, w io.Writer) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if w == nil {
+		return fmt.Errorf("writer is required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/diff",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	return c.http.Do(req, w)
+}
+
+// validMergeStrategies lists the strategies accepted by Bitbucket Cloud.
+var validMergeStrategies = map[string]bool{
+	"merge_commit": true,
+	"squash":       true,
+	"fast_forward": true,
+}
+
+// MergePullRequest merges the given pull request.
+func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug string, id int, message, strategy string, closeSource bool) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if strategy != "" && !validMergeStrategies[strategy] {
+		return fmt.Errorf("invalid merge strategy %q: must be one of merge_commit, squash, fast_forward", strategy)
+	}
+
+	body := map[string]any{
+		"close_source_branch": closeSource,
+	}
+	if message != "" {
+		body["message"] = message
+	}
+	if strategy != "" {
+		body["merge_strategy"] = strategy
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/merge",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
+}
+
+// ApprovePullRequest approves the given pull request.
+func (c *Client) ApprovePullRequest(ctx context.Context, workspace, repoSlug string, id int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/approve",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		id,
+	)
+	req, err := c.http.NewRequest(ctx, "POST", path, nil)
+	if err != nil {
+		return err
+	}
+
+	return c.http.Do(req, nil)
 }
