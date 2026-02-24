@@ -138,7 +138,7 @@ Create an **API token with scopes** for Bitbucket Cloud:
 3. Name your token and set an expiry date
 4. **Select "Bitbucket" as the application** (required!)
 5. Grant scopes:
-   - **Account: Read** — Required for authentication
+   - **Account: Read (`read:user:bitbucket`)** — Required for authentication
    - **Repositories: Read, Write** — For repo commands
    - **Pull requests: Read, Write** — For PR commands
    - **Issues: Read, Write** — For issue commands (optional)

@@ -211,7 +211,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			if _, err := fmt.Fprintln(ios.Out, "\nRequired scopes:"); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintln(ios.Out, "  - Account: Read (required for login)"); err != nil {
+			if _, err := fmt.Fprintln(ios.Out, "  - Account: Read / read:user:bitbucket (required for login)"); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintln(ios.Out, "  - Repositories: Read, Write"); err != nil {
