@@ -348,10 +348,20 @@ func (c *Client) PullRequestDiff(ctx context.Context, workspace, repoSlug string
 	return c.http.Do(req, w)
 }
 
+// validMergeStrategies lists the strategies accepted by Bitbucket Cloud.
+var validMergeStrategies = map[string]bool{
+	"merge_commit": true,
+	"squash":       true,
+	"fast_forward": true,
+}
+
 // MergePullRequest merges the given pull request.
 func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug string, id int, message, strategy string, closeSource bool) error {
 	if workspace == "" || repoSlug == "" {
 		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if strategy != "" && !validMergeStrategies[strategy] {
+		return fmt.Errorf("invalid merge strategy %q: must be one of merge_commit, squash, fast_forward", strategy)
 	}
 
 	body := map[string]any{

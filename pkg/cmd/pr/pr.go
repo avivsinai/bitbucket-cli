@@ -24,6 +24,12 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
 
+const (
+	// Standard timeouts for API calls.
+	timeoutRead  = 15 * time.Second
+	timeoutWrite = 10 * time.Second
+)
+
 // Sentinel errors for checks command
 var (
 	ErrNoSourceCommit = errors.New("pull request has no source commit")
@@ -943,7 +949,7 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 			return err
 		}
 
-		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeoutRead)
 		defer cancel()
 
 		pr, err := client.GetPullRequest(ctx, workspace, repoSlug, opts.ID)
@@ -964,7 +970,8 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 			pr.Source.Repository.FullName != pr.Destination.Repository.FullName
 
 		if isFork {
-			forkCloneURL := repoCloneURL(pr.Source.Repository, "https")
+			protocol := inferProtocol(cmd.Context(), opts.Remote)
+			forkCloneURL := repoCloneURL(pr.Source.Repository, protocol)
 			if forkCloneURL == "" {
 				commitHash := pr.Source.Commit.Hash
 				hint := ""
@@ -983,12 +990,24 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 			if existing := findRemoteByURL(cmd.Context(), forkCloneURL); existing != "" {
 				remote = existing
 			} else {
-				// Add a new remote for the fork: fork/<owner>
+				// Derive remote name: fork/<owner>
 				parts := strings.SplitN(pr.Source.Repository.FullName, "/", 2)
-				owner := parts[0]
+				owner := pr.Source.Repository.FullName // fallback if no /
+				if len(parts) >= 2 {
+					owner = parts[0]
+				}
 				remote = "fork/" + owner
-				if err := runGit(cmd.Context(), "remote", "add", remote, forkCloneURL); err != nil {
-					return fmt.Errorf("failed to add remote %q for fork: %w", remote, err)
+
+				// If a remote with this name already exists (but different URL),
+				// update its URL instead of failing.
+				if existingURL, err := runGitOutput(cmd.Context(), "remote", "get-url", remote); err == nil && strings.TrimSpace(existingURL) != "" {
+					if err := runGit(cmd.Context(), "remote", "set-url", remote, forkCloneURL); err != nil {
+						return fmt.Errorf("failed to update remote %q URL for fork: %w", remote, err)
+					}
+				} else {
+					if err := runGit(cmd.Context(), "remote", "add", remote, forkCloneURL); err != nil {
+						return fmt.Errorf("failed to add remote %q for fork: %w", remote, err)
+					}
 				}
 			}
 		}
@@ -1120,6 +1139,21 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 				"stats":        result,
 			}
 			return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+				// Compute max path length for alignment.
+				maxLen := 0
+				for _, e := range result.Entries {
+					p := e.NewPath
+					if p == "" {
+						p = e.OldPath
+					}
+					if len(p) > maxLen {
+						maxLen = len(p)
+					}
+				}
+				if maxLen < 20 {
+					maxLen = 20
+				}
+
 				for _, e := range result.Entries {
 					prefix := "M"
 					switch e.Status {
@@ -1129,16 +1163,20 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 						prefix = "D"
 					case "renamed":
 						prefix = "R"
+					default:
+						if e.Status != "modified" && e.Status != "" {
+							prefix = "?"
+						}
 					}
 					filePath := e.NewPath
 					if filePath == "" {
 						filePath = e.OldPath
 					}
-					if _, err := fmt.Fprintf(ios.Out, "%s  %-60s +%d -%d\n", prefix, filePath, e.LinesAdded, e.LinesRemoved); err != nil {
+					if _, err := fmt.Fprintf(ios.Out, "%s  %-*s +%d -%d\n", prefix, maxLen, filePath, e.LinesAdded, e.LinesRemoved); err != nil {
 						return err
 					}
 				}
-				_, err := fmt.Fprintf(ios.Out, "\n%d files changed, %d insertions(+), %d deletions(-)\n", result.TotalFiles, result.TotalAdded, result.TotalRemoved)
+				_, err := fmt.Fprintf(ios.Out, "\n%d files changed, %d insertions(+), %d deletions(-)\n", len(result.Entries), result.TotalAdded, result.TotalRemoved)
 				return err
 			})
 		}
@@ -1163,6 +1201,7 @@ type approveOptions struct {
 	Workspace string
 	Project   string
 	Repo      string
+	ID        int
 }
 
 func newApproveCmd(f *cmdutil.Factory) *cobra.Command {
@@ -1176,7 +1215,8 @@ func newApproveCmd(f *cmdutil.Factory) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid pull request id %q", args[0])
 			}
-			return runApprove(cmd, f, id, opts)
+			opts.ID = id
+			return runApprove(cmd, f, opts)
 		},
 	}
 
@@ -1187,7 +1227,7 @@ func newApproveCmd(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *approveOptions) error {
+func runApprove(cmd *cobra.Command, f *cmdutil.Factory, opts *approveOptions) error {
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -1212,14 +1252,14 @@ func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *approveOpt
 			return err
 		}
 
-		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeoutWrite)
 		defer cancel()
 
-		if err := client.ApprovePullRequest(ctx, projectKey, repoSlug, id); err != nil {
+		if err := client.ApprovePullRequest(ctx, projectKey, repoSlug, opts.ID); err != nil {
 			return err
 		}
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", id); err != nil {
+		if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", opts.ID); err != nil {
 			return err
 		}
 		return nil
@@ -1236,14 +1276,14 @@ func runApprove(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *approveOpt
 			return err
 		}
 
-		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeoutWrite)
 		defer cancel()
 
-		if err := client.ApprovePullRequest(ctx, workspace, repoSlug, id); err != nil {
+		if err := client.ApprovePullRequest(ctx, workspace, repoSlug, opts.ID); err != nil {
 			return err
 		}
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", id); err != nil {
+		if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", opts.ID); err != nil {
 			return err
 		}
 		return nil
@@ -2270,7 +2310,8 @@ func repoCloneURL(repo bbcloud.RepositoryRef, protocol string) string {
 }
 
 // findRemoteByURL scans `git remote -v` output for a remote whose fetch URL
-// matches the given cloneURL. Returns the remote name, or "" if not found.
+// matches the given cloneURL. Only fetch lines are considered.
+// Returns the remote name, or "" if not found.
 func findRemoteByURL(ctx context.Context, cloneURL string) string {
 	out, err := runGitOutput(ctx, "remote", "-v")
 	if err != nil {
@@ -2283,7 +2324,11 @@ func findRemoteByURL(ctx context.Context, cloneURL string) string {
 	target := norm(cloneURL)
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		if len(fields) < 3 {
+			continue
+		}
+		// Only match fetch lines: name URL (fetch)
+		if fields[2] != "(fetch)" {
 			continue
 		}
 		if norm(fields[1]) == target {
@@ -2291,4 +2336,19 @@ func findRemoteByURL(ctx context.Context, cloneURL string) string {
 		}
 	}
 	return ""
+}
+
+// inferProtocol examines the given remote's URL to determine whether
+// SSH or HTTPS should be preferred for fork clone URLs.
+// Falls back to "https" if the remote URL cannot be determined.
+func inferProtocol(ctx context.Context, remoteName string) string {
+	url, err := runGitOutput(ctx, "remote", "get-url", remoteName)
+	if err != nil {
+		return "https"
+	}
+	url = strings.TrimSpace(url)
+	if strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://") {
+		return "ssh"
+	}
+	return "https"
 }

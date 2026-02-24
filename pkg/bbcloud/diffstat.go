@@ -11,8 +11,8 @@ type DiffStatEntry struct {
 	Status       string `json:"status"`
 	LinesAdded   int    `json:"lines_added"`
 	LinesRemoved int    `json:"lines_removed"`
-	OldPath      string `json:"-"`
-	NewPath      string `json:"-"`
+	OldPath      string `json:"old_path,omitempty"`
+	NewPath      string `json:"new_path,omitempty"`
 }
 
 // DiffStatResult aggregates per-file diff statistics for a pull request.
@@ -20,7 +20,6 @@ type DiffStatResult struct {
 	Entries      []DiffStatEntry `json:"entries"`
 	TotalAdded   int             `json:"total_added"`
 	TotalRemoved int             `json:"total_removed"`
-	TotalFiles   int             `json:"total_files"`
 }
 
 // diffStatPage models a single page of the diffstat API response.
@@ -55,7 +54,7 @@ func (c *Client) PullRequestDiffStat(ctx context.Context, workspace, repoSlug st
 
 	result := &DiffStatResult{}
 
-	for page := 0; path != "" && page < maxDiffStatPages; page++ {
+	for pageNum := 0; path != "" && pageNum < maxDiffStatPages; pageNum++ {
 		req, err := c.http.NewRequest(ctx, "GET", path, nil)
 		if err != nil {
 			return nil, err
@@ -81,7 +80,6 @@ func (c *Client) PullRequestDiffStat(ctx context.Context, workspace, repoSlug st
 			result.Entries = append(result.Entries, entry)
 			result.TotalAdded += v.LinesAdded
 			result.TotalRemoved += v.LinesRemoved
-			result.TotalFiles++
 		}
 
 		if page.Next == "" {

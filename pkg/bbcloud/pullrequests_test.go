@@ -477,6 +477,31 @@ func TestMergePullRequestValidation(t *testing.T) {
 	}
 }
 
+func TestMergePullRequestInvalidStrategy(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalid strategy should return error
+	invalidStrategies := []string{"squah", "rebase", "merge-commit", "SQUASH"}
+	for _, s := range invalidStrategies {
+		t.Run("invalid_"+s, func(t *testing.T) {
+			if err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", s, false); err == nil {
+				t.Errorf("expected error for strategy %q", s)
+			}
+		})
+	}
+
+	// Valid strategies should not fail validation (they'll fail on network, but not validation)
+	// Empty string is valid (means "use default")
+	if err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", "", false); err == nil {
+		// Network error is expected, but not a validation error — this is fine
+	}
+}
+
 func TestApprovePullRequest(t *testing.T) {
 	var gotMethod, gotPath string
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

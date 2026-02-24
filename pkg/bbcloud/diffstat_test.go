@@ -52,8 +52,8 @@ func TestPullRequestDiffStat(t *testing.T) {
 	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/diffstat" {
 		t.Errorf("path = %q, want /repositories/myworkspace/my-repo/pullrequests/7/diffstat", gotPath)
 	}
-	if result.TotalFiles != 3 {
-		t.Errorf("TotalFiles = %d, want 3", result.TotalFiles)
+	if len(result.Entries) != 3 {
+		t.Errorf("len(Entries) = %d, want 3", len(result.Entries))
 	}
 	if result.TotalAdded != 35 {
 		t.Errorf("TotalAdded = %d, want 35", result.TotalAdded)
@@ -146,8 +146,8 @@ func TestPullRequestDiffStatPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PullRequestDiffStat: %v", err)
 	}
-	if result.TotalFiles != 2 {
-		t.Errorf("TotalFiles = %d, want 2", result.TotalFiles)
+	if len(result.Entries) != 2 {
+		t.Errorf("len(Entries) = %d, want 2", len(result.Entries))
 	}
 	if result.TotalAdded != 15 {
 		t.Errorf("TotalAdded = %d, want 15", result.TotalAdded)
