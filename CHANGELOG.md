@@ -6,6 +6,16 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-02-24
+
+### Added
+- `BKT_TOKEN` environment variable for runtime token injection, bypassing the keyring entirely. Modeled after `GH_TOKEN` in the GitHub CLI. Enables headless/container usage without keyring dependencies (#59).
+- `auth status` now shows the token source (`BKT_TOKEN` or `keyring`) for each configured host.
+
+### Fixed
+- `--allow-insecure-store` in headless/container environments no longer hangs on an interactive passphrase prompt. Returns an actionable error directing users to set `BKT_KEYRING_PASSPHRASE` or use `BKT_TOKEN` (#59).
+- `auth login` and `auth logout` now return a clear error when `BKT_TOKEN` is set, since the token is externally managed.
+
 ## [0.8.1] - 2026-02-16
 
 ### Changed
