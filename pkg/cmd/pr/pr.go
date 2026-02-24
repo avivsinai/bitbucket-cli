@@ -995,7 +995,7 @@ func newDiffCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
-	cmd.Flags().BoolVar(&opts.Stat, "stat", false, "Show diff statistics instead of full patch (Data Center only)")
+	cmd.Flags().BoolVar(&opts.Stat, "stat", false, "Show diff statistics instead of full patch")
 
 	return cmd
 }
@@ -1070,6 +1070,41 @@ func runDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *diffOptions) error {
 
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
+
+		if opts.Stat {
+			result, err := client.PullRequestDiffStat(ctx, workspace, repoSlug, opts.ID)
+			if err != nil {
+				return err
+			}
+			payload := map[string]any{
+				"workspace":    workspace,
+				"repo":         repoSlug,
+				"pull_request": opts.ID,
+				"stats":        result,
+			}
+			return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+				for _, e := range result.Entries {
+					prefix := "M"
+					switch e.Status {
+					case "added":
+						prefix = "A"
+					case "removed":
+						prefix = "D"
+					case "renamed":
+						prefix = "R"
+					}
+					filePath := e.NewPath
+					if filePath == "" {
+						filePath = e.OldPath
+					}
+					if _, err := fmt.Fprintf(ios.Out, "%s  %-60s +%d -%d\n", prefix, filePath, e.LinesAdded, e.LinesRemoved); err != nil {
+						return err
+					}
+				}
+				_, err := fmt.Fprintf(ios.Out, "\n%d files changed, %d insertions(+), %d deletions(-)\n", result.TotalFiles, result.TotalAdded, result.TotalRemoved)
+				return err
+			})
+		}
 
 		pager := f.PagerManager()
 		if pager.Enabled() {
