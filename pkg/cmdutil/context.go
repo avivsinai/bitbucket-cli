@@ -148,6 +148,13 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 		return fmt.Errorf("host %q not configured", hostKey)
 	}
 
+	// BKT_TOKEN applies to all hosts. For multi-host setups where each
+	// host needs a different token, use the keyring instead.
+	if envToken := secret.TokenFromEnv(); envToken != "" {
+		host.Token = envToken
+		return nil
+	}
+
 	if host.Token != "" {
 		return nil
 	}
