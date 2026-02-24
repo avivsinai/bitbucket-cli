@@ -6,6 +6,14 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Bitbucket Cloud support for `pr checkout`, `pr diff`, `pr approve`, `pr merge`, and `pr comment` subcommands (#57).
+- `pr diff --stat` support for Cloud with per-file diff statistics.
+- Fork-aware `pr checkout` on Cloud with automatic protocol inference from existing remotes.
+
+### Fixed
+- `pr checkout` now cleans up freshly added fork remotes when the subsequent fetch fails, preventing "remote already exists" errors on re-runs.
+
 ## [0.8.2] - 2026-02-24
 
 ### Added

@@ -969,6 +969,7 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 			pr.Destination.Repository.FullName != "" &&
 			pr.Source.Repository.FullName != pr.Destination.Repository.FullName
 
+		var addedRemote bool
 		if isFork {
 			protocol := inferProtocol(cmd.Context(), opts.Remote)
 			forkCloneURL := repoCloneURL(pr.Source.Repository, protocol)
@@ -1008,12 +1009,20 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 					if err := runGit(cmd.Context(), "remote", "add", remote, forkCloneURL); err != nil {
 						return fmt.Errorf("failed to add remote %q for fork: %w", remote, err)
 					}
+					addedRemote = true
 				}
 			}
 		}
 
 		fetchArgs := []string{"fetch", remote, fmt.Sprintf("%s:%s", sourceBranch, branchName)}
 		if err := runGit(cmd.Context(), fetchArgs...); err != nil {
+			// Roll back a freshly added remote so re-runs don't fail
+			// with "remote already exists" when the URL changes.
+			if addedRemote {
+				if rmErr := runGit(cmd.Context(), "remote", "remove", remote); rmErr != nil {
+					return fmt.Errorf("fetch failed: %w (additionally, cleanup of remote %q failed: %v)", err, remote, rmErr)
+				}
+			}
 			return err
 		}
 
