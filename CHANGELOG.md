@@ -6,6 +6,8 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-02-24
+
 ### Added
 - Bitbucket Cloud support for `pr checkout`, `pr diff`, `pr approve`, `pr merge`, and `pr comment` subcommands (#57).
 - `pr diff --stat` support for Cloud with per-file diff statistics.
