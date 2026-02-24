@@ -495,11 +495,9 @@ func TestMergePullRequestInvalidStrategy(t *testing.T) {
 		})
 	}
 
-	// Valid strategies should not fail validation (they'll fail on network, but not validation)
-	// Empty string is valid (means "use default")
-	if err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", "", false); err == nil {
-		// Network error is expected, but not a validation error — this is fine
-	}
+	// Valid strategies should not fail validation (they'll fail on network, but not validation).
+	// Empty string is valid (means "use default"). A network error is expected here.
+	_ = client.MergePullRequest(context.Background(), "ws", "repo", 1, "", "", false)
 }
 
 func TestApprovePullRequest(t *testing.T) {
