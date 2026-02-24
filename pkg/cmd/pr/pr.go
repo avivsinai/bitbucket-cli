@@ -956,7 +956,44 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 			return fmt.Errorf("could not determine source branch for pull request #%d", opts.ID)
 		}
 
-		fetchArgs := []string{"fetch", opts.Remote, fmt.Sprintf("%s:%s", sourceBranch, branchName)}
+		// Determine the correct remote to fetch from.
+		remote := opts.Remote // default "origin"
+
+		isFork := pr.Source.Repository.FullName != "" &&
+			pr.Destination.Repository.FullName != "" &&
+			pr.Source.Repository.FullName != pr.Destination.Repository.FullName
+
+		if isFork {
+			forkCloneURL := repoCloneURL(pr.Source.Repository, "https")
+			if forkCloneURL == "" {
+				commitHash := pr.Source.Commit.Hash
+				hint := ""
+				if commitHash != "" {
+					hint = fmt.Sprintf(
+						"\nThe fork may have been deleted. You can manually fetch the PR's head commit:\n"+
+							"  git fetch %s %s && git checkout -b %s FETCH_HEAD",
+						opts.Remote, commitHash, branchName)
+				}
+				return fmt.Errorf(
+					"cannot checkout fork-based PR #%d: source repository %q has no clone URL available%s",
+					opts.ID, pr.Source.Repository.FullName, hint)
+			}
+
+			// Reuse an existing remote if one already points to the fork.
+			if existing := findRemoteByURL(cmd.Context(), forkCloneURL); existing != "" {
+				remote = existing
+			} else {
+				// Add a new remote for the fork: fork/<owner>
+				parts := strings.SplitN(pr.Source.Repository.FullName, "/", 2)
+				owner := parts[0]
+				remote = "fork/" + owner
+				if err := runGit(cmd.Context(), "remote", "add", remote, forkCloneURL); err != nil {
+					return fmt.Errorf("failed to add remote %q for fork: %w", remote, err)
+				}
+			}
+		}
+
+		fetchArgs := []string{"fetch", remote, fmt.Sprintf("%s:%s", sourceBranch, branchName)}
 		if err := runGit(cmd.Context(), fetchArgs...); err != nil {
 			return err
 		}
@@ -2212,4 +2249,46 @@ func runGit(ctx context.Context, args ...string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
+}
+
+// runGitOutput runs a git command and returns its stdout as a string.
+func runGitOutput(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	out, err := cmd.Output()
+	return string(out), err
+}
+
+// repoCloneURL extracts the clone URL with the given protocol ("https" or "ssh")
+// from a RepositoryRef. Returns "" if no matching link is found.
+func repoCloneURL(repo bbcloud.RepositoryRef, protocol string) string {
+	for _, link := range repo.Links.Clone {
+		if strings.EqualFold(link.Name, protocol) {
+			return link.Href
+		}
+	}
+	return ""
+}
+
+// findRemoteByURL scans `git remote -v` output for a remote whose fetch URL
+// matches the given cloneURL. Returns the remote name, or "" if not found.
+func findRemoteByURL(ctx context.Context, cloneURL string) string {
+	out, err := runGitOutput(ctx, "remote", "-v")
+	if err != nil {
+		return ""
+	}
+	// Normalise for comparison: strip trailing ".git"
+	norm := func(u string) string {
+		return strings.TrimSuffix(strings.TrimSpace(u), ".git")
+	}
+	target := norm(cloneURL)
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		if norm(fields[1]) == target {
+			return fields[0]
+		}
+	}
+	return ""
 }

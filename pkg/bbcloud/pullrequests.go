@@ -8,6 +8,23 @@ import (
 	"strings"
 )
 
+// RepositoryRef identifies a repository inside a pull request's source or
+// destination. The Bitbucket Cloud API returns full_name and clone links here,
+// which we need to resolve fork remotes during checkout.
+type RepositoryRef struct {
+	Slug     string `json:"slug"`
+	FullName string `json:"full_name"`
+	Links    struct {
+		HTML struct {
+			Href string `json:"href"`
+		} `json:"html"`
+		Clone []struct {
+			Href string `json:"href"`
+			Name string `json:"name"` // "https" or "ssh"
+		} `json:"clone"`
+	} `json:"links"`
+}
+
 // PullRequest models a Bitbucket Cloud pull request.
 type PullRequest struct {
 	ID     int    `json:"id"`
@@ -24,17 +41,13 @@ type PullRequest struct {
 		Commit struct {
 			Hash string `json:"hash"`
 		} `json:"commit"`
-		Repository struct {
-			Slug string `json:"slug"`
-		} `json:"repository"`
+		Repository RepositoryRef `json:"repository"`
 	} `json:"source"`
 	Destination struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
-		Repository struct {
-			Slug string `json:"slug"`
-		} `json:"repository"`
+		Repository RepositoryRef `json:"repository"`
 	} `json:"destination"`
 	Links struct {
 		HTML struct {
