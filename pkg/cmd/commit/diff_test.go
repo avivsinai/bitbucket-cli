@@ -291,6 +291,46 @@ func TestCommitDiffTwoArgsMissing(t *testing.T) {
 	}
 }
 
+func TestCommitDiffUnsupportedHostKind(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "alien"},
+		},
+		Hosts: map[string]*config.Host{
+			"alien": {Kind: "gitea", BaseURL: "https://example.com", Username: "u", Token: "t"},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams: &iostreams.IOStreams{
+			Out:    stdout,
+			ErrOut: stderr,
+		},
+		Config: func() (*config.Config, error) {
+			return cfg, nil
+		},
+	}
+
+	cmd := commit.NewCmdCommit(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"diff", "abc123", "def456"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unsupported host kind")
+	}
+	if !strings.Contains(err.Error(), "unsupported host kind") {
+		t.Errorf("expected 'unsupported host kind' error, got: %v", err)
+	}
+}
+
 func TestCommitDiffMissingContext(t *testing.T) {
 	cfg := &config.Config{
 		ActiveContext: "default",

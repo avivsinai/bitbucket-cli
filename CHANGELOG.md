@@ -9,6 +9,10 @@ All notable changes to this project will be documented here. The format follows
 ### Added
 - `bkt commit diff <from> <to>` command to stream unified diffs between two refs (commit SHAs, branches, or tags) for both Bitbucket Cloud and Data Center.
 
+### Fixed
+- Added missing Cloud HTTP error test and unsupported host kind test for `commit diff` command.
+- Documented `..` edge case in Cloud spec parsing for branch names containing double-dot.
+
 ## [0.9.0] - 2026-02-24
 
 ### Added

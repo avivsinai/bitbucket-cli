@@ -104,6 +104,7 @@ func runCommitDiff(cmd *cobra.Command, f *cmdutil.Factory, opts *commitDiffOptio
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
+		// Note: branch names containing ".." will confuse the Cloud API spec parsing.
 		spec := opts.From + ".." + opts.To
 		return withPager(func(w io.Writer) error {
 			cw := &countingWriter{w: w}

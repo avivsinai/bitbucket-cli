@@ -62,6 +62,18 @@ func TestCommitDiffPath(t *testing.T) {
 	}
 }
 
+func TestCommitDiffHandlesHTTPError(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("Repository not found"))
+	}))
+	var buf strings.Builder
+	err := client.CommitDiff(context.Background(), "ws", "nonexistent", "a..b", &buf)
+	if err == nil {
+		t.Fatal("expected error for 404 response")
+	}
+}
+
 func TestCommitDiffValidation(t *testing.T) {
 	client, err := bbcloud.New(bbcloud.Options{
 		BaseURL: "http://localhost", Username: "u", Token: "t",
