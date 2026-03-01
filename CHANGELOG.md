@@ -6,6 +6,8 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-01
+
 ### Added
 - `bkt commit diff <from> <to>` command to stream unified diffs between two refs (commit SHAs, branches, or tags) for both Bitbucket Cloud and Data Center.
 
