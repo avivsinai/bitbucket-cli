@@ -2895,3 +2895,63 @@ func TestListWorkspaceCloudURLFallback(t *testing.T) {
 		t.Errorf("PR without slug should fallback to URL parsing and show 'repo-from-url', got:\n%s", output)
 	}
 }
+
+func TestMergeReviewers(t *testing.T) {
+	type user struct{ Name string }
+	nameFunc := func(u user) string { return u.Name }
+
+	tests := []struct {
+		name     string
+		explicit []string
+		defaults []user
+		want     []string
+	}{
+		{
+			name:     "no defaults",
+			explicit: []string{"alice"},
+			defaults: nil,
+			want:     []string{"alice"},
+		},
+		{
+			name:     "no explicit",
+			explicit: nil,
+			defaults: []user{{"alice"}, {"bob"}},
+			want:     []string{"alice", "bob"},
+		},
+		{
+			name:     "dedup overlap",
+			explicit: []string{"alice", "charlie"},
+			defaults: []user{{"alice"}, {"bob"}},
+			want:     []string{"alice", "charlie", "bob"},
+		},
+		{
+			name:     "both empty",
+			explicit: nil,
+			defaults: nil,
+			want:     []string{},
+		},
+		{
+			name:     "skip empty username",
+			explicit: nil,
+			defaults: []user{{"alice"}, {""}},
+			want:     []string{"alice"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeReviewers(tt.explicit, tt.defaults, nameFunc)
+			if len(got) == 0 && len(tt.want) == 0 {
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("mergeReviewers() = %v, want %v", got, tt.want)
+			}
+			for i, v := range got {
+				if v != tt.want[i] {
+					t.Errorf("mergeReviewers()[%d] = %q, want %q", i, v, tt.want[i])
+				}
+			}
+		})
+	}
+}

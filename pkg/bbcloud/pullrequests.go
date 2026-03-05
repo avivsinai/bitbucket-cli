@@ -254,6 +254,52 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	return &pr, nil
 }
 
+// EffectiveDefaultReviewer represents a user returned by the effective default reviewers endpoint.
+type EffectiveDefaultReviewer struct {
+	User User `json:"user"`
+}
+
+// GetEffectiveDefaultReviewers returns the effective default reviewers for a repository.
+func (c *Client) GetEffectiveDefaultReviewers(ctx context.Context, workspace, repoSlug string) ([]User, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/effective-default-reviewers?pagelen=100",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+	)
+
+	var users []User
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var page struct {
+			Values []User `json:"values"`
+			Next   string `json:"next"`
+		}
+		if err := c.http.Do(req, &page); err != nil {
+			return nil, err
+		}
+
+		users = append(users, page.Values...)
+
+		if page.Next == "" {
+			break
+		}
+		nextURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		path = nextURL.RequestURI()
+	}
+
+	return users, nil
+}
+
 // UpdatePullRequestInput configures PR updates. Use pointers to distinguish
 // between "not set" and "set to empty string" for clearing fields.
 type UpdatePullRequestInput struct {
