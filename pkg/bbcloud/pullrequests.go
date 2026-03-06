@@ -278,14 +278,16 @@ func (c *Client) GetEffectiveDefaultReviewers(ctx context.Context, workspace, re
 		}
 
 		var page struct {
-			Values []User `json:"values"`
-			Next   string `json:"next"`
+			Values []EffectiveDefaultReviewer `json:"values"`
+			Next   string                     `json:"next"`
 		}
 		if err := c.http.Do(req, &page); err != nil {
 			return nil, err
 		}
 
-		users = append(users, page.Values...)
+		for _, v := range page.Values {
+			users = append(users, v.User)
+		}
 
 		if page.Next == "" {
 			break

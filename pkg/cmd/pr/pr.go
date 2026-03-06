@@ -672,7 +672,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 
 		reviewers := opts.Reviewers
 		if opts.WithDefaultReviewers {
-			defaultUsers, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug)
+			defaultUsers, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, opts.Source, opts.Target)
 			if err != nil {
 				return fmt.Errorf("fetching default reviewers: %w", err)
 			}

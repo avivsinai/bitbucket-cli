@@ -10,51 +10,39 @@ import (
 )
 
 func TestGetDefaultReviewers(t *testing.T) {
-	var gotMethod, gotPath string
+	var gotMethod, gotPath, gotQuery string
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{
-				"id": 1,
-				"reviewers": []map[string]any{
-					{"name": "alice", "id": 10},
-					{"name": "bob", "id": 20},
-				},
-			},
-			{
-				"id": 2,
-				"reviewers": []map[string]any{
-					{"name": "bob", "id": 20},
-					{"name": "charlie", "id": 30},
-				},
-			},
+			{"name": "alice", "id": 10},
+			{"name": "bob", "id": 20},
 		})
 	}))
 
-	users, err := client.GetDefaultReviewers(context.Background(), "PROJ", "my-repo")
+	users, err := client.GetDefaultReviewers(context.Background(), "PROJ", "my-repo", "feature/x", "main")
 	if err != nil {
 		t.Fatalf("GetDefaultReviewers: %v", err)
 	}
 	if gotMethod != "GET" {
 		t.Errorf("method = %s, want GET", gotMethod)
 	}
-	if gotPath != "/rest/default-reviewers/1.0/projects/PROJ/repos/my-repo/conditions" {
-		t.Errorf("path = %q, want /rest/default-reviewers/1.0/projects/PROJ/repos/my-repo/conditions", gotPath)
+	if gotPath != "/rest/default-reviewers/1.0/projects/PROJ/repos/my-repo/reviewers" {
+		t.Errorf("path = %q, want /rest/default-reviewers/1.0/projects/PROJ/repos/my-repo/reviewers", gotPath)
 	}
-	// bob appears in both conditions but should be deduplicated
-	if len(users) != 3 {
-		t.Fatalf("expected 3 unique users, got %d", len(users))
+	if gotQuery != "sourceRefId=feature%2Fx&targetRefId=main" {
+		t.Errorf("query = %q, want sourceRefId=feature%%2Fx&targetRefId=main", gotQuery)
 	}
-	names := make(map[string]bool)
-	for _, u := range users {
-		names[u.Name] = true
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(users))
 	}
-	for _, want := range []string{"alice", "bob", "charlie"} {
-		if !names[want] {
-			t.Errorf("expected user %q in results", want)
-		}
+	if users[0].Name != "alice" {
+		t.Errorf("users[0].Name = %q, want alice", users[0].Name)
+	}
+	if users[1].Name != "bob" {
+		t.Errorf("users[1].Name = %q, want bob", users[1].Name)
 	}
 }
 
@@ -75,7 +63,7 @@ func TestGetDefaultReviewersValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := client.GetDefaultReviewers(context.Background(), tt.project, tt.repo)
+			_, err := client.GetDefaultReviewers(context.Background(), tt.project, tt.repo, "src", "main")
 			if err == nil {
 				t.Error("expected error")
 			}

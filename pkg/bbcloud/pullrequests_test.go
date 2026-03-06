@@ -551,8 +551,8 @@ func TestGetEffectiveDefaultReviewers(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values": []map[string]any{
-				{"username": "alice", "display_name": "Alice"},
-				{"username": "bob", "display_name": "Bob"},
+				{"user": map[string]any{"username": "alice", "display_name": "Alice"}},
+				{"user": map[string]any{"username": "bob", "display_name": "Bob"}},
 			},
 		})
 	}))

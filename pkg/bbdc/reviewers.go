@@ -74,35 +74,39 @@ type refMatcher struct {
 	Active bool `json:"active"`
 }
 
-// GetDefaultReviewers returns the users configured as default reviewers for the
-// given repository. It fetches all reviewer conditions and collects unique users.
-func (c *Client) GetDefaultReviewers(ctx context.Context, projectKey, repoSlug string) ([]User, error) {
+// GetDefaultReviewers returns the users configured as default reviewers for
+// pull requests from sourceRef to targetRef in the given repository.
+// It uses the dedicated reviewers endpoint which resolves conditions
+// server-side based on source and target refs.
+func (c *Client) GetDefaultReviewers(ctx context.Context, projectKey, repoSlug, sourceRef, targetRef string) ([]User, error) {
 	if projectKey == "" || repoSlug == "" {
 		return nil, fmt.Errorf("project key and repository slug are required")
 	}
 
-	req, err := c.http.NewRequest(ctx, "GET", fmt.Sprintf("/rest/default-reviewers/1.0/projects/%s/repos/%s/conditions",
+	endpoint := fmt.Sprintf("/rest/default-reviewers/1.0/projects/%s/repos/%s/reviewers",
 		url.PathEscape(projectKey),
 		url.PathEscape(repoSlug),
-	), nil)
+	)
+
+	params := url.Values{}
+	if sourceRef != "" {
+		params.Set("sourceRefId", sourceRef)
+	}
+	if targetRef != "" {
+		params.Set("targetRefId", targetRef)
+	}
+	if len(params) > 0 {
+		endpoint += "?" + params.Encode()
+	}
+
+	req, err := c.http.NewRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	var conditions []ReviewerCondition
-	if err := c.http.Do(req, &conditions); err != nil {
-		return nil, err
-	}
-
-	seen := make(map[int]bool)
 	var users []User
-	for _, cond := range conditions {
-		for _, u := range cond.Reviewers {
-			if !seen[u.ID] {
-				seen[u.ID] = true
-				users = append(users, u)
-			}
-		}
+	if err := c.http.Do(req, &users); err != nil {
+		return nil, err
 	}
 
 	return users, nil
