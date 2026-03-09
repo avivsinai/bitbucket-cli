@@ -7,8 +7,18 @@ import (
 )
 
 // NormalizeBaseURL ensures the Bitbucket base URL includes a scheme and has no
-// trailing slash.
+// trailing slash. HTTP URLs are rejected by default; use AllowHTTP to permit them.
 func NormalizeBaseURL(raw string) (string, error) {
+	return normalizeBaseURL(raw, false)
+}
+
+// NormalizeBaseURLAllowHTTP is like NormalizeBaseURL but permits http:// URLs.
+// Callers should warn the user that credentials will be transmitted in plaintext.
+func NormalizeBaseURLAllowHTTP(raw string) (string, error) {
+	return normalizeBaseURL(raw, true)
+}
+
+func normalizeBaseURL(raw string, allowHTTP bool) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", fmt.Errorf("host is required")
@@ -22,6 +32,9 @@ func NormalizeBaseURL(raw string) (string, error) {
 	}
 	if u.Scheme == "" {
 		u.Scheme = "https"
+	}
+	if u.Scheme == "http" && !allowHTTP {
+		return "", fmt.Errorf("http:// URLs are not allowed (credentials would be sent in plaintext); use --allow-http to override")
 	}
 	u.Path = strings.TrimSuffix(u.Path, "/")
 	u.RawQuery = ""

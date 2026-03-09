@@ -14,7 +14,7 @@ func TestNormalizeBaseURL(t *testing.T) {
 		{"missing scheme", "example.com", "https://example.com", false},
 		{"with path", "https://example.com/bitbucket", "https://example.com/bitbucket", false},
 		{"with trailing slash and path", "https://example.com/bitbucket/", "https://example.com/bitbucket", false},
-		{"http scheme", "http://example.com", "http://example.com", false},
+		{"http scheme rejected", "http://example.com", "", true},
 		{"with query", "https://example.com?foo=bar", "https://example.com", false},
 		{"with fragment", "https://example.com#section", "https://example.com", false},
 		{"whitespace", "  https://example.com  ", "https://example.com", false},
@@ -31,6 +31,32 @@ func TestNormalizeBaseURL(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("NormalizeBaseURL(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeBaseURLAllowHTTP(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"http allowed", "http://example.com", "http://example.com", false},
+		{"https still works", "https://example.com", "https://example.com", false},
+		{"missing scheme defaults to https", "example.com", "https://example.com", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeBaseURLAllowHTTP(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NormalizeBaseURLAllowHTTP(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("NormalizeBaseURLAllowHTTP(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

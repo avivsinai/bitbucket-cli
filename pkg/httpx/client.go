@@ -428,7 +428,15 @@ func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response)
 	if resp != nil {
 		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
 			if secs, err := strconv.Atoi(retryAfter); err == nil {
-				delay = time.Duration(secs) * time.Second
+				retryDelay := time.Duration(secs) * time.Second
+				// Cap Retry-After to prevent server-controlled denial of service.
+				const maxRetryAfter = 60 * time.Second
+				if retryDelay > maxRetryAfter {
+					retryDelay = maxRetryAfter
+				}
+				if retryDelay > 0 {
+					delay = retryDelay
+				}
 			}
 		}
 	}

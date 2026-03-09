@@ -92,6 +92,14 @@ func Load() (*Config, error) {
 		cfg.Hosts = make(map[string]*Host)
 	}
 
+	// Warn if any host has a plaintext token in the config file.
+	// Tokens should only be stored in the OS keyring.
+	for key, h := range cfg.Hosts {
+		if h.Token != "" {
+			fmt.Fprintf(os.Stderr, "WARNING: host %q has a plaintext token in %s — move it to the keyring via `bkt auth login` and remove the token field from the config file\n", key, path)
+		}
+	}
+
 	return cfg, nil
 }
 

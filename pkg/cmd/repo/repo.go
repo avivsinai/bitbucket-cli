@@ -889,7 +889,8 @@ func selectCloneURLCloud(repo bbcloud.Repository, useSSH bool) (string, error) {
 }
 
 func runGitClone(cmd *cobra.Command, out, errOut io.Writer, in io.Reader, cloneURL, dest string) error {
-	args := []string{"clone", cloneURL}
+	// Use "--" to prevent API-sourced URLs from being interpreted as git flags.
+	args := []string{"clone", "--", cloneURL}
 	if dest != "" {
 		args = append(args, dest)
 	}

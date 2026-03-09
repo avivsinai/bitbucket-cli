@@ -1001,6 +1001,10 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 
 				// If a remote with this name already exists (but different URL),
 				// update its URL instead of failing.
+				// Validate the fork clone URL to prevent git flag injection from API-sourced data.
+				if strings.HasPrefix(forkCloneURL, "-") {
+					return fmt.Errorf("invalid fork clone URL %q: must not start with '-'", forkCloneURL)
+				}
 				if existingURL, err := runGitOutput(cmd.Context(), "remote", "get-url", remote); err == nil && strings.TrimSpace(existingURL) != "" {
 					if err := runGit(cmd.Context(), "remote", "set-url", remote, forkCloneURL); err != nil {
 						return fmt.Errorf("failed to update remote %q URL for fork: %w", remote, err)
