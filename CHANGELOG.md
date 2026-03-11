@@ -6,6 +6,13 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-03-11
+
+### Added
+- `bkt pr create --with-default-reviewers` flag that automatically fetches and merges repository default reviewers (Data Center only). Properly unmarshals `RestPullRequestCondition` responses, flattens nested reviewer groups, normalizes branch refs, and deduplicates across conditions and explicit `--reviewer` values.
+- Cloud `GetEffectiveDefaultReviewers` client (gated pending UUID-based reviewer identity migration).
+- Generic `mergeReviewers` helper with full deduplication including explicit reviewer duplicates.
+
 ## [0.10.0] - 2026-03-01
 
 ### Added
