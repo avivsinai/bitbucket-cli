@@ -358,6 +358,21 @@ func newTestClient(t *testing.T, handler http.Handler) *Client {
 	return client
 }
 
+func newTestClientWithBasePath(t *testing.T, basePath string, handler http.Handler) *Client {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL + basePath,
+		Retry:   httpx.RetryPolicy{MaxAttempts: 1},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return client
+}
+
 func TestNewDefaultsBaseURL(t *testing.T) {
 	client, err := New(Options{})
 	if err != nil {
@@ -677,6 +692,39 @@ func TestCurrentUser(t *testing.T) {
 	}
 	if user.Username != "admin" {
 		t.Fatalf("expected admin, got %q", user.Username)
+	}
+}
+
+func TestCurrentUserPreservesVersionedBasePath(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/2.0/user" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(User{Username: "admin", Display: "Admin User"})
+	})
+
+	client := newTestClientWithBasePath(t, "/2.0", handler)
+	user, err := client.CurrentUser(context.Background())
+	if err != nil {
+		t.Fatalf("CurrentUser: %v", err)
+	}
+	if user.Username != "admin" {
+		t.Fatalf("expected admin, got %q", user.Username)
+	}
+}
+
+func TestPingPreservesVersionedBasePath(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/2.0/user" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	client := newTestClientWithBasePath(t, "/2.0", handler)
+	if err := client.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping: %v", err)
 	}
 }
 

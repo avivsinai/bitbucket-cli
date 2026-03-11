@@ -15,6 +15,39 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
+var sensitiveEnvPrefixes = []string{
+	"BKT_TOKEN=",
+	"BKT_KEYRING_PASSPHRASE=",
+	"BKT_ALLOW_INSECURE_STORE=",
+}
+
+func validateExtensionName(name string) error {
+	if name == "" {
+		return fmt.Errorf("extension name is required")
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		return fmt.Errorf("invalid extension name %q: must not contain path separators or '..'", name)
+	}
+	return nil
+}
+
+func filterSensitiveEnv() []string {
+	var filtered []string
+	for _, env := range os.Environ() {
+		sensitive := false
+		for _, prefix := range sensitiveEnvPrefixes {
+			if strings.HasPrefix(env, prefix) {
+				sensitive = true
+				break
+			}
+		}
+		if !sensitive {
+			filtered = append(filtered, env)
+		}
+	}
+	return filtered
+}
+
 // NewCmdExtension manages external bkt extensions.
 func NewCmdExtension(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -100,7 +133,7 @@ func runExtensionInstall(cmd *cobra.Command, f *cmdutil.Factory, repo string) er
 		return fmt.Errorf("extension %q is already installed", name)
 	}
 
-	args := []string{"clone", repo, destination}
+	args := []string{"clone", "--", repo, destination}
 	gitCmd := exec.CommandContext(cmd.Context(), "git", args...)
 	gitCmd.Stdout = ios.Out
 	gitCmd.Stderr = ios.ErrOut
@@ -198,6 +231,10 @@ func runExtensionList(cmd *cobra.Command, f *cmdutil.Factory) error {
 }
 
 func runExtensionRemove(cmd *cobra.Command, f *cmdutil.Factory, name string) error {
+	if err := validateExtensionName(name); err != nil {
+		return err
+	}
+
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -226,6 +263,10 @@ func runExtensionRemove(cmd *cobra.Command, f *cmdutil.Factory, name string) err
 }
 
 func runExtensionExec(cmd *cobra.Command, f *cmdutil.Factory, name string, args []string) error {
+	if err := validateExtensionName(name); err != nil {
+		return err
+	}
+
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -254,7 +295,7 @@ func runExtensionExec(cmd *cobra.Command, f *cmdutil.Factory, name string, args 
 	cmdExec.Stderr = ios.ErrOut
 	cmdExec.Stdin = ios.In
 	cmdExec.Dir = dir
-	cmdExec.Env = append(os.Environ(),
+	cmdExec.Env = append(filterSensitiveEnv(),
 		fmt.Sprintf("BKT_EXTENSION_DIR=%s", dir),
 		fmt.Sprintf("BKT_EXTENSION_NAME=%s", name),
 	)

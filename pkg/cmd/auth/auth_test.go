@@ -56,6 +56,28 @@ func TestLoginFlagHelpTextNoAppPassword(t *testing.T) {
 	}
 }
 
+func TestLoginFlagHelpTextWarnsAboutTokenExposure(t *testing.T) {
+	cfg := &config.Config{
+		Hosts:    make(map[string]*config.Host),
+		Contexts: make(map[string]*config.Context),
+	}
+	f, _, _ := newAuthTestFactory(cfg)
+
+	cmd := newLoginCmd(f)
+
+	tokenFlag := cmd.Flag("token")
+	if tokenFlag == nil {
+		t.Fatal("expected --token flag")
+	}
+	if !strings.Contains(tokenFlag.Usage, "process list") {
+		t.Fatalf("--token flag should warn about process-list exposure, got: %s", tokenFlag.Usage)
+	}
+
+	if cmd.Flag("allow-http") == nil {
+		t.Fatal("expected --allow-http flag")
+	}
+}
+
 func TestCloudLoginPromptsNoAppPassword(t *testing.T) {
 	// Verify that the cloud login prompt constants don't mention "app password".
 	// This ensures users aren't confused by old terminology since Bitbucket Cloud
@@ -117,6 +139,70 @@ func TestRunLogoutBlockedWhenEnvTokenSet(t *testing.T) {
 	want := "BKT_TOKEN environment variable is set; token is externally managed. Unset BKT_TOKEN to use auth logout"
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestRunLoginRejectsHTTPWithoutAllowHTTP(t *testing.T) {
+	cfg := &config.Config{
+		Hosts:    make(map[string]*config.Host),
+		Contexts: make(map[string]*config.Context),
+	}
+	f, _, _ := newAuthTestFactory(cfg)
+
+	err := runLogin(&cobra.Command{}, f, &loginOptions{Host: "http://bitbucket.example.com"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	want := "http:// URLs are not allowed by default; rerun with --allow-http if you understand the credentials will be sent in plaintext"
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestRunLoginWarnsOnTokenFlag(t *testing.T) {
+	cfg := &config.Config{
+		Hosts:    make(map[string]*config.Host),
+		Contexts: make(map[string]*config.Context),
+	}
+	f, _, stderr := newAuthTestFactory(cfg)
+
+	err := runLogin(&cobra.Command{}, f, &loginOptions{
+		Host:  "https://bitbucket.example.com",
+		Token: "secret-token",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "username is required when not running in a TTY" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(stderr.String(), "WARNING: --token is visible in process listings and shell history") {
+		t.Fatalf("expected token warning, got stderr:\n%s", stderr.String())
+	}
+}
+
+func TestRunLoginWarnsOnAllowHTTP(t *testing.T) {
+	cfg := &config.Config{
+		Hosts:    make(map[string]*config.Host),
+		Contexts: make(map[string]*config.Context),
+	}
+	f, _, stderr := newAuthTestFactory(cfg)
+
+	err := runLogin(&cobra.Command{}, f, &loginOptions{
+		Host:      "http://bitbucket.example.com",
+		AllowHTTP: true,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "username is required when not running in a TTY" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(stderr.String(), "WARNING: using http:// will send credentials in plaintext") {
+		t.Fatalf("expected http warning, got stderr:\n%s", stderr.String())
 	}
 }
 

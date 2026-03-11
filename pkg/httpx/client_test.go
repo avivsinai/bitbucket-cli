@@ -665,6 +665,54 @@ func TestClientRetriesOn429(t *testing.T) {
 	}
 }
 
+func TestRetryDelayCapsRetryAfter(t *testing.T) {
+	client, err := New(Options{
+		BaseURL: "https://example.com",
+		Retry: RetryPolicy{
+			MaxAttempts:    3,
+			InitialBackoff: 10 * time.Millisecond,
+			MaxBackoff:     20 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	resp := &http.Response{
+		Header: http.Header{
+			"Retry-After": []string{"3600"},
+		},
+	}
+
+	if got := client.retryDelay(0, resp); got != 60*time.Second {
+		t.Fatalf("retryDelay = %v, want %v", got, 60*time.Second)
+	}
+}
+
+func TestRetryDelayIgnoresNonPositiveRetryAfter(t *testing.T) {
+	client, err := New(Options{
+		BaseURL: "https://example.com",
+		Retry: RetryPolicy{
+			MaxAttempts:    3,
+			InitialBackoff: 10 * time.Millisecond,
+			MaxBackoff:     20 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	resp := &http.Response{
+		Header: http.Header{
+			"Retry-After": []string{"0"},
+		},
+	}
+
+	if got := client.retryDelay(0, resp); got != 10*time.Millisecond {
+		t.Fatalf("retryDelay = %v, want %v", got, 10*time.Millisecond)
+	}
+}
+
 func TestShouldRetryStatus(t *testing.T) {
 	tests := []struct {
 		code int
