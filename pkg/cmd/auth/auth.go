@@ -51,6 +51,7 @@ type loginOptions struct {
 	Username           string
 	Token              string
 	AllowInsecureStore bool
+	AllowHTTP          bool
 	Web                bool
 }
 
@@ -73,8 +74,9 @@ func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Kind, "kind", opts.Kind, "Bitbucket deployment kind (dc or cloud)")
 	cmd.Flags().StringVar(&opts.Username, "username", "", "Username (DC: PAT owner, Cloud: Atlassian email for API tokens)")
-	cmd.Flags().StringVar(&opts.Token, "token", "", "Authentication token (DC: PAT, Cloud: API token)")
+	cmd.Flags().StringVar(&opts.Token, "token", "", "Authentication token (DC: PAT, Cloud: API token). WARNING: visible in process list and shell history; prefer the interactive prompt")
 	cmd.Flags().BoolVar(&opts.AllowInsecureStore, "allow-insecure-store", false, "Allow encrypted fallback secret storage when no OS keychain is available")
+	cmd.Flags().BoolVar(&opts.AllowHTTP, "allow-http", false, "Allow http:// URLs for login even though credentials will be sent in plaintext")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Open browser to create token, then prompt for credentials")
 
 	return cmd
@@ -105,6 +107,19 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 	baseURL, err := cmdutil.NormalizeBaseURL(opts.Host)
 	if err != nil {
 		return err
+	}
+	if strings.HasPrefix(baseURL, "http://") {
+		if !opts.AllowHTTP {
+			return fmt.Errorf("http:// URLs are not allowed by default; rerun with --allow-http if you understand the credentials will be sent in plaintext")
+		}
+		if _, err := fmt.Fprintln(ios.ErrOut, "WARNING: using http:// will send credentials in plaintext"); err != nil {
+			return err
+		}
+	}
+	if opts.Token != "" {
+		if _, err := fmt.Fprintln(ios.ErrOut, "WARNING: --token is visible in process listings and shell history; prefer the interactive prompt"); err != nil {
+			return err
+		}
 	}
 
 	kind := strings.ToLower(opts.Kind)

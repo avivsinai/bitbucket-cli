@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -309,6 +310,54 @@ func TestLoadInitializesNilMaps(t *testing.T) {
 	}
 	if cfg.Hosts == nil {
 		t.Fatal("expected Hosts to be initialized")
+	}
+}
+
+func TestLoadWarnsOnPlaintextToken(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BKT_CONFIG_DIR", dir)
+
+	data := strings.Join([]string{
+		"version: 1",
+		"hosts:",
+		"  main:",
+		"    kind: dc",
+		"    base_url: https://bitbucket.example.com",
+		"    username: admin",
+		"    token: plaintext-token",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(data), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	t.Cleanup(func() {
+		os.Stderr = oldStderr
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	warning, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if cfg.Hosts["main"].Token != "plaintext-token" {
+		t.Fatalf("expected token to be loaded from config, got %q", cfg.Hosts["main"].Token)
+	}
+	if !strings.Contains(string(warning), `WARNING: host "main" has a plaintext token`) {
+		t.Fatalf("expected plaintext-token warning, got %q", string(warning))
 	}
 }
 

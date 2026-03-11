@@ -412,11 +412,7 @@ func (c *Client) shouldRetry(attempts int, status int) bool {
 	return attempts+1 < c.retry.MaxAttempts
 }
 
-func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response) (bool, error) {
-	if attempts >= c.retry.MaxAttempts {
-		return false, nil
-	}
-
+func (c *Client) retryDelay(attempts int, resp *http.Response) time.Duration {
 	delay := c.retry.InitialBackoff
 	if attempts > 1 {
 		delay *= time.Duration(1 << (attempts - 1))
@@ -428,10 +424,26 @@ func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response)
 	if resp != nil {
 		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
 			if secs, err := strconv.Atoi(retryAfter); err == nil {
-				delay = time.Duration(secs) * time.Second
+				retryAfterDelay := time.Duration(secs) * time.Second
+				if retryAfterDelay > 60*time.Second {
+					retryAfterDelay = 60 * time.Second
+				}
+				if retryAfterDelay > 0 {
+					delay = retryAfterDelay
+				}
 			}
 		}
 	}
+
+	return delay
+}
+
+func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response) (bool, error) {
+	if attempts >= c.retry.MaxAttempts {
+		return false, nil
+	}
+
+	delay := c.retryDelay(attempts, resp)
 
 	if delay <= 0 {
 		select {

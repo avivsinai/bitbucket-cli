@@ -91,6 +91,11 @@ func Load() (*Config, error) {
 	if cfg.Hosts == nil {
 		cfg.Hosts = make(map[string]*Host)
 	}
+	for key, host := range cfg.Hosts {
+		if host != nil && host.Token != "" {
+			fmt.Fprintf(os.Stderr, "WARNING: host %q has a plaintext token in %s; rerun `bkt auth login` to move it into secure storage and remove the token field from config.yml\n", key, path)
+		}
+	}
 
 	return cfg, nil
 }

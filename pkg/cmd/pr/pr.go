@@ -1023,6 +1023,9 @@ func runCheckout(cmd *cobra.Command, f *cmdutil.Factory, opts *checkoutOptions) 
 					"cannot checkout fork-based PR #%d: source repository %q has no clone URL available%s",
 					opts.ID, pr.Source.Repository.FullName, hint)
 			}
+			if err := cmdutil.ValidateGitPositionalArg(forkCloneURL, "fork clone URL"); err != nil {
+				return err
+			}
 
 			// Reuse an existing remote if one already points to the fork.
 			if existing := findRemoteByURL(cmd.Context(), forkCloneURL); existing != "" {
