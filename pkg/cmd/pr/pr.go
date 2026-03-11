@@ -583,15 +583,38 @@ func firstPRLinkCloud(pr *bbcloud.PullRequest) string {
 }
 
 type createOptions struct {
-	Project     string
-	Workspace   string
-	Repo        string
-	Title       string
-	Source      string
-	Target      string
-	Description string
-	Reviewers   []string
-	CloseSource bool
+	Project              string
+	Workspace            string
+	Repo                 string
+	Title                string
+	Source               string
+	Target               string
+	Description          string
+	Reviewers            []string
+	CloseSource          bool
+	WithDefaultReviewers bool
+}
+
+// mergeReviewers combines explicit reviewer names with default reviewer users,
+// deduplicating across both lists. The nameFunc extracts a username string
+// from each default user value.
+func mergeReviewers[T any](explicit []string, defaults []T, nameFunc func(T) string) []string {
+	seen := make(map[string]bool, len(explicit)+len(defaults))
+	var merged []string
+	for _, r := range explicit {
+		if r != "" && !seen[r] {
+			seen[r] = true
+			merged = append(merged, r)
+		}
+	}
+	for _, u := range defaults {
+		name := nameFunc(u)
+		if name != "" && !seen[name] {
+			seen[name] = true
+			merged = append(merged, name)
+		}
+	}
+	return merged
 }
 
 func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
@@ -613,6 +636,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (required)")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewers to request (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
+	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers (Data Center only)")
 
 	_ = cmd.MarkFlagRequired("title")
 	_ = cmd.MarkFlagRequired("source")
@@ -649,12 +673,21 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
+		reviewers := opts.Reviewers
+		if opts.WithDefaultReviewers {
+			defaultUsers, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, opts.Source, opts.Target)
+			if err != nil {
+				return fmt.Errorf("fetching default reviewers: %w", err)
+			}
+			reviewers = mergeReviewers(reviewers, defaultUsers, func(u bbdc.User) string { return u.Name })
+		}
+
 		pr, err := client.CreatePullRequest(ctx, projectKey, repoSlug, bbdc.CreatePROptions{
 			Title:        opts.Title,
 			Description:  opts.Description,
 			SourceBranch: opts.Source,
 			TargetBranch: opts.Target,
-			Reviewers:    opts.Reviewers,
+			Reviewers:    reviewers,
 			CloseSource:  opts.CloseSource,
 		})
 		if err != nil {
@@ -680,6 +713,10 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
+
+		if opts.WithDefaultReviewers {
+			return fmt.Errorf("--with-default-reviewers is not yet supported for Bitbucket Cloud (see https://github.com/avivsinai/bitbucket-cli/issues/67)")
+		}
 
 		pr, err := client.CreatePullRequest(ctx, workspace, repoSlug, bbcloud.CreatePullRequestInput{
 			Title:       opts.Title,

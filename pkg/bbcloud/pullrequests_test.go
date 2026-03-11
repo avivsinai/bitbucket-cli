@@ -542,3 +542,99 @@ func TestApprovePullRequestValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestGetEffectiveDefaultReviewers(t *testing.T) {
+	var gotMethod, gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{"user": map[string]any{"username": "alice", "display_name": "Alice A", "uuid": "{aaa}"}},
+				{"user": map[string]any{"username": "bob", "display_name": "Bob B", "uuid": "{bbb}"}},
+			},
+		})
+	}))
+
+	users, err := client.GetEffectiveDefaultReviewers(context.Background(), "myworkspace", "my-repo")
+	if err != nil {
+		t.Fatalf("GetEffectiveDefaultReviewers: %v", err)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/effective-default-reviewers" {
+		t.Errorf("path = %q, want /repositories/myworkspace/my-repo/effective-default-reviewers", gotPath)
+	}
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(users))
+	}
+	if users[0].Username != "alice" {
+		t.Errorf("users[0].Username = %q, want alice", users[0].Username)
+	}
+	if users[0].Display != "Alice A" {
+		t.Errorf("users[0].Display = %q, want Alice A", users[0].Display)
+	}
+	if users[1].Username != "bob" {
+		t.Errorf("users[1].Username = %q, want bob", users[1].Username)
+	}
+}
+
+func TestGetEffectiveDefaultReviewersPagination(t *testing.T) {
+	calls := 0
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if calls == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{
+					{"user": map[string]any{"username": "alice"}},
+				},
+				"next": "http://" + r.Host + "/repositories/ws/repo/effective-default-reviewers?pagelen=100&page=2",
+			})
+		} else {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{
+					{"user": map[string]any{"username": "bob"}},
+				},
+			})
+		}
+	}))
+
+	users, err := client.GetEffectiveDefaultReviewers(context.Background(), "ws", "repo")
+	if err != nil {
+		t.Fatalf("GetEffectiveDefaultReviewers: %v", err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users across pages, got %d", len(users))
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 API calls for pagination, got %d", calls)
+	}
+}
+
+func TestGetEffectiveDefaultReviewersValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+	}{
+		{"empty workspace", "", "repo"},
+		{"empty repo", "ws", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.GetEffectiveDefaultReviewers(context.Background(), tt.workspace, tt.repo)
+			if err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
