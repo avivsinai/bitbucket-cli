@@ -6,6 +6,22 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-03-11
+
+### Security
+- Rejected path traversal names in `bkt extension remove` and `bkt extension exec`.
+- Stopped passing sensitive `BKT_*` credentials into extension subprocess environments.
+- Hardened git command invocation by using `git clone --` where supported and rejecting option-like positional arguments where `--` is unavailable.
+- Capped `Retry-After` backoff handling in the retrying HTTP client to 60 seconds.
+- Added a warning when loading plaintext host tokens from `config.yml`.
+
+### Changed
+- `bkt auth login` now requires `--allow-http` for `http://` hosts and warns when insecure HTTP is explicitly allowed.
+- `bkt auth login --token` now warns that command-line tokens may be visible to other local users.
+
+### Fixed
+- Added regression coverage confirming Bitbucket Cloud `/user` requests preserve the versioned `/2.0` base path.
+
 ## [0.11.0] - 2026-03-11
 
 ### Added
@@ -214,7 +230,12 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.11.0...v0.11.1
+[0.11.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.8.2...v0.9.0
+[0.8.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.7.1...v0.7.2
