@@ -138,7 +138,7 @@ func (c *Client) ListPipelines(ctx context.Context, workspace, repoSlug string, 
 	}
 
 	pageLen := limit
-	if pageLen <= 0 || pageLen > 50 {
+	if pageLen <= 0 || pageLen > 100 {
 		pageLen = 20
 	}
 
