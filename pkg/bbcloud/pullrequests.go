@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // RepositoryRef identifies a repository inside a pull request's source or
@@ -232,7 +234,7 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if len(input.Reviewers) > 0 {
 		var reviewers []map[string]string
 		for _, reviewer := range input.Reviewers {
-			reviewers = append(reviewers, map[string]string{"username": reviewer})
+			reviewers = append(reviewers, map[string]string{"uuid": reviewer})
 		}
 		body["reviewers"] = reviewers
 	}
@@ -404,7 +406,15 @@ var validMergeStrategies = map[string]bool{
 	"fast_forward": true,
 }
 
+// mergeTaskStatus represents the async merge task status response.
+type mergeTaskStatus struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"task_status"`
+}
+
 // MergePullRequest merges the given pull request.
+// The Bitbucket Cloud API may return 202 for long-running merges with a task_id
+// that must be polled until completion.
 func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug string, id int, message, strategy string, closeSource bool) error {
 	if workspace == "" || repoSlug == "" {
 		return fmt.Errorf("workspace and repository slug are required")
@@ -433,7 +443,51 @@ func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug strin
 		return err
 	}
 
-	return c.http.Do(req, nil)
+	resp, taskID, err := c.http.DoRaw(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode == http.StatusAccepted && taskID != "" {
+		return c.pollMergeTask(ctx, workspace, repoSlug, id, taskID)
+	}
+
+	return nil
+}
+
+// pollMergeTask polls the merge task status until it completes or the context expires.
+func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, prID int, taskID string) error {
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/merge/task-status/%s",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+		url.PathEscape(taskID),
+	)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("merge task timed out: %w", ctx.Err())
+		case <-time.After(2 * time.Second):
+		}
+
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return err
+		}
+
+		var status mergeTaskStatus
+		if err := c.http.Do(req, &status); err != nil {
+			return fmt.Errorf("polling merge task: %w", err)
+		}
+
+		if status.Status == "SUCCESS" {
+			return nil
+		}
+		if status.Status != "PENDING" {
+			return fmt.Errorf("merge task failed with status: %s", status.Status)
+		}
+	}
 }
 
 // ApprovePullRequest approves the given pull request.

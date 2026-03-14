@@ -339,6 +339,49 @@ func (c *Client) Do(req *http.Request, v any) error {
 	}
 }
 
+// DoRaw executes the request and returns the raw response along with any task_id
+// found in the response body. This is used for endpoints like PR merge that may
+// return 202 Accepted with an async task_id.
+func (c *Client) DoRaw(req *http.Request) (*http.Response, string, error) {
+	if req == nil {
+		return nil, "", fmt.Errorf("request is nil")
+	}
+
+	// Use a struct to capture the response body
+	var result struct {
+		TaskID string `json:"task_id"`
+	}
+
+	// Clone the request to read the response
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+
+	c.updateRateLimit(resp)
+	c.applyAdaptiveThrottle()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+		return resp, "", decodeError(resp)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		return resp, "", err
+	}
+
+	if len(bodyBytes) > 0 {
+		// Intentionally ignore unmarshal errors — body may not contain task_id
+		_ = json.Unmarshal(bodyBytes, &result)
+	}
+
+	return resp, result.TaskID, nil
+}
+
 func decodeError(resp *http.Response) error {
 	type apiErrEntry struct {
 		Message       string `json:"message"`
