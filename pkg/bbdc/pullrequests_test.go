@@ -331,6 +331,126 @@ func TestReopenPullRequestValidation(t *testing.T) {
 	}
 }
 
+func TestListPullRequestComments(t *testing.T) {
+	var gotMethod, gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{
+					"id":   10,
+					"text": "Looks good to me",
+					"author": map[string]any{
+						"user": map[string]any{
+							"name":        "alice",
+							"displayName": "Alice A",
+						},
+					},
+				},
+				{
+					"id":   11,
+					"text": "Please fix the typo",
+					"author": map[string]any{
+						"user": map[string]any{
+							"name":        "bob",
+							"displayName": "Bob B",
+						},
+					},
+				},
+			},
+			"isLastPage": true,
+		})
+	}))
+
+	comments, err := client.ListPullRequestComments(context.Background(), "PROJ", "my-repo", 42)
+	if err != nil {
+		t.Fatalf("ListPullRequestComments: %v", err)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	if gotPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments" {
+		t.Errorf("path = %q, want /rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments", gotPath)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+	if comments[0].ID != 10 {
+		t.Errorf("comments[0].ID = %d, want 10", comments[0].ID)
+	}
+	if comments[0].Text != "Looks good to me" {
+		t.Errorf("comments[0].Text = %q, want %q", comments[0].Text, "Looks good to me")
+	}
+	if comments[0].Author.User.Name != "alice" {
+		t.Errorf("comments[0].Author.User.Name = %q, want %q", comments[0].Author.User.Name, "alice")
+	}
+}
+
+func TestListPullRequestCommentsPaginates(t *testing.T) {
+	var hits int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		switch count {
+		case 1:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{
+					{"id": 10, "text": "first comment", "author": map[string]any{"user": map[string]any{"name": "alice"}}},
+				},
+				"isLastPage":    false,
+				"nextPageStart": 1,
+			})
+		case 2:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{
+					{"id": 11, "text": "second comment", "author": map[string]any{"user": map[string]any{"name": "bob"}}},
+				},
+				"isLastPage": true,
+			})
+		default:
+			t.Fatalf("unexpected request %d", count)
+		}
+	}))
+
+	comments, err := client.ListPullRequestComments(context.Background(), "PROJ", "my-repo", 5)
+	if err != nil {
+		t.Fatalf("ListPullRequestComments: %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+	if hits != 2 {
+		t.Fatalf("expected 2 requests, got %d", hits)
+	}
+}
+
+func TestListPullRequestCommentsValidation(t *testing.T) {
+	client, err := bbdc.New(bbdc.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		project string
+		repo    string
+	}{
+		{"empty project", "", "repo"},
+		{"empty repo", "PROJ", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.ListPullRequestComments(context.Background(), tt.project, tt.repo, 1)
+			if err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
+
 func containsParam(query, param string) bool {
 	for _, p := range strings.Split(query, "&") {
 		if p == param {

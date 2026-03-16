@@ -436,6 +436,80 @@ func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug strin
 	return c.http.Do(req, nil)
 }
 
+// PullRequestComment models a comment on a Bitbucket Cloud pull request.
+type PullRequestComment struct {
+	ID      int `json:"id"`
+	Content struct {
+		Raw string `json:"raw"`
+	} `json:"content"`
+	User       *Account `json:"user"`
+	CreatedOn  string   `json:"created_on"`
+	UpdatedOn  string   `json:"updated_on"`
+	Resolution *struct {
+		User      *Account `json:"user"`
+		CreatedOn string   `json:"created_on"`
+	} `json:"resolution"`
+	Parent *struct {
+		ID int `json:"id"`
+	} `json:"parent"`
+}
+
+type pullRequestCommentListPage struct {
+	Values []PullRequestComment `json:"values"`
+	Next   string               `json:"next"`
+}
+
+// ListPullRequestComments lists comments on a pull request.
+func (c *Client) ListPullRequestComments(ctx context.Context, workspace, repoSlug string, prID int, limit int) ([]PullRequestComment, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+
+	pageLen := limit
+	if pageLen <= 0 || pageLen > 100 {
+		pageLen = 100
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments?pagelen=%d",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+		pageLen,
+	)
+
+	var comments []PullRequestComment
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var page pullRequestCommentListPage
+		if err := c.http.Do(req, &page); err != nil {
+			return nil, err
+		}
+
+		comments = append(comments, page.Values...)
+
+		if limit > 0 && len(comments) >= limit {
+			comments = comments[:limit]
+			break
+		}
+
+		if page.Next == "" {
+			break
+		}
+
+		nextURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		path = nextURL.RequestURI()
+	}
+
+	return comments, nil
+}
+
 // ApprovePullRequest approves the given pull request.
 func (c *Client) ApprovePullRequest(ctx context.Context, workspace, repoSlug string, id int) error {
 	if workspace == "" || repoSlug == "" {
