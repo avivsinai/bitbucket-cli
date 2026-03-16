@@ -187,12 +187,16 @@ func (c *Client) ApprovePullRequest(ctx context.Context, projectKey, repoSlug st
 }
 
 // CommentPullRequest adds a comment to the pull request.
-func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug string, prID int, text string) error {
+// When parentID > 0, the comment is created as a threaded reply under that parent.
+func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug string, prID int, text string, parentID int) error {
 	if strings.TrimSpace(text) == "" {
 		return fmt.Errorf("comment text is required")
 	}
 
 	body := map[string]any{"text": text}
+	if parentID > 0 {
+		body["parent"] = map[string]int{"id": parentID}
+	}
 	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments",
 		url.PathEscape(projectKey),
 		url.PathEscape(repoSlug),

@@ -1687,6 +1687,7 @@ type commentOptions struct {
 	Project   string
 	Repo      string
 	Text      string
+	ParentID  int
 }
 
 func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
@@ -1700,6 +1701,9 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid pull request id %q", args[0])
 			}
+			if cmd.Flags().Changed("parent") && opts.ParentID <= 0 {
+				return fmt.Errorf("--parent must be a positive comment ID")
+			}
 			return runComment(cmd, f, id, opts)
 		},
 	}
@@ -1708,6 +1712,7 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Comment text")
+	cmd.Flags().IntVar(&opts.ParentID, "parent", 0, "Parent comment ID for threaded replies")
 	_ = cmd.MarkFlagRequired("text")
 
 	return cmd
@@ -1741,7 +1746,7 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 		ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
 		defer cancel()
 
-		if err := client.CommentPullRequest(ctx, projectKey, repoSlug, id, opts.Text); err != nil {
+		if err := client.CommentPullRequest(ctx, projectKey, repoSlug, id, opts.Text, opts.ParentID); err != nil {
 			return err
 		}
 
@@ -1765,7 +1770,7 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 		ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
 		defer cancel()
 
-		if err := client.CommentPullRequest(ctx, workspace, repoSlug, id, opts.Text); err != nil {
+		if err := client.CommentPullRequest(ctx, workspace, repoSlug, id, opts.Text, opts.ParentID); err != nil {
 			return err
 		}
 

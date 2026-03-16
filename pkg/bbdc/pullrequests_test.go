@@ -451,6 +451,92 @@ func TestListPullRequestCommentsValidation(t *testing.T) {
 	}
 }
 
+func TestCommentPullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, "LGTM", 0)
+	if err != nil {
+		t.Fatalf("CommentPullRequest: %v", err)
+	}
+	if gotMethod != "POST" {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/7/comments" {
+		t.Errorf("path = %s, want .../comments", gotPath)
+	}
+	if text, ok := gotBody["text"].(string); !ok || text != "LGTM" {
+		t.Errorf("body.text = %v, want LGTM", gotBody["text"])
+	}
+}
+
+func TestCommentPullRequestWithParent(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, "reply", 42)
+	if err != nil {
+		t.Fatalf("CommentPullRequest with parent: %v", err)
+	}
+
+	parent, ok := gotBody["parent"].(map[string]any)
+	if !ok {
+		t.Fatal("request body missing parent object")
+	}
+	if id, ok := parent["id"].(float64); !ok || int(id) != 42 {
+		t.Errorf("parent.id = %v, want 42", parent["id"])
+	}
+}
+
+func TestCommentPullRequestWithoutParent(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, "top-level", 0)
+	if err != nil {
+		t.Fatalf("CommentPullRequest without parent: %v", err)
+	}
+
+	if _, ok := gotBody["parent"]; ok {
+		t.Error("expected no parent field in body when parentID is 0")
+	}
+}
+
+func TestCommentPullRequestValidation(t *testing.T) {
+	client, err := bbdc.New(bbdc.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		text string
+	}{
+		{"empty text", ""},
+		{"blank text", "   "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := client.CommentPullRequest(context.Background(), "PROJ", "repo", 1, tt.text, 0); err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
+
 func containsParam(query, param string) bool {
 	for _, p := range strings.Split(query, "&") {
 		if p == param {
