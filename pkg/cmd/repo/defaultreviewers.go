@@ -127,28 +127,30 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
-		groups, err := client.ListReviewerGroups(ctx, projectKey, repoSlug)
+		users, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, "", "")
 		if err != nil {
 			return err
 		}
 
-		type groupSummary struct {
-			Name string `json:"name"`
-			ID   int    `json:"id"`
+		type reviewerSummary struct {
+			DisplayName string `json:"display_name"`
+			Username    string `json:"username"`
+			ID          int    `json:"id"`
 		}
 
-		var summaries []groupSummary
-		for _, g := range groups {
-			summaries = append(summaries, groupSummary{
-				Name: g.Name,
-				ID:   g.ID,
+		var summaries []reviewerSummary
+		for _, u := range users {
+			summaries = append(summaries, reviewerSummary{
+				DisplayName: u.FullName,
+				Username:    u.Name,
+				ID:          u.ID,
 			})
 		}
 
 		payload := struct {
-			Project   string         `json:"project"`
-			Repo      string         `json:"repo"`
-			Reviewers []groupSummary `json:"reviewer_groups"`
+			Project   string            `json:"project"`
+			Repo      string            `json:"repo"`
+			Reviewers []reviewerSummary `json:"reviewers"`
 		}{
 			Project:   projectKey,
 			Repo:      repoSlug,
@@ -157,14 +159,14 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(summaries) == 0 {
-				_, err := fmt.Fprintf(ios.Out, "No reviewer groups configured for %s/%s.\n", projectKey, repoSlug)
+				_, err := fmt.Fprintf(ios.Out, "No default reviewers configured for %s/%s.\n", projectKey, repoSlug)
 				return err
 			}
-			if _, err := fmt.Fprintf(ios.Out, "%-30s %s\n", "NAME", "ID"); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "%-30s %-20s %s\n", "DISPLAY NAME", "USERNAME", "ID"); err != nil {
 				return err
 			}
-			for _, g := range summaries {
-				if _, err := fmt.Fprintf(ios.Out, "%-30s %d\n", g.Name, g.ID); err != nil {
+			for _, r := range summaries {
+				if _, err := fmt.Fprintf(ios.Out, "%-30s %-20s %d\n", r.DisplayName, r.Username, r.ID); err != nil {
 					return err
 				}
 			}
