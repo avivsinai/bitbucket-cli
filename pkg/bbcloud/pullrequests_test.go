@@ -658,8 +658,8 @@ func TestListPullRequestComments(t *testing.T) {
 						"display_name": "Alice",
 						"nickname":     "alice",
 					},
-					"created_on":  "2024-01-10T10:00:00.000000+00:00",
-					"updated_on":  "2024-01-10T10:00:00.000000+00:00",
+					"created_on": "2024-01-10T10:00:00.000000+00:00",
+					"updated_on": "2024-01-10T10:00:00.000000+00:00",
 					"resolution": nil,
 				},
 				{
@@ -669,9 +669,9 @@ func TestListPullRequestComments(t *testing.T) {
 						"display_name": "Bob",
 						"nickname":     "bob",
 					},
-					"created_on":  "2024-01-11T10:00:00.000000+00:00",
-					"updated_on":  "2024-01-11T10:00:00.000000+00:00",
-					"resolution":  resolution,
+					"created_on": "2024-01-11T10:00:00.000000+00:00",
+					"updated_on": "2024-01-11T10:00:00.000000+00:00",
+					"resolution": resolution,
 				},
 			},
 		})
