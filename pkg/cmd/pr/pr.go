@@ -1701,6 +1701,9 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid pull request id %q", args[0])
 			}
+			if cmd.Flags().Changed("parent") && opts.ParentID <= 0 {
+				return fmt.Errorf("--parent must be a positive comment ID")
+			}
 			return runComment(cmd, f, id, opts)
 		},
 	}
