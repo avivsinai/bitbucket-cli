@@ -27,6 +27,7 @@ func NewCmdRepo(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newCreateCmd(f))
 	cmd.AddCommand(newCloneCmd(f))
 	cmd.AddCommand(newBrowseCmd(f))
+	cmd.AddCommand(newDefaultReviewersCmd(f))
 
 	return cmd
 }
