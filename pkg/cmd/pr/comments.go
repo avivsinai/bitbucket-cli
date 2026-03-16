@@ -134,11 +134,11 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 			for _, c := range comments {
 				switch state {
 				case "resolved":
-					if c.ResolvedOn != nil {
+					if c.Resolution != nil {
 						filtered = append(filtered, c)
 					}
 				case "unresolved":
-					if c.ResolvedOn == nil {
+					if c.Resolution == nil {
 						filtered = append(filtered, c)
 					}
 				}

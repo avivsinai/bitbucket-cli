@@ -641,7 +641,10 @@ func TestGetEffectiveDefaultReviewersValidation(t *testing.T) {
 
 func TestListPullRequestComments(t *testing.T) {
 	var gotMethod, gotPath string
-	resolved := "2024-01-15T10:00:00.000000+00:00"
+	resolution := map[string]any{
+		"user":       map[string]any{"display_name": "Charlie"},
+		"created_on": "2024-01-15T10:00:00.000000+00:00",
+	}
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
@@ -657,7 +660,7 @@ func TestListPullRequestComments(t *testing.T) {
 					},
 					"created_on":  "2024-01-10T10:00:00.000000+00:00",
 					"updated_on":  "2024-01-10T10:00:00.000000+00:00",
-					"resolved_on": nil,
+					"resolution": nil,
 				},
 				{
 					"id":      2,
@@ -668,7 +671,7 @@ func TestListPullRequestComments(t *testing.T) {
 					},
 					"created_on":  "2024-01-11T10:00:00.000000+00:00",
 					"updated_on":  "2024-01-11T10:00:00.000000+00:00",
-					"resolved_on": resolved,
+					"resolution":  resolution,
 				},
 			},
 		})
@@ -699,11 +702,11 @@ func TestListPullRequestComments(t *testing.T) {
 	if comments[0].User.DisplayName != "Alice" {
 		t.Errorf("comments[0].User.DisplayName = %q, want %q", comments[0].User.DisplayName, "Alice")
 	}
-	if comments[0].ResolvedOn != nil {
-		t.Errorf("comments[0].ResolvedOn should be nil, got %v", *comments[0].ResolvedOn)
+	if comments[0].Resolution != nil {
+		t.Error("comments[0].Resolution should be nil")
 	}
-	if comments[1].ResolvedOn == nil {
-		t.Fatal("comments[1].ResolvedOn should not be nil")
+	if comments[1].Resolution == nil {
+		t.Fatal("comments[1].Resolution should not be nil")
 	}
 }
 

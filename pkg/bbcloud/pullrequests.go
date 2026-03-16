@@ -445,8 +445,11 @@ type PullRequestComment struct {
 	User       *Account `json:"user"`
 	CreatedOn  string   `json:"created_on"`
 	UpdatedOn  string   `json:"updated_on"`
-	ResolvedOn *string  `json:"resolved_on"`
-	Parent     *struct {
+	Resolution *struct {
+		User      *Account `json:"user"`
+		CreatedOn string   `json:"created_on"`
+	} `json:"resolution"`
+	Parent *struct {
 		ID int `json:"id"`
 	} `json:"parent"`
 }
