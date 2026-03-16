@@ -318,7 +318,7 @@ func TestCommentPullRequest(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "LGTM")
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "LGTM", 0)
 	if err != nil {
 		t.Fatalf("CommentPullRequest: %v", err)
 	}
@@ -358,10 +358,48 @@ func TestCommentPullRequestValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := client.CommentPullRequest(context.Background(), tt.workspace, tt.repo, 1, tt.text); err == nil {
+			if err := client.CommentPullRequest(context.Background(), tt.workspace, tt.repo, 1, tt.text, 0); err == nil {
 				t.Error("expected error")
 			}
 		})
+	}
+}
+
+func TestCommentPullRequestWithParent(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "reply", 42)
+	if err != nil {
+		t.Fatalf("CommentPullRequest with parent: %v", err)
+	}
+
+	parent, ok := gotBody["parent"].(map[string]any)
+	if !ok {
+		t.Fatal("request body missing parent object")
+	}
+	if id, ok := parent["id"].(float64); !ok || int(id) != 42 {
+		t.Errorf("parent.id = %v, want 42", parent["id"])
+	}
+}
+
+func TestCommentPullRequestWithoutParent(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "top-level", 0)
+	if err != nil {
+		t.Fatalf("CommentPullRequest without parent: %v", err)
+	}
+
+	if _, ok := gotBody["parent"]; ok {
+		t.Error("expected no parent field in body when parentID is 0")
 	}
 }
 

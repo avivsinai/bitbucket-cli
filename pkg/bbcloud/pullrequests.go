@@ -347,7 +347,8 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 }
 
 // CommentPullRequest adds a comment to the pull request.
-func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, text string) error {
+// When parentID > 0, the comment is created as a threaded reply under that parent.
+func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, text string, parentID int) error {
 	if workspace == "" || repoSlug == "" {
 		return fmt.Errorf("workspace and repository slug are required")
 	}
@@ -359,6 +360,9 @@ func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug str
 		"content": map[string]string{
 			"raw": text,
 		},
+	}
+	if parentID > 0 {
+		body["parent"] = map[string]int{"id": parentID}
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments",
