@@ -53,6 +53,7 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newDeclineCmd(f))
 	cmd.AddCommand(newReopenCmd(f))
 	cmd.AddCommand(newCommentCmd(f))
+	cmd.AddCommand(newCommentsCmd(f))
 	cmd.AddCommand(newReviewerGroupCmd(f))
 	cmd.AddCommand(newAutoMergeCmd(f))
 	cmd.AddCommand(newTaskCmd(f))

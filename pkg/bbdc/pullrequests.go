@@ -30,6 +30,48 @@ type PullRequestComment struct {
 	} `json:"author"`
 }
 
+// ListPullRequestComments lists comments on a pull request.
+func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSlug string, prID int) ([]PullRequestComment, error) {
+	if projectKey == "" || repoSlug == "" {
+		return nil, fmt.Errorf("project key and repository slug are required")
+	}
+
+	const defaultPageSize = 100
+
+	var (
+		start = 0
+		all   []PullRequestComment
+	)
+
+	for {
+		u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments?limit=%d&start=%d",
+			url.PathEscape(projectKey),
+			url.PathEscape(repoSlug),
+			prID,
+			defaultPageSize,
+			start,
+		)
+		req, err := c.http.NewRequest(ctx, "GET", u, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp paged[PullRequestComment]
+		if err := c.http.Do(req, &resp); err != nil {
+			return nil, err
+		}
+
+		all = append(all, resp.Values...)
+
+		if resp.IsLastPage || len(resp.Values) == 0 {
+			break
+		}
+		start = resp.NextPageStart
+	}
+
+	return all, nil
+}
+
 // CreatePROptions configures pull request creation.
 type CreatePROptions struct {
 	Title        string

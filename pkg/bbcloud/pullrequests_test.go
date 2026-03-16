@@ -638,3 +638,136 @@ func TestGetEffectiveDefaultReviewersValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestListPullRequestComments(t *testing.T) {
+	var gotMethod, gotPath string
+	resolved := "2024-01-15T10:00:00.000000+00:00"
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{
+					"id":      1,
+					"content": map[string]string{"raw": "Looks good"},
+					"user": map[string]any{
+						"display_name": "Alice",
+						"nickname":     "alice",
+					},
+					"created_on":  "2024-01-10T10:00:00.000000+00:00",
+					"updated_on":  "2024-01-10T10:00:00.000000+00:00",
+					"resolved_on": nil,
+				},
+				{
+					"id":      2,
+					"content": map[string]string{"raw": "Fixed"},
+					"user": map[string]any{
+						"display_name": "Bob",
+						"nickname":     "bob",
+					},
+					"created_on":  "2024-01-11T10:00:00.000000+00:00",
+					"updated_on":  "2024-01-11T10:00:00.000000+00:00",
+					"resolved_on": resolved,
+				},
+			},
+		})
+	}))
+
+	comments, err := client.ListPullRequestComments(context.Background(), "myworkspace", "my-repo", 42, 0)
+	if err != nil {
+		t.Fatalf("ListPullRequestComments: %v", err)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/42/comments" {
+		t.Errorf("path = %q, want /repositories/myworkspace/my-repo/pullrequests/42/comments", gotPath)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+	if comments[0].ID != 1 {
+		t.Errorf("comments[0].ID = %d, want 1", comments[0].ID)
+	}
+	if comments[0].Content.Raw != "Looks good" {
+		t.Errorf("comments[0].Content.Raw = %q, want %q", comments[0].Content.Raw, "Looks good")
+	}
+	if comments[0].User == nil {
+		t.Fatal("comments[0].User is nil")
+	}
+	if comments[0].User.DisplayName != "Alice" {
+		t.Errorf("comments[0].User.DisplayName = %q, want %q", comments[0].User.DisplayName, "Alice")
+	}
+	if comments[0].ResolvedOn != nil {
+		t.Errorf("comments[0].ResolvedOn should be nil, got %v", *comments[0].ResolvedOn)
+	}
+	if comments[1].ResolvedOn == nil {
+		t.Fatal("comments[1].ResolvedOn should not be nil")
+	}
+}
+
+func TestListPullRequestCommentsPaginates(t *testing.T) {
+	var hits int32
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		switch count {
+		case 1:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{{"id": 1, "content": map[string]string{"raw": "first"}}},
+				"next":   serverURL + "/repositories/ws/repo/pullrequests/1/comments?pagelen=100&page=2",
+			})
+		case 2:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{{"id": 2, "content": map[string]string{"raw": "second"}}},
+			})
+		default:
+			t.Fatalf("unexpected request %d", count)
+		}
+	}))
+	serverURL = server.URL
+	t.Cleanup(server.Close)
+
+	client, err := bbcloud.New(bbcloud.Options{BaseURL: server.URL, Username: "u", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	comments, err := client.ListPullRequestComments(context.Background(), "ws", "repo", 1, 0)
+	if err != nil {
+		t.Fatalf("ListPullRequestComments: %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+	if hits != 2 {
+		t.Fatalf("expected 2 requests, got %d", hits)
+	}
+}
+
+func TestListPullRequestCommentsValidation(t *testing.T) {
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL: "http://localhost", Username: "u", Token: "t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+	}{
+		{"empty workspace", "", "repo"},
+		{"empty repo", "ws", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.ListPullRequestComments(context.Background(), tt.workspace, tt.repo, 1, 0)
+			if err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
