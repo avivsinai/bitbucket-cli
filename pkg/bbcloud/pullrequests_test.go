@@ -500,6 +500,133 @@ func TestMergePullRequestInvalidStrategy(t *testing.T) {
 	_ = client.MergePullRequest(context.Background(), "ws", "repo", 1, "", "", false)
 }
 
+func TestMergePullRequest202AsyncPolling(t *testing.T) {
+	var pollCount int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/merge") {
+			// Return 202 with task_id
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"task_id": "abc-123",
+			})
+			return
+		}
+		if strings.Contains(r.URL.Path, "/task-status/") {
+			count := atomic.AddInt32(&pollCount, 1)
+			w.Header().Set("Content-Type", "application/json")
+			if count < 3 {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"task_status": "PENDING",
+				})
+			} else {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"task_status": "SUCCESS",
+				})
+			}
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+
+	err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", "squash", false)
+	if err != nil {
+		t.Fatalf("MergePullRequest with 202: %v", err)
+	}
+	if pollCount != 3 {
+		t.Errorf("expected 3 poll attempts, got %d", pollCount)
+	}
+}
+
+func TestMergePullRequest202AsyncFailure(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/merge") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"task_id": "abc-456",
+			})
+			return
+		}
+		if strings.Contains(r.URL.Path, "/task-status/") {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"task_status": "FAILED",
+			})
+			return
+		}
+	}))
+
+	err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", "", false)
+	if err == nil {
+		t.Fatal("expected error for failed merge task")
+	}
+	if !strings.Contains(err.Error(), "merge task failed") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCreatePullRequestReviewerAutoDetect(t *testing.T) {
+	tests := []struct {
+		name       string
+		reviewers  []string
+		wantFields []string // expected key for each reviewer in request body
+	}{
+		{
+			name:       "uuid with braces",
+			reviewers:  []string{"{550e8400-e29b-41d4-a716-446655440000}"},
+			wantFields: []string{"uuid"},
+		},
+		{
+			name:       "uuid without braces",
+			reviewers:  []string{"550e8400-e29b-41d4-a716-446655440000"},
+			wantFields: []string{"uuid"},
+		},
+		{
+			name:       "username",
+			reviewers:  []string{"alice"},
+			wantFields: []string{"username"},
+		},
+		{
+			name:       "mixed",
+			reviewers:  []string{"{abc-123}", "bob"},
+			wantFields: []string{"uuid", "username"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+			}))
+
+			_, _ = client.CreatePullRequest(context.Background(), "ws", "repo", bbcloud.CreatePullRequestInput{
+				Title:       "Test PR",
+				Source:      "feature",
+				Destination: "main",
+				Reviewers:   tt.reviewers,
+			})
+
+			reviewers, ok := gotBody["reviewers"].([]any)
+			if !ok {
+				t.Fatal("reviewers missing from request body")
+			}
+			if len(reviewers) != len(tt.wantFields) {
+				t.Fatalf("expected %d reviewers, got %d", len(tt.wantFields), len(reviewers))
+			}
+			for i, field := range tt.wantFields {
+				rev := reviewers[i].(map[string]any)
+				if _, ok := rev[field]; !ok {
+					t.Errorf("reviewer[%d]: expected %q field, got keys %v", i, field, rev)
+				}
+			}
+		})
+	}
+}
+
 func TestApprovePullRequest(t *testing.T) {
 	var gotMethod, gotPath string
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

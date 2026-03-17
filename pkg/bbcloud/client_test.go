@@ -343,6 +343,30 @@ func TestNormalizeUUID(t *testing.T) {
 	}
 }
 
+func TestLooksLikeUUID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"{550e8400-e29b-41d4-a716-446655440000}", true},
+		{"550e8400-e29b-41d4-a716-446655440000", true},
+		{"{abc-123}", true},
+		{"abc-123", true},
+		{"alice", false},
+		{"bob_smith", false},
+		{"user.name", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := looksLikeUUID(tt.input)
+			if got != tt.want {
+				t.Errorf("looksLikeUUID(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func newTestClient(t *testing.T, handler http.Handler) *Client {
 	t.Helper()
 	server := httptest.NewServer(handler)

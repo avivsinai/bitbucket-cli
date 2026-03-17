@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -234,7 +234,11 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if len(input.Reviewers) > 0 {
 		var reviewers []map[string]string
 		for _, reviewer := range input.Reviewers {
-			reviewers = append(reviewers, map[string]string{"uuid": reviewer})
+			if looksLikeUUID(reviewer) {
+				reviewers = append(reviewers, map[string]string{"uuid": normalizeUUID(reviewer)})
+			} else {
+				reviewers = append(reviewers, map[string]string{"username": reviewer})
+			}
 		}
 		body["reviewers"] = reviewers
 	}
@@ -443,19 +447,24 @@ func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug strin
 		return err
 	}
 
-	resp, taskID, err := c.http.DoRaw(req)
-	if err != nil {
+	var result mergeTaskStatus
+	if err := c.http.Do(req, &result); err != nil {
 		return err
 	}
 
-	if resp.StatusCode == http.StatusAccepted && taskID != "" {
-		return c.pollMergeTask(ctx, workspace, repoSlug, id, taskID)
+	if result.TaskID != "" {
+		return c.pollMergeTask(ctx, workspace, repoSlug, id, result.TaskID)
 	}
 
 	return nil
 }
 
-// pollMergeTask polls the merge task status until it completes or the context expires.
+// maxMergePollAttempts is the upper bound on polling iterations for async merges.
+// At 2 seconds per iteration this gives ~5 minutes before giving up.
+const maxMergePollAttempts = 150
+
+// pollMergeTask polls the merge task status until it completes, the context
+// expires, or maxMergePollAttempts is reached.
 func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, prID int, taskID string) error {
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/merge/task-status/%s",
 		url.PathEscape(workspace),
@@ -464,7 +473,7 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 		url.PathEscape(taskID),
 	)
 
-	for {
+	for attempt := 0; attempt < maxMergePollAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("merge task timed out: %w", ctx.Err())
@@ -488,6 +497,18 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 			return fmt.Errorf("merge task failed with status: %s", status.Status)
 		}
 	}
+
+	return fmt.Errorf("merge task %s did not complete after %d poll attempts", taskID, maxMergePollAttempts)
+}
+
+// uuidPattern matches UUIDs with or without curly braces (e.g. "{abc-123}" or "550e8400-e29b-41d4-a716-446655440000").
+var uuidPattern = regexp.MustCompile(`^\{?[0-9a-fA-F-]+\}?$`)
+
+// looksLikeUUID returns true if s appears to be a UUID (hex digits and dashes,
+// optionally wrapped in curly braces). Usernames are alphanumeric with
+// underscores/dots, so the distinction is reliable.
+func looksLikeUUID(s string) bool {
+	return uuidPattern.MatchString(s)
 }
 
 // ApprovePullRequest approves the given pull request.
