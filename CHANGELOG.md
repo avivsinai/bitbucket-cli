@@ -6,6 +6,17 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-03-17
+
+### Added
+- `bkt pr comments <id>` command to list pull request comments with optional `--state` filtering (`resolved`, `unresolved`, `all`). Supports both Cloud and Data Center with paginated API calls. Cloud uses the `resolution` object for client-side state filtering (#75).
+- `bkt pr comment --parent <id>` flag for creating threaded replies under existing PR comments. Maps to the `parent.id` API field on both Cloud and Data Center (#76).
+- `bkt repo default-reviewers list` command to show effective default reviewers for a repository. Cloud displays reviewer display names and UUIDs; Data Center returns users from default reviewer conditions (#77).
+
+### Changed
+- Bumped minimum Go version to 1.25 (required by `golang.org/x/term` v0.41.0).
+- CI and release workflows updated to use Go 1.25.
+
 ## [0.11.1] - 2026-03-11
 
 ### Security
@@ -230,7 +241,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.9.0...v0.10.0
