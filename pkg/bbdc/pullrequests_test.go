@@ -461,7 +461,7 @@ func TestCommentPullRequest(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, "LGTM", 0)
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{Text: "LGTM"})
 	if err != nil {
 		t.Fatalf("CommentPullRequest: %v", err)
 	}
@@ -483,7 +483,7 @@ func TestCommentPullRequestWithParent(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, "reply", 42)
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{Text: "reply", ParentID: 42})
 	if err != nil {
 		t.Fatalf("CommentPullRequest with parent: %v", err)
 	}
@@ -504,7 +504,7 @@ func TestCommentPullRequestWithoutParent(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, "top-level", 0)
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{Text: "top-level"})
 	if err != nil {
 		t.Fatalf("CommentPullRequest without parent: %v", err)
 	}
@@ -530,10 +530,97 @@ func TestCommentPullRequestValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := client.CommentPullRequest(context.Background(), "PROJ", "repo", 1, tt.text, 0); err == nil {
+			if err := client.CommentPullRequest(context.Background(), "PROJ", "repo", 1, bbdc.CommentOptions{Text: tt.text}); err == nil {
 				t.Error("expected error")
 			}
 		})
+	}
+}
+
+func TestCommentPullRequestInlineToLine(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{
+		Text:   "needs fix",
+		File:   "src/handler.go",
+		ToLine: 25,
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest inline to-line: %v", err)
+	}
+
+	anchor, ok := gotBody["anchor"].(map[string]any)
+	if !ok {
+		t.Fatal("request body missing anchor object")
+	}
+	if anchor["path"] != "src/handler.go" {
+		t.Errorf("anchor.path = %v, want src/handler.go", anchor["path"])
+	}
+	if line, ok := anchor["line"].(float64); !ok || int(line) != 25 {
+		t.Errorf("anchor.line = %v, want 25", anchor["line"])
+	}
+	if anchor["lineType"] != "ADDED" {
+		t.Errorf("anchor.lineType = %v, want ADDED", anchor["lineType"])
+	}
+	if anchor["fileType"] != "TO" {
+		t.Errorf("anchor.fileType = %v, want TO", anchor["fileType"])
+	}
+}
+
+func TestCommentPullRequestInlineFromLine(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{
+		Text:     "was this intentional?",
+		File:     "src/handler.go",
+		FromLine: 10,
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest inline from-line: %v", err)
+	}
+
+	anchor, ok := gotBody["anchor"].(map[string]any)
+	if !ok {
+		t.Fatal("request body missing anchor object")
+	}
+	if anchor["path"] != "src/handler.go" {
+		t.Errorf("anchor.path = %v, want src/handler.go", anchor["path"])
+	}
+	if line, ok := anchor["line"].(float64); !ok || int(line) != 10 {
+		t.Errorf("anchor.line = %v, want 10", anchor["line"])
+	}
+	if anchor["lineType"] != "REMOVED" {
+		t.Errorf("anchor.lineType = %v, want REMOVED", anchor["lineType"])
+	}
+	if anchor["fileType"] != "FROM" {
+		t.Errorf("anchor.fileType = %v, want FROM", anchor["fileType"])
+	}
+}
+
+func TestCommentPullRequestNoAnchorWhenFileEmpty(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{
+		Text: "general comment",
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest: %v", err)
+	}
+
+	if _, ok := gotBody["anchor"]; ok {
+		t.Error("expected no anchor field for general comment")
 	}
 }
 
