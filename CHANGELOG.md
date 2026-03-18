@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-03-18
+
+### Fixed
+- Rejected half-braced UUID inputs (e.g. `{uuid` or `uuid}`) in `looksLikeUUID`. The regex now requires either both curly braces or neither.
+
 ## [0.13.0] - 2026-03-18
 
 ### Added
