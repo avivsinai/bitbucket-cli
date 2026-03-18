@@ -351,10 +351,10 @@ func TestLooksLikeUUID(t *testing.T) {
 		{"{550e8400-e29b-41d4-a716-446655440000}", true},
 		{"550e8400-e29b-41d4-a716-446655440000", true},
 		{" 550e8400-e29b-41d4-a716-446655440000 ", true}, // trimmed
-		{"{abc-123}", false},                              // not canonical UUID
-		{"abc-123", false},                                // not canonical UUID
-		{"cafe", false},                                   // hex-only username
-		{"dead", false},                                   // hex-only username
+		{"{abc-123}", false},                             // not canonical UUID
+		{"abc-123", false},                               // not canonical UUID
+		{"cafe", false},                                  // hex-only username
+		{"dead", false},                                  // hex-only username
 		{"alice", false},
 		{"bob_smith", false},
 		{"user.name", false},
