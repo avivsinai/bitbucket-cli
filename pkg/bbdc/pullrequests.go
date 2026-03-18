@@ -28,6 +28,12 @@ type PullRequestComment struct {
 	Author struct {
 		User User `json:"user"`
 	} `json:"author"`
+	Anchor *struct {
+		Path     string `json:"path"`
+		Line     int    `json:"line"`
+		LineType string `json:"lineType"`
+		FileType string `json:"fileType"`
+	} `json:"anchor,omitempty"`
 }
 
 // ListPullRequestComments lists comments on a pull request.
@@ -186,17 +192,42 @@ func (c *Client) ApprovePullRequest(ctx context.Context, projectKey, repoSlug st
 	return c.http.Do(req, nil)
 }
 
+// CommentOptions configures a pull request comment.
+type CommentOptions struct {
+	Text     string
+	ParentID int
+	File     string
+	FromLine int
+	ToLine   int
+}
+
 // CommentPullRequest adds a comment to the pull request.
-// When parentID > 0, the comment is created as a threaded reply under that parent.
-func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug string, prID int, text string, parentID int) error {
-	if strings.TrimSpace(text) == "" {
+// When ParentID > 0, the comment is a threaded reply.
+// When File is set with FromLine or ToLine, the comment targets a specific diff line.
+func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug string, prID int, opts CommentOptions) error {
+	if strings.TrimSpace(opts.Text) == "" {
 		return fmt.Errorf("comment text is required")
 	}
 
-	body := map[string]any{"text": text}
-	if parentID > 0 {
-		body["parent"] = map[string]int{"id": parentID}
+	body := map[string]any{"text": opts.Text}
+	if opts.ParentID > 0 {
+		body["parent"] = map[string]int{"id": opts.ParentID}
 	}
+	if opts.File != "" {
+		anchor := map[string]any{"path": opts.File}
+		if opts.ToLine > 0 {
+			anchor["line"] = opts.ToLine
+			anchor["lineType"] = "ADDED"
+			anchor["fileType"] = "TO"
+		}
+		if opts.FromLine > 0 {
+			anchor["line"] = opts.FromLine
+			anchor["lineType"] = "REMOVED"
+			anchor["fileType"] = "FROM"
+		}
+		body["anchor"] = anchor
+	}
+
 	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments",
 		url.PathEscape(projectKey),
 		url.PathEscape(repoSlug),

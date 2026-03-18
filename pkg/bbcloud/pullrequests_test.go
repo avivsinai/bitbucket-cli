@@ -318,7 +318,7 @@ func TestCommentPullRequest(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "LGTM", 0)
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{Text: "LGTM"})
 	if err != nil {
 		t.Fatalf("CommentPullRequest: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestCommentPullRequestValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := client.CommentPullRequest(context.Background(), tt.workspace, tt.repo, 1, tt.text, 0); err == nil {
+			if err := client.CommentPullRequest(context.Background(), tt.workspace, tt.repo, 1, bbcloud.CommentOptions{Text: tt.text}); err == nil {
 				t.Error("expected error")
 			}
 		})
@@ -372,7 +372,7 @@ func TestCommentPullRequestWithParent(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "reply", 42)
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{Text: "reply", ParentID: 42})
 	if err != nil {
 		t.Fatalf("CommentPullRequest with parent: %v", err)
 	}
@@ -393,13 +393,94 @@ func TestCommentPullRequestWithoutParent(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, "top-level", 0)
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{Text: "top-level"})
 	if err != nil {
 		t.Fatalf("CommentPullRequest without parent: %v", err)
 	}
 
 	if _, ok := gotBody["parent"]; ok {
 		t.Error("expected no parent field in body when parentID is 0")
+	}
+}
+
+func TestCommentPullRequestInlineToLine(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{
+		Text:   "needs fix",
+		File:   "src/handler.go",
+		ToLine: 25,
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest inline to-line: %v", err)
+	}
+
+	inline, ok := gotBody["inline"].(map[string]any)
+	if !ok {
+		t.Fatal("request body missing inline object")
+	}
+	if inline["path"] != "src/handler.go" {
+		t.Errorf("inline.path = %v, want src/handler.go", inline["path"])
+	}
+	if to, ok := inline["to"].(float64); !ok || int(to) != 25 {
+		t.Errorf("inline.to = %v, want 25", inline["to"])
+	}
+	if _, ok := inline["from"]; ok {
+		t.Error("expected no from field when only to-line is set")
+	}
+}
+
+func TestCommentPullRequestInlineFromLine(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{
+		Text:     "was this intentional?",
+		File:     "src/handler.go",
+		FromLine: 10,
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest inline from-line: %v", err)
+	}
+
+	inline, ok := gotBody["inline"].(map[string]any)
+	if !ok {
+		t.Fatal("request body missing inline object")
+	}
+	if inline["path"] != "src/handler.go" {
+		t.Errorf("inline.path = %v, want src/handler.go", inline["path"])
+	}
+	if from, ok := inline["from"].(float64); !ok || int(from) != 10 {
+		t.Errorf("inline.from = %v, want 10", inline["from"])
+	}
+	if _, ok := inline["to"]; ok {
+		t.Error("expected no to field when only from-line is set")
+	}
+}
+
+func TestCommentPullRequestNoInlineWhenFileEmpty(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{
+		Text: "general comment",
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest: %v", err)
+	}
+
+	if _, ok := gotBody["inline"]; ok {
+		t.Error("expected no inline field for general comment")
 	}
 }
 
