@@ -351,23 +351,43 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 	return &pr, nil
 }
 
+// CommentOptions configures a pull request comment.
+type CommentOptions struct {
+	Text     string
+	ParentID int
+	File     string
+	FromLine int
+	ToLine   int
+}
+
 // CommentPullRequest adds a comment to the pull request.
-// When parentID > 0, the comment is created as a threaded reply under that parent.
-func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, text string, parentID int) error {
+// When ParentID > 0, the comment is a threaded reply.
+// When File is set with FromLine or ToLine, the comment targets a specific diff line.
+func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, opts CommentOptions) error {
 	if workspace == "" || repoSlug == "" {
 		return fmt.Errorf("workspace and repository slug are required")
 	}
-	if strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(opts.Text) == "" {
 		return fmt.Errorf("comment text is required")
 	}
 
 	body := map[string]any{
 		"content": map[string]string{
-			"raw": text,
+			"raw": opts.Text,
 		},
 	}
-	if parentID > 0 {
-		body["parent"] = map[string]int{"id": parentID}
+	if opts.ParentID > 0 {
+		body["parent"] = map[string]int{"id": opts.ParentID}
+	}
+	if opts.File != "" {
+		inline := map[string]any{"path": opts.File}
+		if opts.ToLine > 0 {
+			inline["to"] = opts.ToLine
+		}
+		if opts.FromLine > 0 {
+			inline["from"] = opts.FromLine
+		}
+		body["inline"] = inline
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments",
