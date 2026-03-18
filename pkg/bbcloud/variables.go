@@ -142,7 +142,7 @@ func (c *Client) UpdateRepositoryVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines_config/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(variableUUID),
+		url.PathEscape(normalizeUUID(variableUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "PUT", path, body)
@@ -169,7 +169,7 @@ func (c *Client) DeleteRepositoryVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines_config/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(variableUUID),
+		url.PathEscape(normalizeUUID(variableUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
@@ -296,7 +296,7 @@ func (c *Client) UpdateWorkspaceVariable(ctx context.Context, workspace, variabl
 
 	path := fmt.Sprintf("/workspaces/%s/pipelines-config/variables/%s",
 		url.PathEscape(workspace),
-		url.PathEscape(variableUUID),
+		url.PathEscape(normalizeUUID(variableUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "PUT", path, body)
@@ -322,7 +322,7 @@ func (c *Client) DeleteWorkspaceVariable(ctx context.Context, workspace, variabl
 
 	path := fmt.Sprintf("/workspaces/%s/pipelines-config/variables/%s",
 		url.PathEscape(workspace),
-		url.PathEscape(variableUUID),
+		url.PathEscape(normalizeUUID(variableUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
@@ -406,7 +406,7 @@ func (c *Client) ListDeploymentVariables(ctx context.Context, workspace, repoSlu
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables?pagelen=%d",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(environmentUUID),
+		url.PathEscape(normalizeUUID(environmentUUID)),
 		pageLen,
 	)
 
@@ -471,7 +471,7 @@ func (c *Client) CreateDeploymentVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(environmentUUID),
+		url.PathEscape(normalizeUUID(environmentUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "POST", path, body)
@@ -517,8 +517,8 @@ func (c *Client) UpdateDeploymentVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(environmentUUID),
-		url.PathEscape(variableUUID),
+		url.PathEscape(normalizeUUID(environmentUUID)),
+		url.PathEscape(normalizeUUID(variableUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "PUT", path, body)
@@ -548,8 +548,8 @@ func (c *Client) DeleteDeploymentVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(environmentUUID),
-		url.PathEscape(variableUUID),
+		url.PathEscape(normalizeUUID(environmentUUID)),
+		url.PathEscape(normalizeUUID(variableUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)

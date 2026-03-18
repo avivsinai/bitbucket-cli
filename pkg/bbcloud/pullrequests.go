@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // RepositoryRef identifies a repository inside a pull request's source or
@@ -232,7 +234,11 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if len(input.Reviewers) > 0 {
 		var reviewers []map[string]string
 		for _, reviewer := range input.Reviewers {
-			reviewers = append(reviewers, map[string]string{"username": reviewer})
+			if looksLikeUUID(reviewer) {
+				reviewers = append(reviewers, map[string]string{"uuid": normalizeUUID(reviewer)})
+			} else {
+				reviewers = append(reviewers, map[string]string{"username": reviewer})
+			}
 		}
 		body["reviewers"] = reviewers
 	}
@@ -408,7 +414,15 @@ var validMergeStrategies = map[string]bool{
 	"fast_forward": true,
 }
 
+// mergeTaskStatus represents the async merge task status response.
+type mergeTaskStatus struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"task_status"`
+}
+
 // MergePullRequest merges the given pull request.
+// The Bitbucket Cloud API may return 202 for long-running merges with a task_id
+// that must be polled until completion.
 func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug string, id int, message, strategy string, closeSource bool) error {
 	if workspace == "" || repoSlug == "" {
 		return fmt.Errorf("workspace and repository slug are required")
@@ -437,7 +451,68 @@ func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug strin
 		return err
 	}
 
-	return c.http.Do(req, nil)
+	var result mergeTaskStatus
+	if err := c.http.Do(req, &result); err != nil {
+		return err
+	}
+
+	if result.TaskID != "" {
+		return c.pollMergeTask(ctx, workspace, repoSlug, id, result.TaskID)
+	}
+
+	return nil
+}
+
+// maxMergePollAttempts is the upper bound on polling iterations for async merges.
+// At 2 seconds per iteration this gives ~5 minutes before giving up.
+const maxMergePollAttempts = 150
+
+// pollMergeTask polls the merge task status until it completes, the context
+// expires, or maxMergePollAttempts is reached.
+func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, prID int, taskID string) error {
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/merge/task-status/%s",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+		url.PathEscape(taskID),
+	)
+
+	for attempt := 0; attempt < maxMergePollAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("merge task timed out: %w", ctx.Err())
+		case <-time.After(2 * time.Second):
+		}
+
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return err
+		}
+
+		var status mergeTaskStatus
+		if err := c.http.Do(req, &status); err != nil {
+			return fmt.Errorf("polling merge task: %w", err)
+		}
+
+		if status.Status == "SUCCESS" {
+			return nil
+		}
+		if status.Status != "PENDING" {
+			return fmt.Errorf("merge task failed with status: %s", status.Status)
+		}
+	}
+
+	return fmt.Errorf("merge task %s did not complete after %d poll attempts", taskID, maxMergePollAttempts)
+}
+
+// uuidPattern matches UUIDs with or without curly braces (e.g. "{abc-123}" or "550e8400-e29b-41d4-a716-446655440000").
+var uuidPattern = regexp.MustCompile(`^\{?[0-9a-fA-F-]+\}?$`)
+
+// looksLikeUUID returns true if s appears to be a UUID (hex digits and dashes,
+// optionally wrapped in curly braces). Usernames are alphanumeric with
+// underscores/dots, so the distinction is reliable.
+func looksLikeUUID(s string) bool {
+	return uuidPattern.MatchString(s)
 }
 
 // PullRequestComment models a comment on a Bitbucket Cloud pull request.
