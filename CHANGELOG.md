@@ -6,6 +6,15 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-03-18
+
+### Added
+- `bkt pr comment --file <path> --to-line <n>` and `--from-line <n>` flags for inline comments on PR diffs. Targets specific lines in the diff: `--to-line` for added/changed lines (new side), `--from-line` for removed lines (old side). Supports both Bitbucket Cloud (`inline` object) and Data Center (`anchor` object) (#86).
+- `Inline` field on Cloud `PullRequestComment` and `Anchor` field on DC `PullRequestComment` structs, exposing file/line location in `--json` output.
+
+### Changed
+- Refactored `CommentPullRequest` in both Cloud and DC clients from positional parameters to a `CommentOptions` struct, enabling extensible comment creation.
+
 ## [0.13.1] - 2026-03-18
 
 ### Fixed
