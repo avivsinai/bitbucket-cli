@@ -75,6 +75,7 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 
 		type reviewerSummary struct {
 			DisplayName string `json:"display_name"`
+			Username    string `json:"username"`
 			UUID        string `json:"uuid"`
 		}
 
@@ -82,6 +83,7 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 		for _, u := range users {
 			summaries = append(summaries, reviewerSummary{
 				DisplayName: u.Display,
+				Username:    u.Username,
 				UUID:        u.UUID,
 			})
 		}
@@ -101,11 +103,11 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 				_, err := fmt.Fprintf(ios.Out, "No default reviewers configured for %s/%s.\n", workspace, repoSlug)
 				return err
 			}
-			if _, err := fmt.Fprintf(ios.Out, "%-30s %s\n", "DISPLAY NAME", "UUID"); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "%-30s %-20s %s\n", "DISPLAY NAME", "USERNAME", "UUID"); err != nil {
 				return err
 			}
 			for _, r := range summaries {
-				if _, err := fmt.Fprintf(ios.Out, "%-30s %s\n", r.DisplayName, r.UUID); err != nil {
+				if _, err := fmt.Fprintf(ios.Out, "%-30s %-20s %s\n", r.DisplayName, r.Username, r.UUID); err != nil {
 					return err
 				}
 			}

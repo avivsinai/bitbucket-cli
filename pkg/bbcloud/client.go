@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
@@ -123,6 +124,17 @@ type Pipeline struct {
 func normalizeUUID(uuid string) string {
 	uuid = strings.Trim(uuid, "{}")
 	return "{" + uuid + "}"
+}
+
+// uuidPattern matches canonical UUIDs (8-4-4-4-12 hex segments), optionally
+// wrapped in curly braces.
+var uuidPattern = regexp.MustCompile(`^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$`)
+
+// looksLikeUUID returns true if s is a canonical UUID, optionally wrapped in
+// curly braces. Bitbucket Cloud usernames contain alphanumerics, underscores,
+// and dots, so they never match this pattern.
+func looksLikeUUID(s string) bool {
+	return uuidPattern.MatchString(strings.TrimSpace(s))
 }
 
 // PipelinePage encapsulates paginated pipeline results.
