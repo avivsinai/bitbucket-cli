@@ -3012,7 +3012,12 @@ func TestCommentInlineValidation(t *testing.T) {
 		{
 			name:    "file whitespace only with to-line",
 			args:    []string{"42", "--text", "x", "--file", "   ", "--to-line", "25"},
-			wantErr: "--file is required when --from-line or --to-line is specified",
+			wantErr: "--file value must not be blank",
+		},
+		{
+			name:    "file whitespace only alone",
+			args:    []string{"42", "--text", "x", "--file", "   "},
+			wantErr: "--file value must not be blank",
 		},
 	}
 	for _, tt := range tests {

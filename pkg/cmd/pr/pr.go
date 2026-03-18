@@ -1709,11 +1709,15 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			opts.File = strings.TrimSpace(opts.File)
+			fileFlagChanged := cmd.Flags().Changed("file")
 			hasFile := opts.File != ""
 			hasFromLine := cmd.Flags().Changed("from-line")
 			hasToLine := cmd.Flags().Changed("to-line")
 			hasInline := hasFile || hasFromLine || hasToLine
 
+			if fileFlagChanged && !hasFile {
+				return fmt.Errorf("--file value must not be blank")
+			}
 			if (hasFromLine || hasToLine) && !hasFile {
 				return fmt.Errorf("--file is required when --from-line or --to-line is specified")
 			}
