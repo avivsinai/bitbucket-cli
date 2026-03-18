@@ -6,6 +6,20 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-03-18
+
+### Added
+- UUID-based reviewer identification in `bkt pr create --reviewer`. Automatically detects canonical UUIDs and sends them with the `uuid` key to Bitbucket Cloud, while preserving username-based identification for non-UUID values (#87).
+- USERNAME column in `bkt repo default-reviewers list` Cloud output, making it easier to copy reviewer identifiers for use with `--reviewer`.
+
+### Fixed
+- Tightened `looksLikeUUID` regex to match only canonical UUIDs (8-4-4-4-12 hex segments), preventing false positives on hex-only usernames like `cafe` or `dead`.
+- Bitbucket Cloud API conformance: reviewer auto-detection, merge 202 async polling with bounded retries, variable UUID normalization in URL paths, and pipeline pagelen raised to API maximum of 100 (#78).
+
+### Changed
+- `--reviewer` flag help text now clarifies that both usernames and `{UUID}` values are accepted.
+- Moved `looksLikeUUID` helper alongside `normalizeUUID` in `client.go` for co-location.
+
 ## [0.12.0] - 2026-03-17
 
 ### Added
