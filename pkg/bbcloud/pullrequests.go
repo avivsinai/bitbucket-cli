@@ -540,6 +540,11 @@ type PullRequestComment struct {
 	Parent *struct {
 		ID int `json:"id"`
 	} `json:"parent"`
+	Inline *struct {
+		Path string `json:"path"`
+		From *int   `json:"from"`
+		To   *int   `json:"to"`
+	} `json:"inline,omitempty"`
 }
 
 type pullRequestCommentListPage struct {

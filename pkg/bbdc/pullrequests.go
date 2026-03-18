@@ -28,6 +28,12 @@ type PullRequestComment struct {
 	Author struct {
 		User User `json:"user"`
 	} `json:"author"`
+	Anchor *struct {
+		Path     string `json:"path"`
+		Line     int    `json:"line"`
+		LineType string `json:"lineType"`
+		FileType string `json:"fileType"`
+	} `json:"anchor,omitempty"`
 }
 
 // ListPullRequestComments lists comments on a pull request.
