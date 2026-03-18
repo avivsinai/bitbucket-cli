@@ -3010,7 +3010,7 @@ func TestCommentInlineValidation(t *testing.T) {
 			wantErr: "--to-line must be a positive integer",
 		},
 		{
-			name:    "file whitespace only",
+			name:    "file whitespace only with to-line",
 			args:    []string{"42", "--text", "x", "--file", "   ", "--to-line", "25"},
 			wantErr: "--file is required when --from-line or --to-line is specified",
 		},
