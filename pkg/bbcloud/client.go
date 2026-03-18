@@ -126,9 +126,9 @@ func normalizeUUID(uuid string) string {
 	return "{" + uuid + "}"
 }
 
-// uuidPattern matches canonical UUIDs (8-4-4-4-12 hex segments), optionally
-// wrapped in curly braces.
-var uuidPattern = regexp.MustCompile(`^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$`)
+// uuidPattern matches canonical UUIDs (8-4-4-4-12 hex segments), either bare
+// or fully wrapped in curly braces. Half-braced inputs are rejected.
+var uuidPattern = regexp.MustCompile(`^(?:\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$`)
 
 // looksLikeUUID returns true if s is a canonical UUID, optionally wrapped in
 // curly braces. Bitbucket Cloud usernames contain alphanumerics, underscores,
