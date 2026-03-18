@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -503,16 +502,6 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 	}
 
 	return fmt.Errorf("merge task %s did not complete after %d poll attempts", taskID, maxMergePollAttempts)
-}
-
-// uuidPattern matches UUIDs with or without curly braces (e.g. "{abc-123}" or "550e8400-e29b-41d4-a716-446655440000").
-var uuidPattern = regexp.MustCompile(`^\{?[0-9a-fA-F-]+\}?$`)
-
-// looksLikeUUID returns true if s appears to be a UUID (hex digits and dashes,
-// optionally wrapped in curly braces). Usernames are alphanumeric with
-// underscores/dots, so the distinction is reliable.
-func looksLikeUUID(s string) bool {
-	return uuidPattern.MatchString(s)
 }
 
 // PullRequestComment models a comment on a Bitbucket Cloud pull request.

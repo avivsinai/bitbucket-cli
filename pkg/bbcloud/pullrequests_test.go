@@ -627,7 +627,7 @@ func TestCreatePullRequestReviewerAutoDetect(t *testing.T) {
 		},
 		{
 			name:       "mixed",
-			reviewers:  []string{"{abc-123}", "bob"},
+			reviewers:  []string{"{550e8400-e29b-41d4-a716-446655440000}", "bob"},
 			wantFields: []string{"uuid", "username"},
 		},
 	}
