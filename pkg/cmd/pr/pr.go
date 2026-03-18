@@ -1708,7 +1708,7 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 				return fmt.Errorf("--parent must be a positive comment ID")
 			}
 
-			hasFile := opts.File != ""
+			hasFile := strings.TrimSpace(opts.File) != ""
 			hasFromLine := cmd.Flags().Changed("from-line")
 			hasToLine := cmd.Flags().Changed("to-line")
 			hasInline := hasFile || hasFromLine || hasToLine

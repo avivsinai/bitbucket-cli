@@ -2967,3 +2967,65 @@ func TestMergeReviewers(t *testing.T) {
 		})
 	}
 }
+
+func TestCommentInlineValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "from-line without file",
+			args:    []string{"42", "--text", "x", "--from-line", "10"},
+			wantErr: "--file is required when --from-line or --to-line is specified",
+		},
+		{
+			name:    "to-line without file",
+			args:    []string{"42", "--text", "x", "--to-line", "25"},
+			wantErr: "--file is required when --from-line or --to-line is specified",
+		},
+		{
+			name:    "file alone",
+			args:    []string{"42", "--text", "x", "--file", "src/foo.go"},
+			wantErr: "--file must be used with either --from-line or --to-line",
+		},
+		{
+			name:    "both from-line and to-line",
+			args:    []string{"42", "--text", "x", "--file", "src/foo.go", "--from-line", "10", "--to-line", "25"},
+			wantErr: "--from-line and --to-line are mutually exclusive",
+		},
+		{
+			name:    "parent with inline flags",
+			args:    []string{"42", "--text", "x", "--parent", "5", "--file", "src/foo.go", "--to-line", "25"},
+			wantErr: "--parent cannot be combined with inline comment flags",
+		},
+		{
+			name:    "from-line zero",
+			args:    []string{"42", "--text", "x", "--file", "src/foo.go", "--from-line", "0"},
+			wantErr: "--from-line must be a positive integer",
+		},
+		{
+			name:    "to-line zero",
+			args:    []string{"42", "--text", "x", "--file", "src/foo.go", "--to-line", "0"},
+			wantErr: "--to-line must be a positive integer",
+		},
+		{
+			name:    "file whitespace only",
+			args:    []string{"42", "--text", "x", "--file", "   ", "--to-line", "25"},
+			wantErr: "--file is required when --from-line or --to-line is specified",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newCommentCmd(nil)
+			cmd.SetArgs(tt.args)
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
