@@ -133,12 +133,27 @@ func TestListRequiresMineWithoutRepo(t *testing.T) {
 	}
 }
 
+func findOutputLine(t *testing.T, output, needle string) string {
+	t.Helper()
+
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+
+	t.Fatalf("expected output line containing %q, got:\n%s", needle, output)
+	return ""
+}
+
 func TestListDashboardDC(t *testing.T) {
+	formattedCreated := time.Date(2026, time.April, 10, 11, 30, 0, 0, time.FixedZone("UTC+2", 2*60*60)).UnixMilli()
 	prs := []bbdc.PullRequest{
 		{
-			ID:    1,
-			Title: "First PR",
-			State: "OPEN",
+			ID:          1,
+			Title:       "First PR",
+			State:       "OPEN",
+			CreatedDate: formattedCreated,
 			FromRef: bbdc.Ref{
 				DisplayID:  "feature-1",
 				Repository: bbdc.Repository{Slug: "fork-repo1", Project: &bbdc.Project{Key: "~USER"}},
@@ -239,6 +254,27 @@ func TestListDashboardDC(t *testing.T) {
 	if !strings.Contains(output, "PROJ/repo1") {
 		t.Errorf("expected output to contain repo info 'PROJ/repo1', got:\n%s", output)
 	}
+
+	firstLine := findOutputLine(t, output, "First PR")
+	firstFields := strings.Split(firstLine, "\t")
+	if len(firstFields) != 4 {
+		t.Fatalf("expected 4 tab-separated fields for First PR, got %d: %q", len(firstFields), firstLine)
+	}
+	if got, want := firstFields[3], time.UnixMilli(formattedCreated).Local().Format(prListTimeLayout); got != want {
+		t.Fatalf("expected formatted timestamp %q, got %q", want, got)
+	}
+
+	secondLine := findOutputLine(t, output, "Second PR")
+	secondFields := strings.Split(secondLine, "\t")
+	if len(secondFields) != 4 {
+		t.Fatalf("expected 4 tab-separated fields for Second PR, got %d: %q", len(secondFields), secondLine)
+	}
+	if got := secondFields[3]; got != "" {
+		t.Fatalf("expected empty timestamp for zero CreatedDate, got %q", got)
+	}
+	if strings.Contains(output, "1970-01-01 00:00") {
+		t.Fatalf("expected zero CreatedDate to render empty string, got:\n%s", output)
+	}
 }
 
 func TestListWorkspaceCloud(t *testing.T) {
@@ -258,14 +294,16 @@ func TestListWorkspaceCloud(t *testing.T) {
 
 	prs := []bbcloud.PullRequest{
 		{
-			ID:    1,
-			Title: "First PR",
-			State: "OPEN",
+			ID:        1,
+			Title:     "First PR",
+			State:     "OPEN",
+			CreatedOn: "2026-04-10T11:30:45.123456+02:00",
 		},
 		{
-			ID:    2,
-			Title: "Second PR",
-			State: "OPEN",
+			ID:        2,
+			Title:     "Second PR",
+			State:     "OPEN",
+			CreatedOn: "not-a-timestamp",
 		},
 	}
 	// Set nested fields - use Destination.Repository.Slug as primary source
@@ -363,6 +401,213 @@ func TestListWorkspaceCloud(t *testing.T) {
 	}
 	if !strings.Contains(output, "repo1") {
 		t.Errorf("expected output to contain repo info 'repo1', got:\n%s", output)
+	}
+
+	firstLine := findOutputLine(t, output, "First PR")
+	firstFields := strings.Split(firstLine, "\t")
+	if len(firstFields) != 4 {
+		t.Fatalf("expected 4 tab-separated fields for First PR, got %d: %q", len(firstFields), firstLine)
+	}
+	expectedFirst, err := time.Parse(time.RFC3339Nano, prs[0].CreatedOn)
+	if err != nil {
+		t.Fatalf("failed to parse test timestamp: %v", err)
+	}
+	if got, want := firstFields[3], expectedFirst.Local().Format(prListTimeLayout); got != want {
+		t.Fatalf("expected formatted timestamp %q, got %q", want, got)
+	}
+
+	secondLine := findOutputLine(t, output, "Second PR")
+	secondFields := strings.Split(secondLine, "\t")
+	if len(secondFields) != 4 {
+		t.Fatalf("expected 4 tab-separated fields for Second PR, got %d: %q", len(secondFields), secondLine)
+	}
+	if got := secondFields[3]; got != "" {
+		t.Fatalf("expected empty timestamp for invalid CreatedOn, got %q", got)
+	}
+	if strings.Contains(output, "0001-01-01 00:00") {
+		t.Fatalf("expected invalid CreatedOn to render empty string, got:\n%s", output)
+	}
+}
+
+func TestListRepositoryDCIncludesCreationTimestamp(t *testing.T) {
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	createdDate := time.Date(2026, time.April, 10, 9, 15, 0, 0, time.UTC).UnixMilli()
+	prs := []bbdc.PullRequest{
+		{
+			ID:          7,
+			Title:       "Repo PR",
+			State:       "OPEN",
+			CreatedDate: createdDate,
+			FromRef: bbdc.Ref{
+				DisplayID: "feature/repo",
+			},
+			ToRef: bbdc.Ref{
+				DisplayID: "main",
+			},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(r.URL.Path, "/pull-requests") {
+			resp := struct {
+				Values     []bbdc.PullRequest `json:"values"`
+				IsLastPage bool               `json:"isLastPage"`
+			}{
+				Values:     prs,
+				IsLastPage: true,
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "main",
+				ProjectKey:  "PROJ",
+				DefaultRepo: "repo1",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {
+				Kind:     "dc",
+				BaseURL:  server.URL,
+				Username: "testuser",
+				Token:    "test-token",
+			},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: stderr},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	line := findOutputLine(t, stdout.String(), "Repo PR")
+	fields := strings.Split(line, "\t")
+	if len(fields) != 4 {
+		t.Fatalf("expected 4 tab-separated fields, got %d: %q", len(fields), line)
+	}
+	if got, want := fields[3], time.UnixMilli(createdDate).Local().Format(prListTimeLayout); got != want {
+		t.Fatalf("expected formatted timestamp %q, got %q", want, got)
+	}
+}
+
+func TestListRepositoryCloudIncludesCreationTimestamp(t *testing.T) {
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	prs := []bbcloud.PullRequest{
+		{
+			ID:        8,
+			Title:     "Cloud Repo PR",
+			State:     "OPEN",
+			CreatedOn: "",
+		},
+	}
+	prs[0].Source.Branch.Name = "feature/cloud"
+	prs[0].Destination.Branch.Name = "main"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(r.URL.Path, "/repositories/") && strings.Contains(r.URL.Path, "/pullrequests") {
+			resp := struct {
+				Values []bbcloud.PullRequest `json:"values"`
+				Next   string                `json:"next"`
+			}{
+				Values: prs,
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "cloud",
+				Workspace:   "workspace",
+				DefaultRepo: "repo1",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {
+				Kind:     "cloud",
+				BaseURL:  server.URL,
+				Username: "testuser",
+				Token:    "test-token",
+			},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: stderr},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	line := findOutputLine(t, stdout.String(), "Cloud Repo PR")
+	fields := strings.Split(line, "\t")
+	if len(fields) != 4 {
+		t.Fatalf("expected 4 tab-separated fields, got %d: %q", len(fields), line)
+	}
+	if got := fields[3]; got != "" {
+		t.Fatalf("expected empty timestamp for empty CreatedOn, got %q", got)
 	}
 }
 
