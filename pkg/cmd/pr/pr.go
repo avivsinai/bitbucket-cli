@@ -162,7 +162,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 			for _, pr := range prs {
 				author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
-				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				created := time.UnixMilli(pr.CreatedDate).Format("2006-01-02 15:04")
+				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, created, pr.Title); err != nil {
 					return err
 				}
 				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author); err != nil {
@@ -227,7 +228,9 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 			for _, pr := range prs {
 				author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
-				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				created, _ := time.Parse(time.RFC3339, pr.CreatedOn)
+				createdStr := created.Format("2006-01-02 15:04")
+				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, createdStr, pr.Title); err != nil {
 					return err
 				}
 				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name, author); err != nil {
@@ -273,6 +276,7 @@ func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.I
 
 		for _, pr := range prs {
 			author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+			created := time.UnixMilli(pr.CreatedDate).Format("2006-01-02 15:04")
 			// Use ToRef.Repository (destination) to show where the PR merges into,
 			// which is more useful for fork-based PRs than the source repo
 			repoInfo := ""
@@ -282,7 +286,7 @@ func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.I
 					repoInfo = pr.ToRef.Repository.Project.Key + "/" + repoInfo
 				}
 			}
-			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, created, pr.Title); err != nil {
 				return err
 			}
 			if repoInfo != "" {
@@ -349,13 +353,15 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 
 		for _, pr := range prs {
 			author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
+			created, _ := time.Parse(time.RFC3339, pr.CreatedOn)
+			createdStr := created.Format("2006-01-02 15:04")
 			// Use Destination.Repository.Slug (where PR merges into) as primary source,
 			// fall back to URL parsing for backwards compatibility
 			repoInfo := pr.Destination.Repository.Slug
 			if repoInfo == "" {
 				repoInfo = extractRepoFromCloudPRLink(pr.Links.HTML.Href)
 			}
-			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, createdStr, pr.Title); err != nil {
 				return err
 			}
 			if repoInfo != "" {

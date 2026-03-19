@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `created_on` and `updated_on` timestamp fields to `PullRequest` structs for both Bitbucket Cloud and Data Center.
+- `bkt pr list` output now includes the creation timestamp in the format `YYYY-MM-DD HH:MM` for both Cloud and Data Center PR listings.
+
 ## [0.16.4] - 2026-04-02
 ### Fixed
 - Passed the temp release-notes path directly to GoReleaser so GitHub Actions preserves the `--release-notes` argument during publishing.

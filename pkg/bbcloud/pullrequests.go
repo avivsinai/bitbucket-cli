@@ -28,10 +28,12 @@ type RepositoryRef struct {
 
 // PullRequest models a Bitbucket Cloud pull request.
 type PullRequest struct {
-	ID     int    `json:"id"`
-	Title  string `json:"title"`
-	State  string `json:"state"`
-	Author struct {
+	ID        int    `json:"id"`
+	Title     string `json:"title"`
+	State     string `json:"state"`
+	CreatedOn string `json:"created_on"`
+	UpdatedOn string `json:"updated_on"`
+	Author    struct {
 		DisplayName string `json:"display_name"`
 		Username    string `json:"username"`
 	} `json:"author"`
