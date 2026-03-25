@@ -484,6 +484,46 @@ func TestCommentPullRequestNoInlineWhenFileEmpty(t *testing.T) {
 	}
 }
 
+func TestCommentPullRequestPending(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{
+		Text:    "draft feedback",
+		Pending: true,
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest pending: %v", err)
+	}
+
+	pending, ok := gotBody["pending"].(bool)
+	if !ok || !pending {
+		t.Errorf("pending = %v, want true", gotBody["pending"])
+	}
+}
+
+func TestCommentPullRequestNotPending(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{
+		Text: "regular comment",
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest: %v", err)
+	}
+
+	if _, ok := gotBody["pending"]; ok {
+		t.Error("expected no pending field when Pending is false")
+	}
+}
+
 func TestPullRequestDiff(t *testing.T) {
 	const wantDiff = "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n"
 	var gotMethod, gotPath, gotAccept string

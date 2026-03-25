@@ -1691,6 +1691,7 @@ type commentOptions struct {
 	File      string
 	FromLine  int
 	ToLine    int
+	Pending   bool
 }
 
 func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
@@ -1749,6 +1750,7 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.File, "file", "", "File path in the diff (requires --from-line or --to-line)")
 	cmd.Flags().IntVar(&opts.FromLine, "from-line", 0, "Line in the old file (removed/source side)")
 	cmd.Flags().IntVar(&opts.ToLine, "to-line", 0, "Line in the new file (added/destination side)")
+	cmd.Flags().BoolVar(&opts.Pending, "pending", false, "Create the comment as pending (draft review feedback)")
 	_ = cmd.MarkFlagRequired("text")
 
 	return cmd
@@ -1788,11 +1790,16 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 			File:     opts.File,
 			FromLine: opts.FromLine,
 			ToLine:   opts.ToLine,
+			Pending:  opts.Pending,
 		}); err != nil {
 			return err
 		}
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Commented on pull request #%d\n", id); err != nil {
+		msg := "✓ Commented on pull request #%d\n"
+		if opts.Pending {
+			msg = "✓ Pending comment added to pull request #%d\n"
+		}
+		if _, err := fmt.Fprintf(ios.Out, msg, id); err != nil {
 			return err
 		}
 		return nil
@@ -1818,11 +1825,16 @@ func runComment(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentOpt
 			File:     opts.File,
 			FromLine: opts.FromLine,
 			ToLine:   opts.ToLine,
+			Pending:  opts.Pending,
 		}); err != nil {
 			return err
 		}
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Commented on pull request #%d\n", id); err != nil {
+		msg := "✓ Commented on pull request #%d\n"
+		if opts.Pending {
+			msg = "✓ Pending comment added to pull request #%d\n"
+		}
+		if _, err := fmt.Fprintf(ios.Out, msg, id); err != nil {
 			return err
 		}
 		return nil

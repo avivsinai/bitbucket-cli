@@ -199,6 +199,7 @@ type CommentOptions struct {
 	File     string
 	FromLine int
 	ToLine   int
+	Pending  bool
 }
 
 // CommentPullRequest adds a comment to the pull request.
@@ -210,6 +211,9 @@ func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug st
 	}
 
 	body := map[string]any{"text": opts.Text}
+	if opts.Pending {
+		body["state"] = "PENDING"
+	}
 	if opts.ParentID > 0 {
 		body["parent"] = map[string]int{"id": opts.ParentID}
 	}
