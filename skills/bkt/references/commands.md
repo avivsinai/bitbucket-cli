@@ -130,6 +130,9 @@ bkt pr create \
   --reviewer alice \
   --reviewer bob \
   --close-source
+
+# Create as draft
+bkt pr create --title "WIP: refactor" --source refactor/auth --target main --draft
 ```
 
 Required flags: `--title`, `--source`, `--target`
@@ -138,6 +141,7 @@ Options:
 - `--description` — PR description
 - `--reviewer` — Reviewer username (repeatable)
 - `--close-source` — Close source branch on merge
+- `--draft` — Create pull request as a draft
 
 ### Edit
 ```bash
