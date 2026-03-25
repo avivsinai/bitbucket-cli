@@ -560,6 +560,83 @@ func TestNewRequestSetsBasicAuth(t *testing.T) {
 	}
 }
 
+func TestNewRequestSetsBearerAuth(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com", Password: "my-pat-token", AuthMethod: "bearer"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	authHeader := req.Header.Get("Authorization")
+	if authHeader != "Bearer my-pat-token" {
+		t.Fatalf("Authorization = %q, want %q", authHeader, "Bearer my-pat-token")
+	}
+
+	// Basic auth should NOT be set
+	_, _, ok := req.BasicAuth()
+	if ok {
+		t.Fatal("expected basic auth NOT to be set for bearer method")
+	}
+}
+
+func TestNewRequestBearerAuthNoToken(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com", AuthMethod: "bearer"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	if got := req.Header.Get("Authorization"); got != "" {
+		t.Fatalf("expected no Authorization header when token is empty, got %q", got)
+	}
+}
+
+func TestNewRequestDefaultsToBasicAuth(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com", Username: "admin", Password: "token"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	user, pass, ok := req.BasicAuth()
+	if !ok {
+		t.Fatal("expected basic auth when AuthMethod is empty")
+	}
+	if user != "admin" || pass != "token" {
+		t.Fatalf("basic auth = %s:%s, want admin:token", user, pass)
+	}
+}
+
+func TestMultipartRequestBearerAuth(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com", Password: "my-pat-token", AuthMethod: "bearer"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	files := []MultipartFile{{FieldName: "files", FileName: "test.txt", Reader: strings.NewReader("content")}}
+	req, err := client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", files)
+	if err != nil {
+		t.Fatalf("NewMultipartRequest: %v", err)
+	}
+
+	authHeader := req.Header.Get("Authorization")
+	if authHeader != "Bearer my-pat-token" {
+		t.Fatalf("Authorization = %q, want %q", authHeader, "Bearer my-pat-token")
+	}
+}
+
 func TestNewRequestRejectsEmptyPath(t *testing.T) {
 	client, err := New(Options{BaseURL: "https://example.com"})
 	if err != nil {

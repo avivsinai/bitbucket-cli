@@ -50,6 +50,7 @@ type loginOptions struct {
 	Host               string
 	Username           string
 	Token              string
+	AuthMethod         string
 	AllowInsecureStore bool
 	AllowHTTP          bool
 	Web                bool
@@ -75,6 +76,7 @@ func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Kind, "kind", opts.Kind, "Bitbucket deployment kind (dc or cloud)")
 	cmd.Flags().StringVar(&opts.Username, "username", "", "Username (DC: PAT owner, Cloud: Atlassian email for API tokens)")
 	cmd.Flags().StringVar(&opts.Token, "token", "", "Authentication token (DC: PAT, Cloud: API token). WARNING: visible in process list and shell history; prefer the interactive prompt")
+	cmd.Flags().StringVar(&opts.AuthMethod, "auth-method", "basic", "Authentication method: basic (username+token) or bearer (token-only)")
 	cmd.Flags().BoolVar(&opts.AllowInsecureStore, "allow-insecure-store", false, "Allow encrypted fallback secret storage when no OS keychain is available")
 	cmd.Flags().BoolVar(&opts.AllowHTTP, "allow-http", false, "Allow http:// URLs for login even though credentials will be sent in plaintext")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Open browser to create token, then prompt for credentials")
@@ -127,6 +129,14 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		kind = "dc"
 	}
 
+	authMethod := strings.ToLower(strings.TrimSpace(opts.AuthMethod))
+	if authMethod == "" {
+		authMethod = "basic"
+	}
+	if authMethod != "basic" && authMethod != "bearer" {
+		return fmt.Errorf("unsupported auth method %q; use \"basic\" or \"bearer\"", authMethod)
+	}
+
 	cfg, err := f.ResolveConfig()
 	if err != nil {
 		return err
@@ -159,13 +169,17 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			}
 		}
 
-		if opts.Username == "" {
-			if !isTerminal(ios.In) {
-				return fmt.Errorf("username is required when not running in a TTY")
-			}
-			opts.Username, err = promptString(reader, ios.Out, "Username (use x-token-auth for project/repo tokens)")
-			if err != nil {
-				return err
+		if authMethod == "bearer" {
+			// Bearer auth uses only the token; no username needed.
+		} else {
+			if opts.Username == "" {
+				if !isTerminal(ios.In) {
+					return fmt.Errorf("username is required when not running in a TTY")
+				}
+				opts.Username, err = promptString(reader, ios.Out, "Username (use x-token-auth for project/repo tokens)")
+				if err != nil {
+					return err
+				}
 			}
 		}
 
@@ -180,9 +194,10 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		}
 
 		client, err := bbdc.New(bbdc.Options{
-			BaseURL:  baseURL,
-			Username: opts.Username,
-			Token:    opts.Token,
+			BaseURL:    baseURL,
+			Username:   opts.Username,
+			Token:      opts.Token,
+			AuthMethod: authMethod,
 		})
 		if err != nil {
 			return err
@@ -191,9 +206,21 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 		defer cancel()
 
-		user, err := client.CurrentUser(ctx, opts.Username)
-		if err != nil {
-			return fmt.Errorf("verify credentials: %w", err)
+		// For bearer auth without a username, verify by calling the application properties endpoint.
+		if authMethod == "bearer" && opts.Username == "" {
+			req, reqErr := client.HTTP().NewRequest(ctx, "GET", "/rest/api/1.0/application-properties", nil)
+			if reqErr != nil {
+				return fmt.Errorf("verify credentials: %w", reqErr)
+			}
+			if doErr := client.HTTP().Do(req, &struct{}{}); doErr != nil {
+				return fmt.Errorf("verify credentials: %w", doErr)
+			}
+		} else {
+			user, userErr := client.CurrentUser(ctx, opts.Username)
+			if userErr != nil {
+				return fmt.Errorf("verify credentials: %w", userErr)
+			}
+			_ = user
 		}
 
 		if err := storeHostToken(hostKey, opts.Token, opts.AllowInsecureStore); err != nil {
@@ -204,6 +231,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			Kind:               "dc",
 			BaseURL:            baseURL,
 			Username:           opts.Username,
+			AuthMethod:         authMethod,
 			AllowInsecureStore: opts.AllowInsecureStore,
 		})
 
@@ -211,8 +239,14 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			return err
 		}
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to %s as %s (%s)\n", baseURL, user.FullName, user.Name); err != nil {
-			return err
+		if authMethod == "bearer" && opts.Username == "" {
+			if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to %s using bearer token\n", baseURL); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to %s as %s\n", baseURL, opts.Username); err != nil {
+				return err
+			}
 		}
 	case "cloud":
 		if opts.Web && isTerminal(ios.In) {
@@ -353,6 +387,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 		Kind        string `json:"kind"`
 		BaseURL     string `json:"base_url"`
 		Username    string `json:"username,omitempty"`
+		AuthMethod  string `json:"auth_method"`
 		TokenSource string `json:"token_source"`
 	}
 
@@ -376,11 +411,16 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 	var hosts []hostSummary
 	for _, key := range hostKeys {
 		h := cfg.Hosts[key]
+		am := h.AuthMethod
+		if am == "" {
+			am = "basic"
+		}
 		hosts = append(hosts, hostSummary{
 			Key:         key,
 			Kind:        h.Kind,
 			BaseURL:     h.BaseURL,
 			Username:    h.Username,
+			AuthMethod:  am,
 			TokenSource: tokenSource,
 		})
 	}
@@ -433,6 +473,9 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 				if _, err := fmt.Fprintf(ios.Out, "    user: %s\n", h.Username); err != nil {
 					return err
 				}
+			}
+			if _, err := fmt.Fprintf(ios.Out, "    auth: %s\n", h.AuthMethod); err != nil {
+				return err
 			}
 			if _, err := fmt.Fprintf(ios.Out, "    token source: %s\n", h.TokenSource); err != nil {
 				return err
