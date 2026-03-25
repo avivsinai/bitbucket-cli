@@ -86,6 +86,7 @@ type CreatePROptions struct {
 	TargetBranch string
 	Reviewers    []string
 	CloseSource  bool
+	Draft        bool
 }
 
 // CreatePullRequest creates a pull request between branches.
@@ -118,6 +119,7 @@ func (c *Client) CreatePullRequest(ctx context.Context, projectKey, repoSlug str
 			},
 		},
 		"closeSourceBranch": opts.CloseSource,
+		"draft":             opts.Draft,
 	}
 
 	if len(opts.Reviewers) > 0 {

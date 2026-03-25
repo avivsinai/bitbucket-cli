@@ -594,6 +594,7 @@ type createOptions struct {
 	Reviewers            []string
 	CloseSource          bool
 	WithDefaultReviewers bool
+	Draft                bool
 }
 
 // mergeReviewers combines explicit reviewer names with default reviewer users,
@@ -638,6 +639,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
 	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers (Data Center only)")
+	cmd.Flags().BoolVar(&opts.Draft, "draft", false, "Create pull request as a draft")
 
 	_ = cmd.MarkFlagRequired("title")
 	_ = cmd.MarkFlagRequired("source")
@@ -690,6 +692,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			TargetBranch: opts.Target,
 			Reviewers:    reviewers,
 			CloseSource:  opts.CloseSource,
+			Draft:        opts.Draft,
 		})
 		if err != nil {
 			return err
@@ -726,6 +729,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			Destination: opts.Target,
 			CloseSource: opts.CloseSource,
 			Reviewers:   opts.Reviewers,
+			Draft:       opts.Draft,
 		})
 		if err != nil {
 			return err

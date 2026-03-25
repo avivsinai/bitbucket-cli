@@ -685,6 +685,43 @@ func TestMergePullRequest202AsyncFailure(t *testing.T) {
 	}
 }
 
+func TestCreatePullRequestDraftFlag(t *testing.T) {
+	tests := []struct {
+		name      string
+		draft     bool
+		wantDraft bool
+	}{
+		{name: "draft true", draft: true, wantDraft: true},
+		{name: "draft false", draft: false, wantDraft: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+			}))
+
+			_, _ = client.CreatePullRequest(context.Background(), "ws", "repo", bbcloud.CreatePullRequestInput{
+				Title:       "Test PR",
+				Source:      "feature",
+				Destination: "main",
+				Draft:       tt.draft,
+			})
+
+			got, ok := gotBody["draft"].(bool)
+			if !ok {
+				t.Fatal("draft field missing from request body")
+			}
+			if got != tt.wantDraft {
+				t.Errorf("draft = %v, want %v", got, tt.wantDraft)
+			}
+		})
+	}
+}
+
 func TestCreatePullRequestReviewerAutoDetect(t *testing.T) {
 	tests := []struct {
 		name       string
