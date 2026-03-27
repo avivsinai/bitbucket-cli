@@ -17,5 +17,13 @@ bin/
 # macOS
 .DS_Store
 
+# AI agent configuration (track only skills for distribution)
+.claude/**
+!.claude/skills/
+!.claude/skills/**
+.codex/
+.agents/**
+!.agents/skills/
+!.agents/skills/**
 .agent-mail/
 .amqrc

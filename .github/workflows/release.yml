@@ -91,14 +91,11 @@ jobs:
             --alias bitbucket-cli \
             --skill-version ${{ steps.version.outputs.version }}
 
-      - name: Update SKILL.md versions
+      - name: Update skill and plugin versions
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          for file in skills/bkt/SKILL.md .claude/skills/bkt/SKILL.md .codex/skills/bkt/SKILL.md; do
-            if [ -f "$file" ]; then
-              sed -i "s/^version: .*/version: $VERSION/" "$file"
-            fi
-          done
+          sed -i "s/^version: .*/version: $VERSION/" skills/bkt/SKILL.md
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" .codex-plugin/plugin.json
 
       - name: Create version bump PR
         env:
@@ -112,7 +109,7 @@ jobs:
 
           # Create branch and commit
           git checkout -b chore/skill-version-bump
-          git add skills/bkt/SKILL.md .claude/skills/bkt/SKILL.md .codex/skills/bkt/SKILL.md
+          git add skills/bkt/SKILL.md .codex-plugin/plugin.json
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore(skill): update version to ${VERSION} [skip ci]"
           git push -f origin chore/skill-version-bump
