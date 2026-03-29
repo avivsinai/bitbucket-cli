@@ -95,7 +95,6 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.version }}
           sed -i "s/^version: .*/version: $VERSION/" skills/bkt/SKILL.md
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" .codex-plugin/plugin.json
 
       - name: Create version bump PR
         env:
@@ -109,7 +108,7 @@ jobs:
 
           # Create branch and commit
           git checkout -b chore/skill-version-bump
-          git add skills/bkt/SKILL.md .codex-plugin/plugin.json
+          git add skills/bkt/SKILL.md
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore(skill): update version to ${VERSION} [skip ci]"
           git push -f origin chore/skill-version-bump

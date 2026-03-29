@@ -1,6 +1,6 @@
 {
   "name": "bkt",
-  "version": "1.0.20",
+  "version": "0.14.1",
   "description": "Bitbucket CLI - manage repos, PRs, branches, issues, webhooks, and pipelines for both Data Center and Cloud",
   "author": {
     "name": "Aviv Sinai",
