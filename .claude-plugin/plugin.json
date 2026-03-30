@@ -1,6 +1,6 @@
 {
   "name": "bkt",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "description": "Bitbucket CLI - manage repos, PRs, branches, issues, webhooks, and pipelines for both Data Center and Cloud",
   "author": {
     "name": "Aviv Sinai",
@@ -9,5 +9,16 @@
   "repository": "https://github.com/avivsinai/bitbucket-cli",
   "license": "MIT",
   "skills": "./skills/",
-  "keywords": ["bitbucket", "git", "pr", "pull-request", "ci", "pipeline", "devops", "cli", "datacenter", "cloud"]
+  "keywords": [
+    "bitbucket",
+    "git",
+    "pr",
+    "pull-request",
+    "ci",
+    "pipeline",
+    "devops",
+    "cli",
+    "datacenter",
+    "cloud"
+  ]
 }
