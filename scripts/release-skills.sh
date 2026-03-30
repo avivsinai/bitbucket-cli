@@ -64,7 +64,8 @@ if not changed:
     print("  (no files needed bumping)")
 PY
 
-git add skills/*/SKILL.md .claude-plugin/plugin.json .codex-plugin/plugin.json 2>/dev/null || true
+git add skills/*/SKILL.md .claude-plugin/plugin.json
+[ -f .codex-plugin/plugin.json ] && git add .codex-plugin/plugin.json
 
 if git diff --cached --quiet; then
   echo "No version changes needed — tagging current HEAD"
