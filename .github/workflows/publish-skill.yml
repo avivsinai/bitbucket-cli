@@ -59,9 +59,16 @@ jobs:
 
             echo "Publishing $SKILL version $VERSION"
 
+            ALIAS_ARGS=()
+            if [ ${#SKILL} -ge 3 ] && [ ${#SKILL} -le 64 ]; then
+              ALIAS_ARGS=(--alias "$SKILL")
+            else
+              echo "⚠ Skipping alias for $SKILL: length ${#SKILL} outside 3..64"
+            fi
+
             if OUTPUT=$(npx skild publish \
               --dir "$dir" \
-              --alias "$SKILL" \
+              "${ALIAS_ARGS[@]}" \
               --skill-version "$VERSION" 2>&1); then
               echo "$OUTPUT"
               echo "✓ Published $SKILL version $VERSION"
