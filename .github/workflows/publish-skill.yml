@@ -1,0 +1,91 @@
+name: Publish Skills
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.14.2)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '20'
+
+      - name: Install skild
+        run: npm install -g skild
+
+      - name: Configure skild auth
+        run: |
+          mkdir -p ~/.skild
+          echo '${{ secrets.SKILD_AUTH_JSON }}' > ~/.skild/registry-auth.json
+
+      - name: Publish skills
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            TAG_VERSION="${{ inputs.version }}"
+          else
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          echo "$TAG_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' || {
+            echo "ERROR: version '$TAG_VERSION' is not semver"
+            exit 1
+          }
+
+          FAILED=0
+
+          for dir in skills/*/; do
+            [ -f "$dir/SKILL.md" ] || continue
+            SKILL=$(basename "$dir")
+            VERSION="${TAG_VERSION}"
+
+            SKILL_VERSION=$(grep -oP 'version:\s*\K[0-9A-Za-z.+-]+' "$dir/SKILL.md" || true)
+            if [ -n "$SKILL_VERSION" ] && [ "$SKILL_VERSION" != "$VERSION" ]; then
+              echo "ERROR: $SKILL SKILL.md version ($SKILL_VERSION) != tag version ($VERSION)"
+              echo "  Run scripts/release-skills.sh $VERSION first"
+              FAILED=1
+              continue
+            fi
+
+            echo "Publishing $SKILL version $VERSION"
+
+            if OUTPUT=$(npx skild publish \
+              --dir "$dir" \
+              --alias "$SKILL" \
+              --skill-version "$VERSION" 2>&1); then
+              echo "$OUTPUT"
+              echo "✓ Published $SKILL version $VERSION"
+            elif echo "$OUTPUT" | grep -q "Version already exists"; then
+              echo "$OUTPUT"
+              echo "⚠ $SKILL version $VERSION already published — skipping"
+            elif echo "$OUTPUT" | grep -q "Alias already in use"; then
+              echo "$OUTPUT"
+              echo "⚠ Alias '$SKILL' taken — retrying without alias..."
+              if OUTPUT2=$(npx skild publish \
+                --dir "$dir" \
+                --skill-version "$VERSION" 2>&1); then
+                echo "$OUTPUT2"
+                echo "✓ Published $SKILL version $VERSION (without alias)"
+              else
+                echo "✖ Publish failed for $SKILL (even without alias)"
+                echo "$OUTPUT2"
+                FAILED=1
+              fi
+            else
+              echo "✖ Publish failed for $SKILL"
+              echo "$OUTPUT"
+              FAILED=1
+            fi
+          done
+
+          exit $FAILED

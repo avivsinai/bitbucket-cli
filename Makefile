@@ -22,7 +22,7 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills
+.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-skills
 
 build: $(BIN_DIR)/bkt
 
@@ -68,3 +68,7 @@ snapshot:
 
 clean:
 	rm -rf $(BIN_DIR) dist/
+
+release-skills:
+	@test -n "$(RELEASE_VERSION)" || (echo "usage: make release-skills RELEASE_VERSION=0.14.2" && exit 1)
+	./scripts/release-skills.sh "$(RELEASE_VERSION)"
