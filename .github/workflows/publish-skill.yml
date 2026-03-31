@@ -29,6 +29,9 @@ jobs:
           mkdir -p ~/.skild
           echo '${{ secrets.SKILD_AUTH_JSON }}' > ~/.skild/registry-auth.json
 
+      - name: Verify release metadata
+        run: ./scripts/check-release-version.sh "${{ inputs.version || github.ref_name }}"
+
       - name: Publish skills
         run: |
           if [ -n "${{ inputs.version }}" ]; then
@@ -48,14 +51,6 @@ jobs:
             [ -f "$dir/SKILL.md" ] || continue
             SKILL=$(basename "$dir")
             VERSION="${TAG_VERSION}"
-
-            SKILL_VERSION=$(grep -oP 'version:\s*\K[0-9A-Za-z.+-]+' "$dir/SKILL.md" || true)
-            if [ -n "$SKILL_VERSION" ] && [ "$SKILL_VERSION" != "$VERSION" ]; then
-              echo "ERROR: $SKILL SKILL.md version ($SKILL_VERSION) != tag version ($VERSION)"
-              echo "  Run scripts/release-skills.sh $VERSION first"
-              FAILED=1
-              continue
-            fi
 
             echo "Publishing $SKILL version $VERSION"
 
