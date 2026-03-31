@@ -2,10 +2,10 @@
 # Bumps all skill + plugin manifest versions and creates a release tag.
 # The tag push triggers both the binary release and skill publish workflows.
 #
-# Usage: ./scripts/release-skills.sh 0.14.2
+# Usage: ./scripts/release-skills.sh X.Y.Z
 set -euo pipefail
 
-version="${1:?usage: ./scripts/release-skills.sh 0.14.2}"
+version="${1:?usage: ./scripts/release-skills.sh X.Y.Z}"
 tag="v${version}"
 
 printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' || {
@@ -66,6 +66,8 @@ PY
 
 git add skills/*/SKILL.md .claude-plugin/plugin.json
 [ -f .codex-plugin/plugin.json ] && git add .codex-plugin/plugin.json
+
+./scripts/check-release-version.sh "$version"
 
 if git diff --cached --quiet; then
   echo "No version changes needed — tagging current HEAD"
