@@ -2,6 +2,7 @@ GO ?= go
 BIN_DIR ?= bin
 CMD := ./cmd/bkt
 SOURCES := $(shell find cmd internal pkg -name '*.go')
+MACOS_CODESIGN_ID ?= io.github.avivsinai.bitbucket-cli
 
 VERSION ?= $(shell \
 	if git describe --tags --exact-match >/dev/null 2>&1; then \
@@ -22,27 +23,24 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean sync-skills check-skills
+.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-skills
 
 build: $(BIN_DIR)/bkt
 
-# Skill sync: .claude/skills/ is source of truth
-sync-skills:
-	@echo "Syncing skills from .claude/skills/ to .codex/skills/ and skills/..."
-	@mkdir -p .codex/skills/bkt skills/bkt
-	@cp -R .claude/skills/bkt/* .codex/skills/bkt/
-	@cp -R .claude/skills/bkt/* skills/bkt/
-	@echo "✓ Skills synced"
-
+# Skill integrity: skills/ is canonical, .claude/skills/ and .agents/skills/ are symlinks
 check-skills:
-	@echo "Checking skill sync..."
-	@diff -rq .claude/skills/bkt .codex/skills/bkt || (echo "❌ .codex/skills/bkt out of sync" && exit 1)
-	@diff -rq .claude/skills/bkt skills/bkt || (echo "❌ skills/bkt out of sync" && exit 1)
-	@echo "✓ Skills in sync"
+	@echo "Checking skill symlinks..."
+	@test -L .claude/skills/bkt || (echo "❌ .claude/skills/bkt is not a symlink" && exit 1)
+	@test -L .agents/skills/bkt || (echo "❌ .agents/skills/bkt is not a symlink" && exit 1)
+	@test "$$(readlink .claude/skills/bkt)" = "../../skills/bkt" || (echo "❌ .claude/skills/bkt target is not ../../skills/bkt" && exit 1)
+	@test "$$(readlink .agents/skills/bkt)" = "../../skills/bkt" || (echo "❌ .agents/skills/bkt target is not ../../skills/bkt" && exit 1)
+	@diff -rq skills/bkt .claude/skills/bkt || (echo "❌ .claude/skills/bkt content mismatch" && exit 1)
+	@echo "✓ Skill symlinks valid"
 
 $(BIN_DIR)/bkt: $(SOURCES) go.mod go.sum
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bkt $(CMD)
+	./scripts/codesign-macos.sh "$(BIN_DIR)/bkt" "$(MACOS_CODESIGN_ID)"
 
 fmt:
 	$(GO) fmt ./...
@@ -72,3 +70,7 @@ snapshot:
 
 clean:
 	rm -rf $(BIN_DIR) dist/
+
+release-skills:
+	@test -n "$(RELEASE_VERSION)" || (echo "usage: make release-skills RELEASE_VERSION=X.Y.Z" && exit 1)
+	./scripts/release-skills.sh "$(RELEASE_VERSION)"

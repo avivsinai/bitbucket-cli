@@ -228,10 +228,12 @@ func (s *Store) Set(key, value string) error {
 	}
 
 	return s.withTimeout(func() error {
-		return s.kr.Set(keyring.Item{
-			Key:   key,
-			Data:  []byte(value),
-			Label: fmt.Sprintf("bkt %s", key),
+		return withDarwinKeychainLock(func() error {
+			return s.kr.Set(keyring.Item{
+				Key:   key,
+				Data:  []byte(value),
+				Label: fmt.Sprintf("bkt %s", key),
+			})
 		})
 	})
 }
@@ -244,9 +246,11 @@ func (s *Store) Get(key string) (string, error) {
 
 	var item keyring.Item
 	err := s.withTimeout(func() error {
-		var getErr error
-		item, getErr = s.kr.Get(key)
-		return getErr
+		return withDarwinKeychainLock(func() error {
+			var getErr error
+			item, getErr = s.kr.Get(key)
+			return getErr
+		})
 	})
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
@@ -265,7 +269,9 @@ func (s *Store) Delete(key string) error {
 	}
 
 	err := s.withTimeout(func() error {
-		return s.kr.Remove(key)
+		return withDarwinKeychainLock(func() error {
+			return s.kr.Remove(key)
+		})
 	})
 	if errors.Is(err, keyring.ErrKeyNotFound) {
 		return nil

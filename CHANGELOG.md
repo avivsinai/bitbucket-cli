@@ -6,6 +6,53 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.7] - 2026-04-01
+
+### Fixed
+- Keyed manual release rerun concurrency by tag so rerunning one release tag cannot cancel a different release recovery run.
+
+## [0.14.6] - 2026-04-01
+
+### Fixed
+- Treated `Version already exists` as success when a skill publish reruns after retrying without an alias, preventing false-negative publish failures on release reruns.
+
+## [0.14.5] - 2026-04-01
+
+### Changed
+- Added manual `workflow_dispatch` support for the release workflow so an existing tag can be rerun cleanly when GitHub release automation needs recovery without minting another version.
+
+## [0.14.4] - 2026-04-01
+
+### Fixed
+- Serialized macOS keychain reads and writes behind an inter-process lock to prevent prompt storms when multiple `bkt` processes access the same token concurrently.
+- Ad-hoc signed macOS binaries with the stable identifier `io.github.avivsinai.bitbucket-cli` in both local builds and GoReleaser artifacts so Keychain approvals survive Homebrew upgrades.
+
+## [0.14.3] - 2026-04-01
+
+### Fixed
+- Prevented skill publish failures when a skill alias falls outside registry length limits.
+- Ensured release automation stages optional Codex plugin manifests and verifies skill/plugin metadata versions before publishing or tagging.
+
+### Changed
+- Added a default-branch marketplace dispatch workflow so plugin updates are announced after merges to `master`.
+- Updated the Codecov action to v6.
+
+## [0.14.2] - 2026-03-30
+
+### Changed
+- Switched skill publishing to a tag-based release flow so binary and skill releases are driven from the same version tag.
+
+## [0.14.1] - 2026-03-29
+
+### Added
+- Codex plugin manifest metadata for `bkt`, including interface metadata for marketplace and CLI consumers.
+
+### Changed
+- Consolidated skill packaging around the shared plugin manifest layout.
+
+### Fixed
+- Aligned Claude and Codex plugin manifest versions with release tags.
+
 ## [0.14.0] - 2026-03-18
 
 ### Added

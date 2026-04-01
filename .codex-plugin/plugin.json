@@ -20,5 +20,10 @@
     "cli",
     "datacenter",
     "cloud"
-  ]
+  ],
+  "interface": {
+    "displayName": "Bitbucket CLI",
+    "shortDescription": "Manage Bitbucket repos, PRs, branches, issues, webhooks, and pipelines",
+    "category": "Developer Tools"
+  }
 }

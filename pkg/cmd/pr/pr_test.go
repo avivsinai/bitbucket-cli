@@ -2968,6 +2968,94 @@ func TestMergeReviewers(t *testing.T) {
 	}
 }
 
+func TestCreateCommandDraftFlag(t *testing.T) {
+	tests := []struct {
+		name           string
+		args           []string
+		wantDraft      bool
+		outputContains string
+	}{
+		{
+			name:           "with --draft flag",
+			args:           []string{"--title", "WIP", "--source", "feat", "--target", "main", "--draft"},
+			wantDraft:      true,
+			outputContains: "Created draft pull request #1",
+		},
+		{
+			name:           "with -d shorthand",
+			args:           []string{"--title", "WIP", "--source", "feat", "--target", "main", "-d"},
+			wantDraft:      true,
+			outputContains: "Created draft pull request #1",
+		},
+		{
+			name:           "without draft flag",
+			args:           []string{"--title", "Ready", "--source", "feat", "--target", "main"},
+			wantDraft:      false,
+			outputContains: "Created pull request #1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "main",
+						ProjectKey:  "PROJ",
+						DefaultRepo: "repo",
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {
+						Kind:    "dc",
+						BaseURL: server.URL,
+						Token:   "test-token",
+					},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newCreateCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			gotDraft, ok := gotBody["draft"].(bool)
+			if !ok {
+				t.Fatal("draft field missing from request body")
+			}
+			if gotDraft != tt.wantDraft {
+				t.Errorf("draft = %v, want %v", gotDraft, tt.wantDraft)
+			}
+
+			if !strings.Contains(stdout.String(), tt.outputContains) {
+				t.Errorf("output %q does not contain %q", stdout.String(), tt.outputContains)
+			}
+		})
+	}
+}
+
 func TestCommentInlineValidation(t *testing.T) {
 	tests := []struct {
 		name    string

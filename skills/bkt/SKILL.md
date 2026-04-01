@@ -1,6 +1,6 @@
 ---
 name: bkt
-version: 1.0.20
+version: 0.14.7
 description: Bitbucket CLI for Data Center and Cloud. Use when users need to manage repositories, pull requests, branches, issues, webhooks, or pipelines in Bitbucket. Triggers include "bitbucket", "bkt", "pull request", "PR", "repo list", "branch create", "Bitbucket Data Center", "Bitbucket Cloud", "keyring timeout".
 metadata:
   short-description: Bitbucket CLI for repos, PRs, branches
@@ -79,6 +79,7 @@ bkt context use cloud-team
 | List PRs | `bkt pr list --state OPEN` |
 | View PR | `bkt pr view <id>` |
 | Create PR | `bkt pr create --title "..." --source feature --target main` |
+| Create draft PR | `bkt pr create --title "..." --source feature --target main --draft` |
 | Merge PR | `bkt pr merge <id>` |
 | PR checks | `bkt pr checks <id> --wait` |
 | List branches | `bkt branch list` |
@@ -112,6 +113,8 @@ bkt pr view 42 --web                      # Open in browser
 
 # Create and edit
 bkt pr create --title "feat: cache" --source feature/cache --target main --reviewer alice
+bkt pr create --title "WIP: refactor" --source refactor/auth --target main --draft
+
 bkt pr edit 123 --title "New title" --body "Updated description"
 
 # Review and merge
