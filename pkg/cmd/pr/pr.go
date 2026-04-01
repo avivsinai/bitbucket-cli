@@ -639,7 +639,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
 	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers (Data Center only)")
-	cmd.Flags().BoolVar(&opts.Draft, "draft", false, "Create pull request as a draft")
+	cmd.Flags().BoolVarP(&opts.Draft, "draft", "d", false, "Create pull request as a draft (DC 8.18+, Cloud always supported)")
 
 	_ = cmd.MarkFlagRequired("title")
 	_ = cmd.MarkFlagRequired("source")
@@ -698,7 +698,11 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID); err != nil {
+		kind := "pull request"
+		if opts.Draft {
+			kind = "draft pull request"
+		}
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created %s #%d\n", kind, pr.ID); err != nil {
 			return err
 		}
 		return nil
@@ -735,7 +739,11 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Created pull request #%d\n", pr.ID); err != nil {
+		kind := "pull request"
+		if opts.Draft {
+			kind = "draft pull request"
+		}
+		if _, err := fmt.Fprintf(ios.Out, "✓ Created %s #%d\n", kind, pr.ID); err != nil {
 			return err
 		}
 		return nil

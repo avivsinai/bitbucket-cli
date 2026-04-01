@@ -141,7 +141,7 @@ Options:
 - `--description` — PR description
 - `--reviewer` — Reviewer username (repeatable)
 - `--close-source` — Close source branch on merge
-- `--draft` — Create pull request as a draft
+- `--draft` — Create pull request as a draft (DC 8.18+, Cloud always supported)
 
 ### Edit
 ```bash
