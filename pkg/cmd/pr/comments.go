@@ -96,9 +96,9 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 				return err
 			}
 			for _, c := range comments {
-				author := c.Author.User.Name
+				author := c.Author.Name
 				if author == "" {
-					author = c.Author.User.FullName
+					author = c.Author.FullName
 				}
 				text := truncate(c.Text, 80)
 				if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", c.ID, author, text); err != nil {
