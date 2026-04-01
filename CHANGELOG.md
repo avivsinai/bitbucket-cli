@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-04-01
+
+### Changed
+- Added manual `workflow_dispatch` support for the release workflow so an existing tag can be rerun cleanly when GitHub release automation needs recovery without minting another version.
+
 ## [0.14.4] - 2026-04-01
 
 ### Fixed
