@@ -16,7 +16,7 @@ permissions:
 
 # Prevent race conditions: only one release per tag, cancel stale runs
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: true
 
 jobs:

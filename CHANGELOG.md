@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.7] - 2026-04-01
+
+### Fixed
+- Keyed manual release rerun concurrency by tag so rerunning one release tag cannot cancel a different release recovery run.
+
 ## [0.14.6] - 2026-04-01
 
 ### Fixed
