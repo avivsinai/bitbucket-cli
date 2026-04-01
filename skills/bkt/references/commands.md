@@ -155,7 +155,20 @@ bkt pr edit <id> -t "Fix login bug" -b "Resolves session timeout issue"
 bkt pr approve <id>                       # Approve PR
 
 bkt pr comment <id> --text "LGTM"         # Add comment
+bkt pr comment <id> --text "Fix this" --pending  # Pending (draft) comment
+bkt pr comment <id> --text "Nit" --file src/app.go --to-line 42  # Inline comment
+bkt pr comment <id> --text "Reply" --parent 99                   # Threaded reply
+```
 
+Comment options:
+- `--text` — Comment text (required)
+- `--pending` — Create as pending/draft review comment
+- `--file` — File path in the diff (requires `--from-line` or `--to-line`)
+- `--from-line` — Line in the old file (removed/source side)
+- `--to-line` — Line in the new file (added/destination side)
+- `--parent` — Parent comment ID for threaded replies
+
+```bash
 bkt pr merge <id>                         # Merge PR
 bkt pr merge <id> --message "merge: feature" --strategy fast-forward
 bkt pr merge <id> --close-source=false    # Keep source branch

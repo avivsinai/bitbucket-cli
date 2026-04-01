@@ -624,6 +624,46 @@ func TestCommentPullRequestNoAnchorWhenFileEmpty(t *testing.T) {
 	}
 }
 
+func TestCommentPullRequestPending(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{
+		Text:    "draft feedback",
+		Pending: true,
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest pending: %v", err)
+	}
+
+	state, ok := gotBody["state"].(string)
+	if !ok || state != "PENDING" {
+		t.Errorf("state = %v, want PENDING", gotBody["state"])
+	}
+}
+
+func TestCommentPullRequestNotPending(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	err := client.CommentPullRequest(context.Background(), "PROJ", "my-repo", 7, bbdc.CommentOptions{
+		Text: "regular comment",
+	})
+	if err != nil {
+		t.Fatalf("CommentPullRequest: %v", err)
+	}
+
+	if _, ok := gotBody["state"]; ok {
+		t.Error("expected no state field when Pending is false")
+	}
+}
+
 func TestCreatePullRequestDraftFlag(t *testing.T) {
 	tests := []struct {
 		name      string

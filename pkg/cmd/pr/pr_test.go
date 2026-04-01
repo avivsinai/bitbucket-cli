@@ -3122,3 +3122,134 @@ func TestCommentInlineValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestCommentPendingFlagDC(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: server.URL, Username: "u", Token: "t"},
+		},
+	}
+	stdout := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newCommentCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"42", "--text", "draft feedback", "--pending"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	state, ok := gotBody["state"].(string)
+	if !ok || state != "PENDING" {
+		t.Errorf("state = %v, want PENDING", gotBody["state"])
+	}
+	if !strings.Contains(stdout.String(), "Pending comment added") {
+		t.Errorf("output = %q, want 'Pending comment added'", stdout.String())
+	}
+}
+
+func TestCommentPendingFlagCloud(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "cloud", BaseURL: server.URL, Username: "u", Token: "t"},
+		},
+	}
+	stdout := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newCommentCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"42", "--text", "draft feedback", "--pending"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	pending, ok := gotBody["pending"].(bool)
+	if !ok || !pending {
+		t.Errorf("pending = %v, want true", gotBody["pending"])
+	}
+	if !strings.Contains(stdout.String(), "Pending comment added") {
+		t.Errorf("output = %q, want 'Pending comment added'", stdout.String())
+	}
+}
+
+func TestCommentWithoutPendingFlagDC(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: server.URL, Username: "u", Token: "t"},
+		},
+	}
+	stdout := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newCommentCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"42", "--text", "regular comment"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := gotBody["state"]; ok {
+		t.Error("expected no state field when --pending is not set")
+	}
+	if !strings.Contains(stdout.String(), "Commented on pull request") {
+		t.Errorf("output = %q, want 'Commented on pull request'", stdout.String())
+	}
+}

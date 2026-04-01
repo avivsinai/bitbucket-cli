@@ -120,6 +120,7 @@ bkt pr edit 123 --title "New title" --body "Updated description"
 # Review and merge
 bkt pr approve 42
 bkt pr comment 42 --text "LGTM"
+bkt pr comment 42 --text "Needs refactor" --pending   # Pending (draft) comment
 bkt pr merge 42 --message "merge: feature/cache"
 bkt pr merge 42 --strategy fast-forward
 
