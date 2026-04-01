@@ -78,6 +78,9 @@ jobs:
                 --skill-version "$VERSION" 2>&1); then
                 echo "$OUTPUT2"
                 echo "✓ Published $SKILL version $VERSION (without alias)"
+              elif echo "$OUTPUT2" | grep -q "Version already exists"; then
+                echo "$OUTPUT2"
+                echo "⚠ $SKILL version $VERSION already published on retry — skipping"
               else
                 echo "✖ Publish failed for $SKILL (even without alias)"
                 echo "$OUTPUT2"

@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-04-01
+
+### Fixed
+- Treated `Version already exists` as success when a skill publish reruns after retrying without an alias, preventing false-negative publish failures on release reruns.
+
 ## [0.14.5] - 2026-04-01
 
 ### Changed
