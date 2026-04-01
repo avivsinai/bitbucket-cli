@@ -79,6 +79,7 @@ bkt context use cloud-team
 | List PRs | `bkt pr list --state OPEN` |
 | View PR | `bkt pr view <id>` |
 | Create PR | `bkt pr create --title "..." --source feature --target main` |
+| Create draft PR | `bkt pr create --title "..." --source feature --target main --draft` |
 | Merge PR | `bkt pr merge <id>` |
 | PR checks | `bkt pr checks <id> --wait` |
 | List branches | `bkt branch list` |
@@ -112,6 +113,8 @@ bkt pr view 42 --web                      # Open in browser
 
 # Create and edit
 bkt pr create --title "feat: cache" --source feature/cache --target main --reviewer alice
+bkt pr create --title "WIP: refactor" --source refactor/auth --target main --draft
+
 bkt pr edit 123 --title "New title" --body "Updated description"
 
 # Review and merge

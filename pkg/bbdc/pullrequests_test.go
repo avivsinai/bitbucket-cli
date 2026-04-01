@@ -624,6 +624,43 @@ func TestCommentPullRequestNoAnchorWhenFileEmpty(t *testing.T) {
 	}
 }
 
+func TestCreatePullRequestDraftFlag(t *testing.T) {
+	tests := []struct {
+		name      string
+		draft     bool
+		wantDraft bool
+	}{
+		{name: "draft true", draft: true, wantDraft: true},
+		{name: "draft false", draft: false, wantDraft: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+			}))
+
+			_, _ = client.CreatePullRequest(context.Background(), "PRJ", "repo", bbdc.CreatePROptions{
+				Title:        "Test PR",
+				SourceBranch: "feature",
+				TargetBranch: "main",
+				Draft:        tt.draft,
+			})
+
+			got, ok := gotBody["draft"].(bool)
+			if !ok {
+				t.Fatal("draft field missing from request body")
+			}
+			if got != tt.wantDraft {
+				t.Errorf("draft = %v, want %v", got, tt.wantDraft)
+			}
+		})
+	}
+}
+
 func containsParam(query, param string) bool {
 	for _, p := range strings.Split(query, "&") {
 		if p == param {

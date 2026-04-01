@@ -203,6 +203,7 @@ type CreatePullRequestInput struct {
 	Destination string
 	CloseSource bool
 	Reviewers   []string
+	Draft       bool
 }
 
 // CreatePullRequest creates a new pull request.
@@ -220,6 +221,7 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	body := map[string]any{
 		"title":               input.Title,
 		"close_source_branch": input.CloseSource,
+		"draft":               input.Draft,
 		"source": map[string]any{
 			"branch": map[string]string{"name": input.Source},
 		},
