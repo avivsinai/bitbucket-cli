@@ -453,6 +453,49 @@ func TestListPullRequestCommentsValidation(t *testing.T) {
 	}
 }
 
+func TestListPullRequestCommentsFlattensReplies(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{
+					"action": "COMMENTED",
+					"comment": map[string]any{
+						"id": 1, "text": "parent", "author": map[string]any{"name": "alice"},
+						"comments": []map[string]any{
+							{
+								"id": 2, "text": "reply", "author": map[string]any{"name": "bob"},
+								"comments": []map[string]any{
+									{"id": 3, "text": "nested reply", "author": map[string]any{"name": "alice"}},
+								},
+							},
+						},
+					},
+				},
+			},
+			"isLastPage": true,
+		})
+	}))
+
+	comments, err := client.ListPullRequestComments(context.Background(), "PROJ", "repo", 1)
+	if err != nil {
+		t.Fatalf("ListPullRequestComments: %v", err)
+	}
+	if len(comments) != 3 {
+		t.Fatalf("expected 3 comments (flattened), got %d", len(comments))
+	}
+	wantIDs := []int{1, 2, 3}
+	wantDepths := []int{0, 1, 2}
+	for i, c := range comments {
+		if c.ID != wantIDs[i] {
+			t.Errorf("comments[%d].ID = %d, want %d", i, c.ID, wantIDs[i])
+		}
+		if c.Depth != wantDepths[i] {
+			t.Errorf("comments[%d].Depth = %d, want %d", i, c.Depth, wantDepths[i])
+		}
+	}
+}
+
 func TestCommentPullRequest(t *testing.T) {
 	var gotMethod, gotPath string
 	var gotBody map[string]any

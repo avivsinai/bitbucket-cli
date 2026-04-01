@@ -16,7 +16,8 @@ type commentsOptions struct {
 	Workspace string
 	Project   string
 	Repo      string
-	State     string // "all", "resolved", "unresolved"
+	State   string // "all", "resolved", "unresolved"
+	Details bool
 }
 
 func newCommentsCmd(f *cmdutil.Factory) *cobra.Command {
@@ -51,6 +52,7 @@ Works on both Data Center and Cloud.`,
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.State, "state", "all", "Filter by state: all, resolved, unresolved (Cloud only)")
+	cmd.Flags().BoolVar(&opts.Details, "details", false, "Show full comment details (file, resolved, task status)")
 
 	return cmd
 }
@@ -113,8 +115,41 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 				if author == "" {
 					author = c.Author.FullName
 				}
-				text := truncate(c.Text, 80)
-				if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", c.ID, author, text); err != nil {
+				if !opts.Details {
+					indent := strings.Repeat("  ", c.Depth)
+					text := truncate(c.Text, 80-2*c.Depth)
+					if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s%s\n", c.ID, author, indent, text); err != nil {
+						return err
+					}
+					continue
+				}
+				indent := strings.Repeat("  ", c.Depth)
+				kind := "Comment"
+				if strings.EqualFold(c.Severity, "BLOCKER") {
+					kind = "Task"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "%s--- %s #%d by %s ---\n", indent, kind, c.ID, author); err != nil {
+					return err
+				}
+				if c.Anchor != nil {
+					if _, err := fmt.Fprintf(ios.Out, "%sFile: %s:%d\n", indent, c.Anchor.Path, c.Anchor.Line); err != nil {
+						return err
+					}
+				}
+				if kind == "Task" {
+					complete := "no"
+					if strings.EqualFold(c.State, "RESOLVED") {
+						complete = "yes"
+					}
+					if _, err := fmt.Fprintf(ios.Out, "%sComplete: %s\n", indent, complete); err != nil {
+						return err
+					}
+				} else if c.ThreadResolved {
+					if _, err := fmt.Fprintf(ios.Out, "%sResolved: yes\n", indent); err != nil {
+						return err
+					}
+				}
+				if _, err := fmt.Fprintf(ios.Out, "\n%s%s\n\n", indent, c.Text); err != nil {
 					return err
 				}
 			}
@@ -178,8 +213,33 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 						author = c.User.Nickname
 					}
 				}
-				text := truncate(c.Content.Raw, 80)
-				if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", c.ID, author, text); err != nil {
+				if !opts.Details {
+					text := truncate(c.Content.Raw, 80)
+					if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", c.ID, author, text); err != nil {
+						return err
+					}
+					continue
+				}
+				if _, err := fmt.Fprintf(ios.Out, "--- Comment #%d by %s ---\n", c.ID, author); err != nil {
+					return err
+				}
+				if c.Inline != nil {
+					line := ""
+					if c.Inline.To != nil {
+						line = fmt.Sprintf(":%d", *c.Inline.To)
+					} else if c.Inline.From != nil {
+						line = fmt.Sprintf(":%d", *c.Inline.From)
+					}
+					if _, err := fmt.Fprintf(ios.Out, "File: %s%s\n", c.Inline.Path, line); err != nil {
+						return err
+					}
+				}
+				if c.Resolution != nil {
+					if _, err := fmt.Fprintln(ios.Out, "Resolved: yes"); err != nil {
+						return err
+					}
+				}
+				if _, err := fmt.Fprintf(ios.Out, "\n%s\n\n", c.Content.Raw); err != nil {
 					return err
 				}
 			}
