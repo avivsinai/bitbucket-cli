@@ -6,6 +6,32 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-04-01
+
+### Fixed
+- Prevented skill publish failures when a skill alias falls outside registry length limits.
+- Ensured release automation stages optional Codex plugin manifests and verifies skill/plugin metadata versions before publishing or tagging.
+
+### Changed
+- Added a default-branch marketplace dispatch workflow so plugin updates are announced after merges to `master`.
+- Updated the Codecov action to v6.
+
+## [0.14.2] - 2026-03-30
+
+### Changed
+- Switched skill publishing to a tag-based release flow so binary and skill releases are driven from the same version tag.
+
+## [0.14.1] - 2026-03-29
+
+### Added
+- Codex plugin manifest metadata for `bkt`, including interface metadata for marketplace and CLI consumers.
+
+### Changed
+- Consolidated skill packaging around the shared plugin manifest layout.
+
+### Fixed
+- Aligned Claude and Codex plugin manifest versions with release tags.
+
 ## [0.14.0] - 2026-03-18
 
 ### Added
