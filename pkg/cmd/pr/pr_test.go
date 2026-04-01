@@ -2896,6 +2896,188 @@ func TestListWorkspaceCloudURLFallback(t *testing.T) {
 	}
 }
 
+func TestRunCreateDataCenter(t *testing.T) {
+	tests := []struct {
+		name           string
+		prResponse     bbdc.PullRequest
+		outputContains []string
+	}{
+		{
+			name: "with link",
+			prResponse: bbdc.PullRequest{
+				ID:    42,
+				Title: "Add feature X",
+				Links: struct {
+					Self []struct {
+						Href string `json:"href"`
+					} `json:"self"`
+				}{
+					Self: []struct {
+						Href string `json:"href"`
+					}{
+						{Href: "https://bitbucket.example.com/projects/PROJ/repos/repo/pull-requests/42"},
+					},
+				},
+			},
+			outputContains: []string{
+				"Created pull request #42",
+				"Add feature X",
+				"https://bitbucket.example.com/projects/PROJ/repos/repo/pull-requests/42",
+			},
+		},
+		{
+			name: "without link",
+			prResponse: bbdc.PullRequest{
+				ID:    7,
+				Title: "Fix bug",
+			},
+			outputContains: []string{
+				"Created pull request #7",
+				"Fix bug",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "POST" && strings.Contains(r.URL.Path, "/pull-requests") {
+					_ = json.NewEncoder(w).Encode(tt.prResponse)
+					return
+				}
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newCreateCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs([]string{"--title", tt.prResponse.Title, "--source", "feature", "--target", "main"})
+			cmd.SetContext(context.Background())
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			output := stdout.String()
+			for _, expected := range tt.outputContains {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected output to contain %q, got:\n%s", expected, output)
+				}
+			}
+		})
+	}
+}
+
+func TestRunCreateCloud(t *testing.T) {
+	tests := []struct {
+		name           string
+		prResponse     bbcloud.PullRequest
+		outputContains []string
+	}{
+		{
+			name: "with link",
+			prResponse: bbcloud.PullRequest{
+				ID:    99,
+				Title: "Cloud PR",
+				Links: struct {
+					HTML struct {
+						Href string `json:"href"`
+					} `json:"html"`
+				}{
+					HTML: struct {
+						Href string `json:"href"`
+					}{Href: "https://bitbucket.org/workspace/repo/pull-requests/99"},
+				},
+			},
+			outputContains: []string{
+				"Created pull request #99",
+				"Cloud PR",
+				"https://bitbucket.org/workspace/repo/pull-requests/99",
+			},
+		},
+		{
+			name: "without link",
+			prResponse: bbcloud.PullRequest{
+				ID:    3,
+				Title: "No link PR",
+			},
+			outputContains: []string{
+				"Created pull request #3",
+				"No link PR",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "POST" && strings.Contains(r.URL.Path, "/pullrequests") {
+					_ = json.NewEncoder(w).Encode(tt.prResponse)
+					return
+				}
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "cloud", BaseURL: server.URL, Token: "test-token"},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newCreateCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs([]string{"--title", tt.prResponse.Title, "--source", "feature", "--target", "main"})
+			cmd.SetContext(context.Background())
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			output := stdout.String()
+			for _, expected := range tt.outputContains {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected output to contain %q, got:\n%s", expected, output)
+				}
+			}
+		})
+	}
+}
+
 func TestMergeReviewers(t *testing.T) {
 	type user struct{ Name string }
 	nameFunc := func(u user) string { return u.Name }
