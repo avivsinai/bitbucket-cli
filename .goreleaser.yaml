@@ -25,6 +25,9 @@ builds:
       - -X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags={{.Commit}}
       - -X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags={{.Date}}
     mod_timestamp: '{{ .CommitTimestamp }}'
+    hooks:
+      post:
+        - cmd: ./scripts/codesign-macos.sh "{{ .Path }}" "io.github.avivsinai.bitbucket-cli" "{{ .Os }}"
 
 archives:
   - id: bkt-archive

@@ -2,6 +2,7 @@ GO ?= go
 BIN_DIR ?= bin
 CMD := ./cmd/bkt
 SOURCES := $(shell find cmd internal pkg -name '*.go')
+MACOS_CODESIGN_ID ?= io.github.avivsinai.bitbucket-cli
 
 VERSION ?= $(shell \
 	if git describe --tags --exact-match >/dev/null 2>&1; then \
@@ -39,6 +40,7 @@ check-skills:
 $(BIN_DIR)/bkt: $(SOURCES) go.mod go.sum
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/bkt $(CMD)
+	./scripts/codesign-macos.sh "$(BIN_DIR)/bkt" "$(MACOS_CODESIGN_ID)"
 
 fmt:
 	$(GO) fmt ./...

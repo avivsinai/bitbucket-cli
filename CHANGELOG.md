@@ -6,6 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-04-01
+
+### Fixed
+- Serialized macOS keychain reads and writes behind an inter-process lock to prevent prompt storms when multiple `bkt` processes access the same token concurrently.
+- Ad-hoc signed macOS binaries with the stable identifier `io.github.avivsinai.bitbucket-cli` in both local builds and GoReleaser artifacts so Keychain approvals survive Homebrew upgrades.
+
 ## [0.14.3] - 2026-04-01
 
 ### Fixed
