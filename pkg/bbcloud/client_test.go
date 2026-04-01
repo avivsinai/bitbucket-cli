@@ -12,6 +12,34 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 )
 
+func TestPipelineStepStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		state  string
+		result string
+		want   string
+	}{
+		{"pending", "PENDING", "", "PENDING"},
+		{"running", "RUNNING", "", "RUNNING"},
+		{"completed successful", "COMPLETED", "SUCCESSFUL", "COMPLETED SUCCESSFUL"},
+		{"completed failed", "COMPLETED", "FAILED", "COMPLETED FAILED"},
+		{"completed error", "COMPLETED", "ERROR", "COMPLETED ERROR"},
+		{"completed stopped", "COMPLETED", "STOPPED", "COMPLETED STOPPED"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			step := PipelineStep{
+				Name: "lint",
+			}
+			step.State.Name = tt.state
+			step.Result.Name = tt.result
+			if got := step.Status(); got != tt.want {
+				t.Errorf("Status() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestListPipelinesPaginates(t *testing.T) {
 	var hits int32
 	var serverURL string

@@ -432,6 +432,16 @@ type PipelineStep struct {
 	} `json:"result"`
 }
 
+// Status returns the step state and result as a single string.
+// When the step is completed the result is appended (e.g. "COMPLETED SUCCESSFUL"),
+// otherwise only the state is returned (e.g. "PENDING").
+func (s PipelineStep) Status() string {
+	if s.Result.Name != "" {
+		return s.State.Name + " " + s.Result.Name
+	}
+	return s.State.Name
+}
+
 // ListPipelineSteps enumerates step executions for the pipeline.
 func (c *Client) ListPipelineSteps(ctx context.Context, workspace, repoSlug, pipelineUUID string) ([]PipelineStep, error) {
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/",
