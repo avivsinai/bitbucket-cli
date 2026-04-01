@@ -6,6 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-04-01
+
+### Added
+- `bkt pr create --draft` to create draft pull requests on Bitbucket Cloud and on Bitbucket Data Center 8.18+.
+- `bkt pr comment --pending` to create pending review comments on Bitbucket Cloud and Bitbucket Data Center.
+
 ## [0.14.7] - 2026-04-01
 
 ### Fixed
