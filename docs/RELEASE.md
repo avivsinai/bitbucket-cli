@@ -35,7 +35,6 @@
 
 - Treat `scripts/release.sh` as the only supported release entrypoint.
 - `scripts/check-release-version.sh vX.Y.Z` now validates both metadata versions and the matching `CHANGELOG.md` heading.
-- `scripts/prepare-release.sh` and `scripts/release-skills.sh` remain as compatibility shims only.
 - If a release PR merges but the tag publish fails verification, fix forward with the next patch version instead of rewriting the failed tag.
 
 ## Dry runs
