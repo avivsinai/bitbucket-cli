@@ -6,6 +6,9 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Passed the temp release-notes path directly to GoReleaser so GitHub Actions preserves the `--release-notes` argument during publishing.
+
 ## [0.16.3] - 2026-04-02
 ### Fixed
 - Wrote generated GitHub release notes to the runner temp directory so GoReleaser can publish without dirtying the checked-out tree.
