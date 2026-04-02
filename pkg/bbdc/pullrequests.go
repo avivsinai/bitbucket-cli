@@ -25,9 +25,7 @@ type PullRequestParticipant struct {
 type PullRequestComment struct {
 	ID     int    `json:"id"`
 	Text   string `json:"text"`
-	Author struct {
-		User User `json:"user"`
-	} `json:"author"`
+	Author User   `json:"author"`
 	Anchor *struct {
 		Path     string `json:"path"`
 		Line     int    `json:"line"`
@@ -36,7 +34,13 @@ type PullRequestComment struct {
 	} `json:"anchor,omitempty"`
 }
 
-// ListPullRequestComments lists comments on a pull request.
+// pullRequestActivity represents a single entry from the PR activities endpoint.
+type pullRequestActivity struct {
+	Action  string              `json:"action"`
+	Comment *PullRequestComment `json:"comment,omitempty"`
+}
+
+// ListPullRequestComments lists comments on a pull request via the activities endpoint.
 func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSlug string, prID int) ([]PullRequestComment, error) {
 	if projectKey == "" || repoSlug == "" {
 		return nil, fmt.Errorf("project key and repository slug are required")
@@ -50,7 +54,7 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 	)
 
 	for {
-		u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments?limit=%d&start=%d",
+		u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/activities?limit=%d&start=%d",
 			url.PathEscape(projectKey),
 			url.PathEscape(repoSlug),
 			prID,
@@ -62,12 +66,16 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 			return nil, err
 		}
 
-		var resp paged[PullRequestComment]
+		var resp paged[pullRequestActivity]
 		if err := c.http.Do(req, &resp); err != nil {
 			return nil, err
 		}
 
-		all = append(all, resp.Values...)
+		for _, a := range resp.Values {
+			if a.Action == "COMMENTED" && a.Comment != nil {
+				all = append(all, *a.Comment)
+			}
+		}
 
 		if resp.IsLastPage || len(resp.Values) == 0 {
 			break

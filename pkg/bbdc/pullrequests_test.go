@@ -340,20 +340,22 @@ func TestListPullRequestComments(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values": []map[string]any{
 				{
-					"id":   10,
-					"text": "Looks good to me",
-					"author": map[string]any{
-						"user": map[string]any{
+					"action": "COMMENTED",
+					"comment": map[string]any{
+						"id":   10,
+						"text": "Looks good to me",
+						"author": map[string]any{
 							"name":        "alice",
 							"displayName": "Alice A",
 						},
 					},
 				},
 				{
-					"id":   11,
-					"text": "Please fix the typo",
-					"author": map[string]any{
-						"user": map[string]any{
+					"action": "COMMENTED",
+					"comment": map[string]any{
+						"id":   11,
+						"text": "Please fix the typo",
+						"author": map[string]any{
 							"name":        "bob",
 							"displayName": "Bob B",
 						},
@@ -371,8 +373,8 @@ func TestListPullRequestComments(t *testing.T) {
 	if gotMethod != "GET" {
 		t.Errorf("method = %s, want GET", gotMethod)
 	}
-	if gotPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments" {
-		t.Errorf("path = %q, want /rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments", gotPath)
+	if gotPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/activities" {
+		t.Errorf("path = %q, want /rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/activities", gotPath)
 	}
 	if len(comments) != 2 {
 		t.Fatalf("expected 2 comments, got %d", len(comments))
@@ -383,8 +385,8 @@ func TestListPullRequestComments(t *testing.T) {
 	if comments[0].Text != "Looks good to me" {
 		t.Errorf("comments[0].Text = %q, want %q", comments[0].Text, "Looks good to me")
 	}
-	if comments[0].Author.User.Name != "alice" {
-		t.Errorf("comments[0].Author.User.Name = %q, want %q", comments[0].Author.User.Name, "alice")
+	if comments[0].Author.Name != "alice" {
+		t.Errorf("comments[0].Author.Name = %q, want %q", comments[0].Author.Name, "alice")
 	}
 }
 
@@ -397,7 +399,7 @@ func TestListPullRequestCommentsPaginates(t *testing.T) {
 		case 1:
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values": []map[string]any{
-					{"id": 10, "text": "first comment", "author": map[string]any{"user": map[string]any{"name": "alice"}}},
+					{"action": "COMMENTED", "comment": map[string]any{"id": 10, "text": "first comment", "author": map[string]any{"name": "alice"}}},
 				},
 				"isLastPage":    false,
 				"nextPageStart": 1,
@@ -405,7 +407,7 @@ func TestListPullRequestCommentsPaginates(t *testing.T) {
 		case 2:
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"values": []map[string]any{
-					{"id": 11, "text": "second comment", "author": map[string]any{"user": map[string]any{"name": "bob"}}},
+					{"action": "COMMENTED", "comment": map[string]any{"id": 11, "text": "second comment", "author": map[string]any{"name": "bob"}}},
 				},
 				"isLastPage": true,
 			})
