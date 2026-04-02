@@ -6,8 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.16.4] - 2026-04-02
 ### Fixed
 - Passed the temp release-notes path directly to GoReleaser so GitHub Actions preserves the `--release-notes` argument during publishing.
+
 
 ## [0.16.3] - 2026-04-02
 ### Fixed
