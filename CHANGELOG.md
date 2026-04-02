@@ -6,6 +6,14 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-04-02
+
+### Added
+- Pipeline step state and result details in `bkt pipeline view` and `bkt status pipeline` for Bitbucket Cloud, making in-flight step progress visible without `--json`.
+
+### Fixed
+- Switched Data Center `bkt pr comments` to the pull request activities endpoint so general and inline comments can be listed without the invalid `path` query error.
+
 ## [0.15.0] - 2026-04-01
 
 ### Added
