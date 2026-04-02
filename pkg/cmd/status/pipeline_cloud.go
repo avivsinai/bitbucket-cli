@@ -91,7 +91,7 @@ func runCloudPipelineStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *cloudS
 				return err
 			}
 			for _, step := range steps {
-				if _, err := fmt.Fprintf(ios.Out, "  %s\t%s\t%s\n", step.UUID, step.Name, step.Result.Name); err != nil {
+				if _, err := fmt.Fprintf(ios.Out, "  %s\t%-24s\t%s\n", step.UUID, step.Status(), step.Name); err != nil {
 					return err
 				}
 			}
