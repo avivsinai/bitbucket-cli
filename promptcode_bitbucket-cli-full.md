@@ -746,11 +746,11 @@ See [README](README.md#project-layout) for the code layout. In short:
 
 The detailed steps live in [`docs/RELEASE.md`](docs/RELEASE.md). In short:
 
-1. Bump versions in `internal/build/version.go` (via ldflags) and update
-   `CHANGELOG.md`.
-2. Tag the release (`git tag vX.Y.Z && git push --tags`).
-3. GitHub Actions runs [GoReleaser](goreleaser.yaml) to publish binaries and
-   build SBOMs via Syft.
+1. Update `CHANGELOG.md` with the release notes.
+2. Run `./scripts/release.sh X.Y.Z` from `master` to open the release PR.
+3. After the release PR merges, GitHub Actions runs [GoReleaser](goreleaser.yaml)
+   from the verified merged commit, creates the tag, publishes binaries, and
+   builds SBOMs via Syft.
 
 ## Community roles
 
@@ -772,10 +772,11 @@ File: docs/RELEASE.md (293 tokens)
 
 2. **Version bump**
    - Determine the next semantic version based on the changes.
-   - Tag the release: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
+   - Run `./scripts/release.sh X.Y.Z` from `master` to open the release PR.
 
 3. **Automation**
-   - GitHub Actions (`release.yml`) runs GoReleaser to build:
+   - After the release PR merges, GitHub Actions (`release.yml`) validates the
+     merged release commit, creates the tag, and runs GoReleaser to build:
      - Linux, macOS, and Windows binaries (amd64 + arm64)
      - Checksums (`bkt_${VERSION}_checksums.txt`)
      - SBOMs (`sbom-${VERSION}.cyclonedx.json` via Syft)
@@ -12593,4 +12594,3 @@ We strive to respond to issues within two business days.
 ```
 
 </files>
-

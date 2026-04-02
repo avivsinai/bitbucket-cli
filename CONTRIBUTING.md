@@ -71,9 +71,10 @@ See [README](README.md#project-layout) for the code layout. In short:
 The detailed steps live in [`docs/RELEASE.md`](docs/RELEASE.md). In short:
 
 1. Update `CHANGELOG.md` with the release notes.
-2. Tag the release (`git tag vX.Y.Z && git push --tags`).
-3. GitHub Actions runs [GoReleaser](.goreleaser.yaml) to publish binaries and
-   build SBOMs via Syft. Version, commit, and date are injected via ldflags.
+2. Run `./scripts/release.sh X.Y.Z` from `master` to open the release PR.
+3. After the release PR merges, GitHub Actions runs [GoReleaser](.goreleaser.yaml)
+   from the verified merged commit, creates the tag, publishes binaries, and
+   builds SBOMs via Syft. Version, commit, and date are injected via ldflags.
 
 ## Community roles
 
