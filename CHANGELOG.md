@@ -6,8 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-04-02
 ### Fixed
 - Wrote generated GitHub release notes to the runner temp directory so GoReleaser can publish without dirtying the checked-out tree.
+
 
 ## [0.16.2] - 2026-04-02
 ### Changed
