@@ -33,9 +33,9 @@ This is the master agent instruction file for this repository. Keep repository p
 
 ## Release Contract
 
-- Release from `master` only; do not keep long-lived release branches or create manual GitHub releases.
+- Release from `master` only through `./scripts/release.sh X.Y.Z` and the resulting release PR; do not create manual tags or GitHub releases.
 - A push to `master` updates the AvivSinai marketplace immediately for the `bkt` skill.
-- For a versioned release, keep `CHANGELOG.md` and skill/plugin metadata on one version, then push the tag and let CI publish GitHub and Homebrew artifacts.
+- Keep `CHANGELOG.md` and skill/plugin metadata on one version in the release commit; after the release PR merges, CI validates the merged commit, creates the tag, publishes GitHub/Homebrew artifacts, and uses the committed changelog entry as the GitHub release notes.
 - See `docs/RELEASE.md` for the full release handbook.
 
 ## Commit & Pull Request Guidelines

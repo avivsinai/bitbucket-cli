@@ -6,5 +6,6 @@ bkt follows [Semantic Versioning](https://semver.org/).
 - MINOR versions add functionality in a backwards compatible manner.
 - PATCH versions include backwards compatible bug fixes.
 
-We tag releases as `vX.Y.Z` and publish binaries via GoReleaser. The changelog
-summarises the changes for each release.
+Release PRs carry one version across `CHANGELOG.md` and skill/plugin metadata.
+After the release PR merges, CI creates the `vX.Y.Z` tag and publishes binaries
+via GoReleaser. The changelog summarises the changes for each release.

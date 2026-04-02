@@ -2,32 +2,144 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - master
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g. v0.14.4)'
+        description: 'Existing tag to (re)release (e.g. v0.14.4)'
         required: true
         type: string
 
 permissions:
   contents: write
 
-# Prevent race conditions: only one release per tag, cancel stale runs
+# Keep workflow_dispatch reruns serialized per tag while letting distinct release commits run independently.
 concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-  cancel-in-progress: true
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.sha }}
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    if: "${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release): v') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.prepare.outputs.tag }}
+      version: ${{ steps.prepare.outputs.version }}
+      release_ref: ${{ steps.prepare.outputs.release_ref }}
+      release_sha: ${{ steps.prepare.outputs.release_sha }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Resolve release metadata
+        id: prepare
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          validate_tag() {
+            local tag="$1"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*$ ]]; then
+              echo "::error::Release identifiers must use vX.Y.Z style tags."
+              exit 1
+            fi
+          }
+
+          tag_commit_sha() {
+            git rev-parse "refs/tags/${1}^{commit}" 2>/dev/null || git rev-parse "refs/tags/${1}"
+          }
+
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              tag="$INPUT_TAG"
+              validate_tag "$tag"
+              git fetch --force --tags origin
+              if ! git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+                echo "::error::Tag ${tag} does not exist. workflow_dispatch is only for rerunning an existing release."
+                exit 1
+              fi
+              version="${tag#v}"
+              ./scripts/check-release-version.sh "$version"
+              release_ref="$tag"
+              release_sha="$(tag_commit_sha "$tag")"
+              ;;
+            push)
+              commit_subject="${COMMIT_MESSAGE%%$'\n'*}"
+              tag="${commit_subject#chore(release): }"
+              tag="${tag%% \(#*}"
+              validate_tag "$tag"
+
+              version="${tag#v}"
+              ./scripts/check-release-version.sh "$version"
+
+              release_sha="${GITHUB_SHA}"
+              if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+                existing_sha="$(tag_commit_sha "$tag")"
+                if [[ "$existing_sha" != "$release_sha" ]]; then
+                  echo "::error::Tag ${tag} already exists but points to ${existing_sha}, not ${release_sha}."
+                  exit 1
+                fi
+              fi
+              release_ref="${release_sha}"
+              ;;
+            *)
+              echo "::error::Unsupported event: ${EVENT_NAME}"
+              exit 1
+              ;;
+          esac
+
+          prerelease=false
+          if [[ "$tag" == *-* ]]; then
+            prerelease=true
+          fi
+
+          {
+            echo "tag=${tag}"
+            echo "version=${version}"
+            echo "release_ref=${release_ref}"
+            echo "release_sha=${release_sha}"
+            echo "prerelease=${prerelease}"
+          } >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: prepare
+    if: needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.release_ref }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+      - name: Verify release metadata
+        run: ./scripts/check-release-version.sh "${{ needs.prepare.outputs.version }}"
+      - name: Run tests
+        run: make test
+      - name: Build CLI
+        run: VERSION=${{ needs.prepare.outputs.tag }} make build
+      - name: Check embedded version
+        run: ./bin/bkt --version | grep -Fx "bkt version ${{ needs.prepare.outputs.tag }}"
+
   release:
+    needs: [prepare, verify]
+    if: needs.prepare.result == 'success' && needs.verify.result == 'success'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          ref: ${{ needs.prepare.outputs.release_ref }}
 
       - uses: actions/setup-go@v6
         with:
@@ -36,15 +148,56 @@ jobs:
       - name: Install Syft
         run: brew install syft
 
-      - name: Verify release metadata
-        run: ./scripts/check-release-version.sh "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}"
+      - name: Create release tag after verification
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+
+          tag_commit_sha() {
+            git rev-parse "refs/tags/${1}^{commit}" 2>/dev/null || git rev-parse "refs/tags/${1}"
+          }
+
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            existing_sha="$(tag_commit_sha "$TAG")"
+            if [[ "$existing_sha" != "$RELEASE_SHA" ]]; then
+              echo "::error::Tag ${TAG} already exists but points to ${existing_sha}, not ${RELEASE_SHA}."
+              exit 1
+            fi
+          else
+            git tag "$TAG" "$RELEASE_SHA"
+            git push origin "refs/tags/${TAG}"
+          fi
+
+      - name: Extract release notes for this tag
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          python3 - "$VERSION" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+          text = pathlib.Path("CHANGELOG.md").read_text()
+          pattern = re.compile(
+              rf"(?ms)^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n.*?(?=^## \[|\Z)"
+          )
+          match = pattern.search(text)
+          if not match:
+              raise SystemExit(f"missing changelog section for {version}")
+          pathlib.Path("RELEASE_NOTES.md").write_text(match.group(0).strip() + "\n")
+          PY
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean
+          args: release --clean --release-notes RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
