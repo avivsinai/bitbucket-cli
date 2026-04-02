@@ -174,22 +174,25 @@ jobs:
 
       - name: Extract release notes for this tag
         shell: bash
+        env:
+          RELEASE_NOTES_PATH: ${{ runner.temp }}/RELEASE_NOTES.md
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
-          python3 - "$VERSION" <<'PY'
+          python3 - "$VERSION" "$RELEASE_NOTES_PATH" <<'PY'
           import pathlib
           import re
           import sys
 
           version = sys.argv[1]
-          text = pathlib.Path("CHANGELOG.md").read_text()
+          output_path = pathlib.Path(sys.argv[2])
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
           pattern = re.compile(
               rf"(?ms)^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n.*?(?=^## \[|\Z)"
           )
           match = pattern.search(text)
           if not match:
               raise SystemExit(f"missing changelog section for {version}")
-          pathlib.Path("RELEASE_NOTES.md").write_text(match.group(0).strip() + "\n")
+          output_path.write_text(match.group(0).strip() + "\n", encoding="utf-8")
           PY
 
       - name: Run GoReleaser
@@ -197,7 +200,7 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --release-notes RELEASE_NOTES.md
+          args: release --clean --release-notes ${{ env.RELEASE_NOTES_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
