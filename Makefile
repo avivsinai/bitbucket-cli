@@ -23,7 +23,7 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-skills
+.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-prepare release-skills release-local
 
 build: $(BIN_DIR)/bkt
 
@@ -61,7 +61,7 @@ sbom:
 	fi
 	syft dir:. -o cyclonedx-json=sbom.cdx.json
 
-release:
+release-local:
 	goreleaser release --clean
 
 snapshot:
@@ -71,6 +71,12 @@ snapshot:
 clean:
 	rm -rf $(BIN_DIR) dist/
 
+release-prepare:
+	@test -n "$(RELEASE_VERSION)" || (echo "usage: make release-prepare RELEASE_VERSION=X.Y.Z [RELEASE_DATE=YYYY-MM-DD] [RELEASE_SKIP_VERIFY=1] [RELEASE_ALLOW_EMPTY=1] [RELEASE_NO_AUTO_MERGE=1]" && exit 1)
+	./scripts/release.sh "$(RELEASE_VERSION)" $(if $(RELEASE_DATE),--date $(RELEASE_DATE),) $(if $(RELEASE_SKIP_VERIFY),--skip-verify,) $(if $(RELEASE_ALLOW_EMPTY),--allow-empty,) $(if $(RELEASE_NO_AUTO_MERGE),--no-auto-merge,)
+
+release: release-prepare
+
 release-skills:
 	@test -n "$(RELEASE_VERSION)" || (echo "usage: make release-skills RELEASE_VERSION=X.Y.Z" && exit 1)
-	./scripts/release-skills.sh "$(RELEASE_VERSION)"
+	./scripts/release-skills.sh "$(RELEASE_VERSION)" $(if $(RELEASE_DATE),--date $(RELEASE_DATE),) $(if $(RELEASE_SKIP_VERIFY),--skip-verify,) $(if $(RELEASE_ALLOW_EMPTY),--allow-empty,) $(if $(RELEASE_NO_AUTO_MERGE),--no-auto-merge,)

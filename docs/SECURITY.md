@@ -29,7 +29,8 @@ implementation details.
 2. Assign a severity (CVSS) and determine the affected versions.
 3. Prepare a patch on a private branch. Request a security review from another
    maintainer.
-4. Tag a release with the fix and update `CHANGELOG.md` with mitigation steps.
+4. Cut a release PR with the fix, update `CHANGELOG.md` with mitigation steps,
+   and let CI create the release tag after the merge validates.
 5. Notify the reporter and disclose publicly within seven days of the fix.
 
 ## Contact

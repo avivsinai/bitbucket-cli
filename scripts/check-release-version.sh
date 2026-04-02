@@ -38,6 +38,15 @@ for path in [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]:
     if actual != version:
         mismatches.append((path, actual))
 
+changelog = pathlib.Path("CHANGELOG.md")
+if not changelog.exists():
+    mismatches.append(("CHANGELOG.md", "<missing>"))
+else:
+    text = changelog.read_text()
+    pattern = rf"(?m)^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+    if not re.search(pattern, text):
+        mismatches.append(("CHANGELOG.md", "<missing release heading>"))
+
 if mismatches:
     print(f"release metadata version mismatch for {version}:")
     for path, actual in mismatches:
