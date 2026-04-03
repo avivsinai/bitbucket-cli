@@ -632,18 +632,14 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
-	cmd.Flags().StringVar(&opts.Title, "title", "", "Pull request title (required)")
+	cmd.Flags().StringVar(&opts.Title, "title", "", "Pull request title (defaults to the first unique commit subject)")
 	cmd.Flags().StringVar(&opts.Description, "description", "", "Pull request description")
-	cmd.Flags().StringVar(&opts.Source, "source", "", "Source branch (required)")
-	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (required)")
+	cmd.Flags().StringVar(&opts.Source, "source", "", "Source branch (defaults to the current branch)")
+	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (defaults to the remote's default branch)")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
 	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers (Data Center only)")
 	cmd.Flags().BoolVarP(&opts.Draft, "draft", "d", false, "Create pull request as a draft (DC 8.18+, Cloud always supported)")
-
-	_ = cmd.MarkFlagRequired("title")
-	_ = cmd.MarkFlagRequired("source")
-	_ = cmd.MarkFlagRequired("target")
 
 	return cmd
 }
@@ -657,6 +653,10 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 	override := cmdutil.FlagValue(cmd, "context")
 	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
 	if err != nil {
+		return err
+	}
+
+	if err := applyCreateDefaults(cmd.Context(), opts); err != nil {
 		return err
 	}
 
@@ -751,6 +751,151 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
+}
+
+func applyCreateDefaults(ctx context.Context, opts *createOptions) error {
+	if strings.TrimSpace(opts.Source) == "" {
+		source, err := currentGitBranch(ctx)
+		if err != nil {
+			return fmt.Errorf("could not determine default --source from git; pass --source explicitly")
+		}
+		opts.Source = source
+	}
+
+	remoteName := ""
+	if strings.TrimSpace(opts.Target) == "" {
+		target, remote, err := defaultGitTargetBranch(ctx)
+		if err != nil {
+			return fmt.Errorf("could not determine default --target from git; pass --target explicitly")
+		}
+		opts.Target = target
+		remoteName = remote
+	}
+
+	if strings.TrimSpace(opts.Title) == "" {
+		title, err := defaultGitPRTitle(ctx, opts.Target, remoteName)
+		if err != nil {
+			return fmt.Errorf("could not determine default --title from git history; pass --title explicitly")
+		}
+		opts.Title = title
+	}
+
+	return nil
+}
+
+func currentGitBranch(ctx context.Context) (string, error) {
+	out, err := runGitOutput(ctx, "branch", "--show-current")
+	if err != nil {
+		return "", err
+	}
+
+	branch := strings.TrimSpace(out)
+	if branch == "" {
+		return "", fmt.Errorf("git HEAD is detached")
+	}
+
+	return branch, nil
+}
+
+func defaultGitTargetBranch(ctx context.Context) (branch string, remoteName string, err error) {
+	remoteName, err = preferredGitRemote(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	out, err := runGitOutput(ctx, "symbolic-ref", "--quiet", "--short", fmt.Sprintf("refs/remotes/%s/HEAD", remoteName))
+	if err != nil {
+		return "", "", err
+	}
+
+	ref := strings.TrimSpace(out)
+	prefix := remoteName + "/"
+	if !strings.HasPrefix(ref, prefix) {
+		return "", "", fmt.Errorf("unexpected remote HEAD ref %q", ref)
+	}
+
+	branch = strings.TrimPrefix(ref, prefix)
+	if branch == "" {
+		return "", "", fmt.Errorf("remote HEAD does not point to a branch")
+	}
+
+	return branch, remoteName, nil
+}
+
+func defaultGitPRTitle(ctx context.Context, targetBranch, remoteName string) (string, error) {
+	baseRef, err := resolveGitBaseRef(ctx, targetBranch, remoteName)
+	if err != nil {
+		return "", err
+	}
+
+	mergeBase, err := runGitOutput(ctx, "merge-base", "HEAD", baseRef)
+	if err != nil {
+		return "", err
+	}
+
+	out, err := runGitOutput(ctx, "log", "--reverse", "--format=%s", fmt.Sprintf("%s..HEAD", strings.TrimSpace(mergeBase)))
+	if err != nil {
+		return "", err
+	}
+
+	for _, line := range strings.Split(out, "\n") {
+		title := strings.TrimSpace(line)
+		if title != "" {
+			return title, nil
+		}
+	}
+
+	return "", fmt.Errorf("no commits found relative to %s", targetBranch)
+}
+
+func preferredGitRemote(ctx context.Context) (string, error) {
+	out, err := runGitOutput(ctx, "remote")
+	if err != nil {
+		return "", err
+	}
+
+	var remotes []string
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" {
+			remotes = append(remotes, name)
+		}
+	}
+
+	if len(remotes) == 0 {
+		return "", fmt.Errorf("no git remotes found")
+	}
+
+	for _, preferred := range []string{"origin", "upstream"} {
+		for _, remote := range remotes {
+			if remote == preferred {
+				return remote, nil
+			}
+		}
+	}
+
+	return remotes[0], nil
+}
+
+func resolveGitBaseRef(ctx context.Context, targetBranch, remoteName string) (string, error) {
+	targetBranch = strings.TrimSpace(targetBranch)
+	if targetBranch == "" {
+		return "", fmt.Errorf("target branch is empty")
+	}
+
+	var candidates []string
+	if remoteName != "" {
+		candidates = append(candidates, fmt.Sprintf("refs/remotes/%s/%s", remoteName, targetBranch))
+	}
+	candidates = append(candidates, fmt.Sprintf("refs/heads/%s", targetBranch), targetBranch)
+
+	for _, candidate := range candidates {
+		if _, err := runGitOutput(ctx, "rev-parse", "--verify", "--quiet", candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not resolve base branch %q", targetBranch)
 }
 
 type editOptions struct {

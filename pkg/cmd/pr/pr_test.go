@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -3056,6 +3058,122 @@ func TestCreateCommandDraftFlag(t *testing.T) {
 	}
 }
 
+func TestCreateCommandUsesGitDefaults(t *testing.T) {
+	repoDir := initCreateDefaultsGitRepo(t, "https://bitbucket.example.com/scm/PROJ/repo.git")
+
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "main",
+				ProjectKey:  "PROJ",
+				DefaultRepo: "repo",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {
+				Kind:    "dc",
+				BaseURL: server.URL,
+				Token:   "test-token",
+			},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	withWorkingDir(t, repoDir, func() {
+		cmd := newCreateCmd(f)
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if gotBody["title"] != "feat: add default PR behavior" {
+		t.Fatalf("title = %v, want %q", gotBody["title"], "feat: add default PR behavior")
+	}
+
+	fromRef, ok := gotBody["fromRef"].(map[string]any)
+	if !ok {
+		t.Fatalf("fromRef missing or wrong type: %#v", gotBody["fromRef"])
+	}
+	if fromRef["id"] != "refs/heads/feature/default-pr" {
+		t.Fatalf("fromRef.id = %v, want %q", fromRef["id"], "refs/heads/feature/default-pr")
+	}
+
+	toRef, ok := gotBody["toRef"].(map[string]any)
+	if !ok {
+		t.Fatalf("toRef missing or wrong type: %#v", gotBody["toRef"])
+	}
+	if toRef["id"] != "refs/heads/main" {
+		t.Fatalf("toRef.id = %v, want %q", toRef["id"], "refs/heads/main")
+	}
+
+	if !strings.Contains(stdout.String(), "Created pull request #1") {
+		t.Fatalf("output %q does not contain success message", stdout.String())
+	}
+}
+
+func TestCreateCommandRequiresExplicitFlagsWhenGitDefaultsUnavailable(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "main",
+				ProjectKey:  "PROJ",
+				DefaultRepo: "repo",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {
+				Kind:    "dc",
+				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
+			},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	var err error
+	withWorkingDir(t, tmpDir, func() {
+		cmd := newCreateCmd(f)
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+		err = cmd.Execute()
+	})
+
+	if err == nil {
+		t.Fatal("expected an error when git defaults are unavailable")
+	}
+	if !strings.Contains(err.Error(), "could not determine default --source from git") {
+		t.Fatalf("error = %q, want source-default guidance", err.Error())
+	}
+}
+
 func TestCommentInlineValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -3121,6 +3239,85 @@ func TestCommentInlineValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func initCreateDefaultsGitRepo(t *testing.T, remoteURL string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	runGitPRTest(t, dir, "init", "-b", "main")
+	runGitPRTest(t, dir, "config", "user.name", "Test User")
+	runGitPRTest(t, dir, "config", "user.email", "test@example.com")
+
+	writeTestFile(t, filepath.Join(dir, "README.md"), "base\n")
+	runGitPRTest(t, dir, "add", "README.md")
+	runGitPRTest(t, dir, "commit", "-m", "chore: base")
+
+	runGitPRTest(t, dir, "remote", "add", "origin", remoteURL)
+	mainSHA := strings.TrimSpace(runGitPRTestOutput(t, dir, "rev-parse", "HEAD"))
+	runGitPRTest(t, dir, "update-ref", "refs/remotes/origin/main", mainSHA)
+	runGitPRTest(t, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	runGitPRTest(t, dir, "checkout", "-b", "feature/default-pr")
+	writeTestFile(t, filepath.Join(dir, "README.md"), "base\nfeature 1\n")
+	runGitPRTest(t, dir, "add", "README.md")
+	runGitPRTest(t, dir, "commit", "-m", "feat: add default PR behavior")
+
+	writeTestFile(t, filepath.Join(dir, "README.md"), "base\nfeature 1\nfeature 2\n")
+	runGitPRTest(t, dir, "add", "README.md")
+	runGitPRTest(t, dir, "commit", "-m", "fix: polish defaults")
+
+	return dir
+}
+
+func withWorkingDir(t *testing.T, dir string, fn func()) {
+	t.Helper()
+
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	fn()
+}
+
+func writeTestFile(t *testing.T, path, contents string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func runGitPRTest(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	cmdArgs := append([]string{"-C", dir}, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, output)
+	}
+}
+
+func runGitPRTestOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+
+	cmdArgs := append([]string{"-C", dir}, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, output)
+	}
+	return string(output)
 }
 
 func TestCommentPendingFlagDC(t *testing.T) {
