@@ -2899,6 +2899,7 @@ func TestListWorkspaceCloudURLFallback(t *testing.T) {
 func TestRunCreateDataCenter(t *testing.T) {
 	tests := []struct {
 		name           string
+		draft          bool
 		prResponse     bbdc.PullRequest
 		outputContains []string
 	}{
@@ -2936,6 +2937,30 @@ func TestRunCreateDataCenter(t *testing.T) {
 				"Fix bug",
 			},
 		},
+		{
+			name:  "draft with link",
+			draft: true,
+			prResponse: bbdc.PullRequest{
+				ID:    10,
+				Title: "WIP feature",
+				Links: struct {
+					Self []struct {
+						Href string `json:"href"`
+					} `json:"self"`
+				}{
+					Self: []struct {
+						Href string `json:"href"`
+					}{
+						{Href: "https://bitbucket.example.com/projects/PROJ/repos/repo/pull-requests/10"},
+					},
+				},
+			},
+			outputContains: []string{
+				"Created draft pull request #10",
+				"WIP feature",
+				"https://bitbucket.example.com/projects/PROJ/repos/repo/pull-requests/10",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -2971,7 +2996,11 @@ func TestRunCreateDataCenter(t *testing.T) {
 			cmd := newCreateCmd(f)
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
-			cmd.SetArgs([]string{"--title", tt.prResponse.Title, "--source", "feature", "--target", "main"})
+			args := []string{"--title", tt.prResponse.Title, "--source", "feature", "--target", "main"}
+			if tt.draft {
+				args = append(args, "--draft")
+			}
+			cmd.SetArgs(args)
 			cmd.SetContext(context.Background())
 
 			if err := cmd.Execute(); err != nil {

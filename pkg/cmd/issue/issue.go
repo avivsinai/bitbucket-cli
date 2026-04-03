@@ -520,7 +520,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		Title string `json:"title"`
 		State string `json:"state"`
 		Kind  string `json:"kind"`
-		URL   string `json:"url"`
+		URL   string `json:"url,omitempty"`
 	}
 
 	result := issueCreated{
