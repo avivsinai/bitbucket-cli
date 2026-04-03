@@ -583,6 +583,12 @@ func firstPRLinkCloud(pr *bbcloud.PullRequest) string {
 	return ""
 }
 
+type createResult struct {
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	URL   string `json:"url,omitempty"`
+}
+
 type createOptions struct {
 	Project              string
 	Workspace            string
@@ -698,14 +704,19 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		kind := "pull request"
-		if opts.Draft {
-			kind = "draft pull request"
-		}
-		if _, err := fmt.Fprintf(ios.Out, "✓ Created %s #%d\n", kind, pr.ID); err != nil {
+		result := createResult{ID: pr.ID, Title: pr.Title, URL: firstPRLinkDC(pr, "self")}
+		return cmdutil.WriteOutput(cmd, ios.Out, result, func() error {
+			kind := "pull request"
+			if opts.Draft {
+				kind = "draft pull request"
+			}
+			msg := fmt.Sprintf("✓ Created %s #%d: %s\n", kind, result.ID, result.Title)
+			if result.URL != "" {
+				msg += result.URL + "\n"
+			}
+			_, err := fmt.Fprint(ios.Out, msg)
 			return err
-		}
-		return nil
+		})
 
 	case "cloud":
 		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
@@ -739,14 +750,19 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			return err
 		}
 
-		kind := "pull request"
-		if opts.Draft {
-			kind = "draft pull request"
-		}
-		if _, err := fmt.Fprintf(ios.Out, "✓ Created %s #%d\n", kind, pr.ID); err != nil {
+		result := createResult{ID: pr.ID, Title: pr.Title, URL: firstPRLinkCloud(pr)}
+		return cmdutil.WriteOutput(cmd, ios.Out, result, func() error {
+			kind := "pull request"
+			if opts.Draft {
+				kind = "draft pull request"
+			}
+			msg := fmt.Sprintf("✓ Created %s #%d: %s\n", kind, result.ID, result.Title)
+			if result.URL != "" {
+				msg += result.URL + "\n"
+			}
+			_, err := fmt.Fprint(ios.Out, msg)
 			return err
-		}
-		return nil
+		})
 
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
