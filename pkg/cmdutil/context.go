@@ -202,7 +202,7 @@ func applyRemoteDefaults(ctx *config.Context, host *config.Host) {
 	if err != nil {
 		return
 	}
-	if !locatorMatchesHost(host, loc) {
+	if !LocatorMatchesHost(host, loc) {
 		return
 	}
 
@@ -219,7 +219,9 @@ func applyRemoteDefaults(ctx *config.Context, host *config.Host) {
 	}
 }
 
-func locatorMatchesHost(host *config.Host, loc remote.Locator) bool {
+// LocatorMatchesHost reports whether a remote locator points at the same
+// server as the supplied host configuration.
+func LocatorMatchesHost(host *config.Host, loc remote.Locator) bool {
 	if host == nil {
 		return false
 	}
