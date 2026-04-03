@@ -32,7 +32,7 @@ func Detect(repoPath string) (Locator, error) {
 		repoPath = "."
 	}
 
-	remotes, err := listGitRemotes(repoPath)
+	remotes, err := ListRemotes(repoPath)
 	if err != nil {
 		return Locator{}, err
 	}
@@ -77,7 +77,7 @@ func Detect(repoPath string) (Locator, error) {
 	}
 
 	for _, raw := range urls {
-		loc, err := parseLocator(raw)
+		loc, err := ParseLocator(raw)
 		if err != nil {
 			continue
 		}
@@ -90,7 +90,8 @@ func Detect(repoPath string) (Locator, error) {
 	return Locator{}, ErrNoGitRemote
 }
 
-func listGitRemotes(repoPath string) (map[string][]string, error) {
+// ListRemotes returns a map of remote names to their URLs by parsing `git remote -v`.
+func ListRemotes(repoPath string) (map[string][]string, error) {
 	args := []string{"remote", "-v"}
 	if repoPath != "." && repoPath != "" {
 		args = append([]string{"-C", repoPath}, args...)
@@ -150,7 +151,9 @@ func listGitRemotes(repoPath string) (map[string][]string, error) {
 	return result, nil
 }
 
-func parseLocator(raw string) (Locator, error) {
+// ParseLocator parses a git remote URL into a Locator containing the host,
+// kind, and repository identifiers.
+func ParseLocator(raw string) (Locator, error) {
 	host, segments, err := dissectRemote(raw)
 	if err != nil {
 		return Locator{}, err

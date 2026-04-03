@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -18,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/remote"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
@@ -758,25 +758,32 @@ func applyCreateDefaults(ctx context.Context, opts *createOptions, host *config.
 	if strings.TrimSpace(opts.Source) == "" {
 		source, err := currentGitBranch(ctx)
 		if err != nil {
-			return fmt.Errorf("could not determine default --source from git; pass --source explicitly")
+			return fmt.Errorf("could not determine default --source from git; pass --source explicitly: %w", err)
 		}
 		opts.Source = source
 	}
 
 	remoteName := ""
 	if strings.TrimSpace(opts.Target) == "" {
-		target, remote, err := defaultGitTargetBranch(ctx, host)
+		target, rn, err := defaultGitTargetBranch(ctx, host)
 		if err != nil {
-			return fmt.Errorf("could not determine default --target from git; pass --target explicitly")
+			return fmt.Errorf("could not determine default --target from git; pass --target explicitly: %w", err)
 		}
 		opts.Target = target
-		remoteName = remote
+		remoteName = rn
 	}
 
 	if strings.TrimSpace(opts.Title) == "" {
+		// When --target was explicit, remoteName is empty; resolve it now
+		// so the merge-base can use the remote-tracking ref.
+		if remoteName == "" {
+			if rn, err := preferredGitRemote(ctx, host); err == nil {
+				remoteName = rn
+			}
+		}
 		title, err := defaultGitPRTitle(ctx, opts.Target, remoteName)
 		if err != nil {
-			return fmt.Errorf("could not determine default --title from git history; pass --title explicitly")
+			return fmt.Errorf("could not determine default --title from git history; pass --title explicitly: %w", err)
 		}
 		opts.Title = title
 	}
@@ -850,100 +857,49 @@ func defaultGitPRTitle(ctx context.Context, targetBranch, remoteName string) (st
 }
 
 func preferredGitRemote(ctx context.Context, host *config.Host) (string, error) {
-	out, err := runGitOutput(ctx, "remote", "-v")
+	remotes, err := remote.ListRemotes(".")
 	if err != nil {
 		return "", err
 	}
-
-	type remoteEntry struct {
-		name string
-		url  string
-	}
-
-	var remotes []remoteEntry
-	seen := make(map[string]bool)
-	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		name := fields[0]
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-		remotes = append(remotes, remoteEntry{name: name, url: fields[1]})
-	}
-
 	if len(remotes) == 0 {
 		return "", fmt.Errorf("no git remotes found")
 	}
 
-	// Prefer a remote whose URL matches the active Bitbucket host.
+	// Build ordered name list: origin, upstream, then rest.
+	names := orderedRemoteNames(remotes)
+
+	// First pass: find a remote matching the active Bitbucket host.
 	if host != nil {
-		for _, r := range remotes {
-			if remoteURLMatchesHost(r.url, host) {
-				return r.name, nil
+		for _, name := range names {
+			for _, rawURL := range remotes[name] {
+				loc, locErr := remote.ParseLocator(rawURL)
+				if locErr != nil {
+					continue
+				}
+				if cmdutil.LocatorMatchesHost(host, loc) {
+					return name, nil
+				}
 			}
 		}
 	}
 
-	// Fall back to origin > upstream > first.
+	// Second pass: fall back in priority order.
+	return names[0], nil
+}
+
+func orderedRemoteNames(remotes map[string][]string) []string {
+	var names []string
 	for _, preferred := range []string{"origin", "upstream"} {
-		for _, r := range remotes {
-			if r.name == preferred {
-				return r.name, nil
-			}
+		if _, ok := remotes[preferred]; ok {
+			names = append(names, preferred)
 		}
 	}
-
-	return remotes[0].name, nil
-}
-
-// remoteURLMatchesHost checks whether a git remote URL points at the same
-// server as the active Bitbucket host configuration.
-func remoteURLMatchesHost(rawURL string, host *config.Host) bool {
-	remoteHost := extractRemoteHostname(rawURL)
-	if remoteHost == "" {
-		return false
-	}
-	switch host.Kind {
-	case "cloud":
-		return strings.EqualFold(remoteHost, "bitbucket.org")
-	case "dc":
-		u, err := url.Parse(host.BaseURL)
-		if err != nil {
-			return false
+	for name := range remotes {
+		if name != "origin" && name != "upstream" {
+			names = append(names, name)
 		}
-		return strings.EqualFold(remoteHost, strings.ToLower(u.Hostname()))
-	default:
-		return false
 	}
-}
-
-// extractRemoteHostname returns the lowercase hostname from a git remote URL,
-// handling both HTTPS (https://host/path) and SSH (git@host:path) formats.
-func extractRemoteHostname(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	if strings.Contains(raw, "://") {
-		u, err := url.Parse(raw)
-		if err != nil {
-			return ""
-		}
-		return strings.ToLower(u.Hostname())
-	}
-	// SSH: git@host:path
-	if idx := strings.Index(raw, ":"); idx != -1 {
-		hostPart := raw[:idx]
-		if at := strings.LastIndex(hostPart, "@"); at != -1 {
-			hostPart = hostPart[at+1:]
-		}
-		return strings.ToLower(strings.TrimSpace(hostPart))
-	}
-	return ""
+	return names
 }
 
 func resolveGitBaseRef(ctx context.Context, targetBranch, remoteName string) (string, error) {
