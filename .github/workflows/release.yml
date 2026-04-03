@@ -10,15 +10,11 @@ on:
         description: 'Existing tag to (re)release (e.g. v0.14.4)'
         required: true
         type: string
-      publish:
-        description: "Which artifacts to publish (push always publishes all)"
+      skip-skill-publish:
+        description: "Skip skill publishing (GoReleaser + Homebrew always run)"
         required: false
-        type: choice
-        default: github-release-only
-        options:
-          - github-release-only
-          - all
-          - skills-only
+        type: boolean
+        default: true
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.sha }}
@@ -72,6 +68,7 @@ jobs:
                 echo "::error::Tag ${tag} does not exist. workflow_dispatch is only for rerunning an existing release."
                 exit 1
               fi
+              git checkout --detach "$tag"
               version="${tag#v}"
               ./scripts/check-release-version.sh "$version"
               release_ref="$tag"
@@ -221,7 +218,7 @@ jobs:
     needs: [prepare, release]
     if: >-
       needs.release.result == 'success' &&
-      (github.event_name == 'push' || inputs.publish == 'all' || inputs.publish == 'skills-only')
+      (github.event_name == 'push' || inputs.skip-skill-publish != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
