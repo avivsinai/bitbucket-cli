@@ -1,23 +1,30 @@
 name: Publish Skills
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to publish (e.g. 0.14.2)'
+      tag:
+        description: 'Tag to publish (e.g. v0.14.2)'
         required: true
         type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skill-publish-${{ github.event.inputs.tag }}
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: refs/tags/${{ inputs.tag }}
 
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
@@ -30,15 +37,12 @@ jobs:
           echo '${{ secrets.SKILD_AUTH_JSON }}' > ~/.skild/registry-auth.json
 
       - name: Verify release metadata
-        run: ./scripts/check-release-version.sh "${{ inputs.version || github.ref_name }}"
+        run: ./scripts/check-release-version.sh "${{ inputs.tag }}"
 
       - name: Publish skills
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            TAG_VERSION="${{ inputs.version }}"
-          else
-            TAG_VERSION="${GITHUB_REF_NAME#v}"
-          fi
+          TAG_VERSION="${{ inputs.tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"
 
           echo "$TAG_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' || {
             echo "ERROR: version '$TAG_VERSION' is not semver"
@@ -58,7 +62,7 @@ jobs:
             if [ ${#SKILL} -ge 3 ] && [ ${#SKILL} -le 64 ]; then
               ALIAS_ARGS=(--alias "$SKILL")
             else
-              echo "⚠ Skipping alias for $SKILL: length ${#SKILL} outside 3..64"
+              echo "Warning: Skipping alias for $SKILL: length ${#SKILL} outside 3..64"
             fi
 
             if OUTPUT=$(npx skild publish \
@@ -66,28 +70,28 @@ jobs:
               "${ALIAS_ARGS[@]}" \
               --skill-version "$VERSION" 2>&1); then
               echo "$OUTPUT"
-              echo "✓ Published $SKILL version $VERSION"
+              echo "Published $SKILL version $VERSION"
             elif echo "$OUTPUT" | grep -q "Version already exists"; then
               echo "$OUTPUT"
-              echo "⚠ $SKILL version $VERSION already published — skipping"
+              echo "Warning: $SKILL version $VERSION already published — skipping"
             elif echo "$OUTPUT" | grep -q "Alias already in use"; then
               echo "$OUTPUT"
-              echo "⚠ Alias '$SKILL' taken — retrying without alias..."
+              echo "Warning: Alias '$SKILL' taken — retrying without alias..."
               if OUTPUT2=$(npx skild publish \
                 --dir "$dir" \
                 --skill-version "$VERSION" 2>&1); then
                 echo "$OUTPUT2"
-                echo "✓ Published $SKILL version $VERSION (without alias)"
+                echo "Published $SKILL version $VERSION (without alias)"
               elif echo "$OUTPUT2" | grep -q "Version already exists"; then
                 echo "$OUTPUT2"
-                echo "⚠ $SKILL version $VERSION already published on retry — skipping"
+                echo "Warning: $SKILL version $VERSION already published on retry — skipping"
               else
-                echo "✖ Publish failed for $SKILL (even without alias)"
+                echo "ERROR: Publish failed for $SKILL (even without alias)"
                 echo "$OUTPUT2"
                 FAILED=1
               fi
             else
-              echo "✖ Publish failed for $SKILL"
+              echo "ERROR: Publish failed for $SKILL"
               echo "$OUTPUT"
               FAILED=1
             fi

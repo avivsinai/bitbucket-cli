@@ -1,56 +1,51 @@
-# OSSF Scorecard workflow
-# https://github.com/ossf/scorecard-action
-
 name: OSSF Scorecard
 
 on:
   branch_protection_rule:
   schedule:
-    - cron: '30 2 * * 0'  # Weekly on Sunday at 2:30 AM UTC
+    - cron: '30 2 * * 0'
   push:
     branches: [master]
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
-# Declare default permissions as read only
 permissions: read-all
+
+concurrency:
+  group: scorecard-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
-      # Needed to upload the results to code-scanning dashboard
       security-events: write
-      # Needed to publish results and get a badge
       id-token: write
-      # Needed to access repository metadata
       contents: read
       actions: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
       - name: Run analysis
-        uses: ossf/scorecard-action@v2.4.3
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
         with:
           results_file: results.sarif
           results_format: sarif
-          # Publish results to OpenSSF REST API for badge
           publish_results: true
 
-      # Upload the results as artifacts (optional)
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: SARIF file
           path: results.sarif
           retention-days: 5
 
-      # Upload the results to GitHub's code scanning dashboard
       - name: Upload to code-scanning
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
         with:
           sarif_file: results.sarif

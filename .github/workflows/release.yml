@@ -10,11 +10,12 @@ on:
         description: 'Existing tag to (re)release (e.g. v0.14.4)'
         required: true
         type: string
+      skip-skill-publish:
+        description: "Skip skill publishing (GoReleaser + Homebrew always run)"
+        required: false
+        type: boolean
+        default: true
 
-permissions:
-  contents: write
-
-# Keep workflow_dispatch reruns serialized per tag while letting distinct release commits run independently.
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.sha }}
   cancel-in-progress: false
@@ -24,6 +25,8 @@ jobs:
     if: "${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release): v') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       tag: ${{ steps.prepare.outputs.tag }}
       version: ${{ steps.prepare.outputs.version }}
@@ -31,7 +34,7 @@ jobs:
       release_sha: ${{ steps.prepare.outputs.release_sha }}
       prerelease: ${{ steps.prepare.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
       - name: Resolve release metadata
@@ -65,6 +68,7 @@ jobs:
                 echo "::error::Tag ${tag} does not exist. workflow_dispatch is only for rerunning an existing release."
                 exit 1
               fi
+              git checkout --detach "$tag"
               version="${tag#v}"
               ./scripts/check-release-version.sh "$version"
               release_ref="$tag"
@@ -113,12 +117,14 @@ jobs:
     if: needs.prepare.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           ref: ${{ needs.prepare.outputs.release_ref }}
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version: '1.25'
       - name: Verify release metadata
@@ -135,13 +141,15 @@ jobs:
     if: needs.prepare.result == 'success' && needs.verify.result == 'success'
     runs-on: macos-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           ref: ${{ needs.prepare.outputs.release_ref }}
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version: '1.25'
 
@@ -196,7 +204,7 @@ jobs:
           PY
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7
         with:
           distribution: goreleaser
           version: '~> v2'
@@ -204,3 +212,87 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+  skill-publish:
+    name: Publish skills
+    needs: [prepare, release]
+    if: >-
+      needs.release.result == 'success' &&
+      (github.event_name == 'push' || inputs.skip-skill-publish != 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.prepare.outputs.release_ref }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Install skild
+        run: npm install -g skild
+
+      - name: Configure skild auth
+        run: |
+          mkdir -p ~/.skild
+          echo '${{ secrets.SKILD_AUTH_JSON }}' > ~/.skild/registry-auth.json
+
+      - name: Verify release metadata
+        run: ./scripts/check-release-version.sh "${{ needs.prepare.outputs.version }}"
+
+      - name: Publish skills
+        run: |
+          TAG_VERSION="${{ needs.prepare.outputs.version }}"
+
+          FAILED=0
+
+          for dir in skills/*/; do
+            [ -f "$dir/SKILL.md" ] || continue
+            SKILL=$(basename "$dir")
+            VERSION="${TAG_VERSION}"
+
+            echo "Publishing $SKILL version $VERSION"
+
+            ALIAS_ARGS=()
+            if [ ${#SKILL} -ge 3 ] && [ ${#SKILL} -le 64 ]; then
+              ALIAS_ARGS=(--alias "$SKILL")
+            else
+              echo "Warning: Skipping alias for $SKILL: length ${#SKILL} outside 3..64"
+            fi
+
+            if OUTPUT=$(npx skild publish \
+              --dir "$dir" \
+              "${ALIAS_ARGS[@]}" \
+              --skill-version "$VERSION" 2>&1); then
+              echo "$OUTPUT"
+              echo "Published $SKILL version $VERSION"
+            elif echo "$OUTPUT" | grep -q "Version already exists"; then
+              echo "$OUTPUT"
+              echo "Warning: $SKILL version $VERSION already published — skipping"
+            elif echo "$OUTPUT" | grep -q "Alias already in use"; then
+              echo "$OUTPUT"
+              echo "Warning: Alias '$SKILL' taken — retrying without alias..."
+              if OUTPUT2=$(npx skild publish \
+                --dir "$dir" \
+                --skill-version "$VERSION" 2>&1); then
+                echo "$OUTPUT2"
+                echo "Published $SKILL version $VERSION (without alias)"
+              elif echo "$OUTPUT2" | grep -q "Version already exists"; then
+                echo "$OUTPUT2"
+                echo "Warning: $SKILL version $VERSION already published on retry — skipping"
+              else
+                echo "ERROR: Publish failed for $SKILL (even without alias)"
+                echo "$OUTPUT2"
+                FAILED=1
+              fi
+            else
+              echo "ERROR: Publish failed for $SKILL"
+              echo "$OUTPUT"
+              FAILED=1
+            fi
+          done
+
+          exit $FAILED
