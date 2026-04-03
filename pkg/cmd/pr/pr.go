@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -656,7 +657,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		return err
 	}
 
-	if err := applyCreateDefaults(cmd.Context(), opts); err != nil {
+	if err := applyCreateDefaults(cmd.Context(), opts, host); err != nil {
 		return err
 	}
 
@@ -753,7 +754,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 	}
 }
 
-func applyCreateDefaults(ctx context.Context, opts *createOptions) error {
+func applyCreateDefaults(ctx context.Context, opts *createOptions, host *config.Host) error {
 	if strings.TrimSpace(opts.Source) == "" {
 		source, err := currentGitBranch(ctx)
 		if err != nil {
@@ -764,7 +765,7 @@ func applyCreateDefaults(ctx context.Context, opts *createOptions) error {
 
 	remoteName := ""
 	if strings.TrimSpace(opts.Target) == "" {
-		target, remote, err := defaultGitTargetBranch(ctx)
+		target, remote, err := defaultGitTargetBranch(ctx, host)
 		if err != nil {
 			return fmt.Errorf("could not determine default --target from git; pass --target explicitly")
 		}
@@ -797,8 +798,8 @@ func currentGitBranch(ctx context.Context) (string, error) {
 	return branch, nil
 }
 
-func defaultGitTargetBranch(ctx context.Context) (branch string, remoteName string, err error) {
-	remoteName, err = preferredGitRemote(ctx)
+func defaultGitTargetBranch(ctx context.Context, host *config.Host) (branch string, remoteName string, err error) {
+	remoteName, err = preferredGitRemote(ctx, host)
 	if err != nil {
 		return "", "", err
 	}
@@ -848,33 +849,101 @@ func defaultGitPRTitle(ctx context.Context, targetBranch, remoteName string) (st
 	return "", fmt.Errorf("no commits found relative to %s", targetBranch)
 }
 
-func preferredGitRemote(ctx context.Context) (string, error) {
-	out, err := runGitOutput(ctx, "remote")
+func preferredGitRemote(ctx context.Context, host *config.Host) (string, error) {
+	out, err := runGitOutput(ctx, "remote", "-v")
 	if err != nil {
 		return "", err
 	}
 
-	var remotes []string
+	type remoteEntry struct {
+		name string
+		url  string
+	}
+
+	var remotes []remoteEntry
+	seen := make(map[string]bool)
 	for _, line := range strings.Split(out, "\n") {
-		name := strings.TrimSpace(line)
-		if name != "" {
-			remotes = append(remotes, name)
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
 		}
+		name := fields[0]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		remotes = append(remotes, remoteEntry{name: name, url: fields[1]})
 	}
 
 	if len(remotes) == 0 {
 		return "", fmt.Errorf("no git remotes found")
 	}
 
-	for _, preferred := range []string{"origin", "upstream"} {
-		for _, remote := range remotes {
-			if remote == preferred {
-				return remote, nil
+	// Prefer a remote whose URL matches the active Bitbucket host.
+	if host != nil {
+		for _, r := range remotes {
+			if remoteURLMatchesHost(r.url, host) {
+				return r.name, nil
 			}
 		}
 	}
 
-	return remotes[0], nil
+	// Fall back to origin > upstream > first.
+	for _, preferred := range []string{"origin", "upstream"} {
+		for _, r := range remotes {
+			if r.name == preferred {
+				return r.name, nil
+			}
+		}
+	}
+
+	return remotes[0].name, nil
+}
+
+// remoteURLMatchesHost checks whether a git remote URL points at the same
+// server as the active Bitbucket host configuration.
+func remoteURLMatchesHost(rawURL string, host *config.Host) bool {
+	remoteHost := extractRemoteHostname(rawURL)
+	if remoteHost == "" {
+		return false
+	}
+	switch host.Kind {
+	case "cloud":
+		return strings.EqualFold(remoteHost, "bitbucket.org")
+	case "dc":
+		u, err := url.Parse(host.BaseURL)
+		if err != nil {
+			return false
+		}
+		return strings.EqualFold(remoteHost, strings.ToLower(u.Hostname()))
+	default:
+		return false
+	}
+}
+
+// extractRemoteHostname returns the lowercase hostname from a git remote URL,
+// handling both HTTPS (https://host/path) and SSH (git@host:path) formats.
+func extractRemoteHostname(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return ""
+		}
+		return strings.ToLower(u.Hostname())
+	}
+	// SSH: git@host:path
+	if idx := strings.Index(raw, ":"); idx != -1 {
+		hostPart := raw[:idx]
+		if at := strings.LastIndex(hostPart, "@"); at != -1 {
+			hostPart = hostPart[at+1:]
+		}
+		return strings.ToLower(strings.TrimSpace(hostPart))
+	}
+	return ""
 }
 
 func resolveGitBaseRef(ctx context.Context, targetBranch, remoteName string) (string, error) {

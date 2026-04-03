@@ -3174,6 +3174,92 @@ func TestCreateCommandRequiresExplicitFlagsWhenGitDefaultsUnavailable(t *testing
 	}
 }
 
+func TestCreateCommandMultiRemoteSelectsBitbucket(t *testing.T) {
+	// Set up a repo where "origin" is GitHub and "bitbucket" is the DC remote.
+	// The defaults should pick "bitbucket" because it matches the active host.
+	dir := t.TempDir()
+	runGitPRTest(t, dir, "init", "-b", "main")
+	runGitPRTest(t, dir, "config", "user.name", "Test User")
+	runGitPRTest(t, dir, "config", "user.email", "test@example.com")
+
+	writeTestFile(t, filepath.Join(dir, "README.md"), "base\n")
+	runGitPRTest(t, dir, "add", "README.md")
+	runGitPRTest(t, dir, "commit", "-m", "chore: base")
+
+	// origin points to GitHub (should NOT be picked)
+	runGitPRTest(t, dir, "remote", "add", "origin", "https://github.com/user/repo.git")
+	// bitbucket points to the DC instance (should be picked)
+	runGitPRTest(t, dir, "remote", "add", "bitbucket", "https://bitbucket.example.com/scm/PROJ/repo.git")
+
+	mainSHA := strings.TrimSpace(runGitPRTestOutput(t, dir, "rev-parse", "HEAD"))
+	runGitPRTest(t, dir, "update-ref", "refs/remotes/bitbucket/main", mainSHA)
+	runGitPRTest(t, dir, "symbolic-ref", "refs/remotes/bitbucket/HEAD", "refs/remotes/bitbucket/main")
+
+	runGitPRTest(t, dir, "checkout", "-b", "feature/multi-remote")
+	writeTestFile(t, filepath.Join(dir, "README.md"), "base\nfeature\n")
+	runGitPRTest(t, dir, "add", "README.md")
+	runGitPRTest(t, dir, "commit", "-m", "feat: multi-remote test")
+
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "main",
+				ProjectKey:  "PROJ",
+				DefaultRepo: "repo",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {
+				Kind:    "dc",
+				BaseURL: "https://bitbucket.example.com",
+				Token:   "test-token",
+			},
+		},
+	}
+
+	// Override the BaseURL to the test server after config is created
+	cfg.Hosts["main"].BaseURL = server.URL
+
+	// Also update the bitbucket remote to use the test server URL
+	runGitPRTest(t, dir, "remote", "set-url", "bitbucket", server.URL+"/scm/PROJ/repo.git")
+
+	stdout := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	withWorkingDir(t, dir, func() {
+		cmd := newCreateCmd(f)
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	// Verify the target came from the "bitbucket" remote (main), not "origin"
+	toRef, ok := gotBody["toRef"].(map[string]any)
+	if !ok {
+		t.Fatalf("toRef missing or wrong type: %#v", gotBody["toRef"])
+	}
+	if toRef["id"] != "refs/heads/main" {
+		t.Fatalf("toRef.id = %v, want %q (from bitbucket remote, not origin)", toRef["id"], "refs/heads/main")
+	}
+}
+
 func TestCommentInlineValidation(t *testing.T) {
 	tests := []struct {
 		name    string
