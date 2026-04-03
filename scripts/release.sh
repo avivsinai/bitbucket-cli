@@ -232,8 +232,7 @@ pr_body=$(
 
 - moves \`CHANGELOG.md\` into \`${tag}\`
 - aligns skill/plugin metadata to \`${version}\`
-- merge triggers \`.github/workflows/release.yml\`, which validates the release commit, creates \`${tag}\`, and publishes the release
-- the skill publish workflow runs from the CI-created tag
+- merge triggers \`.github/workflows/release.yml\`, which validates the release commit, creates \`${tag}\`, publishes the release, and publishes skills in the same workflow run
 EOF
 )
 
