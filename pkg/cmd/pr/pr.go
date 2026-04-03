@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
+	"sort"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -894,12 +895,14 @@ func orderedRemoteNames(remotes map[string][]string) []string {
 			names = append(names, preferred)
 		}
 	}
+	var rest []string
 	for name := range remotes {
 		if name != "origin" && name != "upstream" {
-			names = append(names, name)
+			rest = append(rest, name)
 		}
 	}
-	return names
+	sort.Strings(rest)
+	return append(names, rest...)
 }
 
 func resolveGitBaseRef(ctx context.Context, targetBranch, remoteName string) (string, error) {
