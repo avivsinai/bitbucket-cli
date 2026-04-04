@@ -5,8 +5,11 @@ implementation details.
 
 ## Secrets handling
 
-- bkt never stores plaintext credentials under version control. Tokens are read
-  from `$XDG_CONFIG_HOME/bkt/config.yml` with permissions `0600`.
+- bkt never stores plaintext credentials under version control. Tokens are
+  stored in the OS keychain (macOS Keychain Access, Windows Credential Manager,
+  Linux Secret Service) or an encrypted local file backend. Host metadata lives
+  in `$XDG_CONFIG_HOME/bkt/config.yml` with permissions `0600`. The `BKT_TOKEN`
+  environment variable provides runtime-only injection for CI/headless use.
 - For development, set `BKT_CONFIG_DIR` to a throwaway directory.
 - Never commit test credentials. Use environment variables or the
   `internal/config/testdata` fixtures when unit testing.
@@ -21,7 +24,7 @@ implementation details.
 
 - Release artifacts are built with GoReleaser (`goreleaser.yaml`).
 - Each release publishes a checksum manifest and an SBOM generated via Syft.
-- Container images (if built) are signed with cosign and accompanied by an SBOM.
+- Binaries are signed ad-hoc on macOS via the GoReleaser post-build hook.
 
 ## Incident response
 
