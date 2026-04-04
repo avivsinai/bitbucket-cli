@@ -4,9 +4,10 @@
 
 ## Data collection
 
-bkt does not collect, transmit, or store any personal data, telemetry, or
-usage analytics. All API requests go directly from the user's machine (or CI
-runner) to the configured Bitbucket instance.
+The provider does not collect, receive, transmit to provider-operated systems,
+or store customer personal data as part of normal operation. bkt runs entirely
+on the user's local machine or CI runner. All API requests go directly from the
+user's environment to the configured Bitbucket instance over HTTPS.
 
 ## Credentials
 

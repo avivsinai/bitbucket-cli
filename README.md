@@ -51,7 +51,8 @@ pipelines:
     - step:
         name: Open PR
         script:
-          - curl -sL https://github.com/avivsinai/bitbucket-cli/releases/download/v0.16.4/bkt_0.16.4_linux_x86_64.tar.gz | tar xz -C /tmp && install /tmp/bkt /usr/local/bin/
+          - export BKT_VERSION="0.16.4"  # pin to a specific release
+          - curl -sL "https://github.com/avivsinai/bitbucket-cli/releases/download/v${BKT_VERSION}/bkt_${BKT_VERSION}_linux_x86_64.tar.gz" | tar xz -C /tmp && install /tmp/bkt /usr/local/bin/
           - bkt pr create --title "Auto PR" --source "$BITBUCKET_BRANCH"
 ```
 

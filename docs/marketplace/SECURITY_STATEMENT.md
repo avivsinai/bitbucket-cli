@@ -72,9 +72,9 @@ customer content to any third-party analytics or observability provider.
 
 ## Transport security
 
-All API communication uses HTTPS (TLS 1.2+) via Go's standard `net/http`
-library. Certificate verification is enforced by default. `bkt` does not
-require plaintext HTTP for normal cloud operation.
+All API communication uses HTTPS via Go's standard `net/http` library.
+Certificate verification is enforced by default. Plaintext HTTP is blocked
+unless the user explicitly passes `--allow-http`.
 
 ## Logging
 
@@ -84,8 +84,7 @@ their own environment.
 
 ## Supply chain
 
-- Release binaries are built with GoReleaser in GitHub Actions with full
-  provenance.
+- Release binaries are built with GoReleaser in GitHub Actions.
 - Each release includes SHA-256 checksums and a CycloneDX SBOM generated
   by Syft.
 - Dependencies are monitored by Dependabot and the OpenSSF Scorecard.
