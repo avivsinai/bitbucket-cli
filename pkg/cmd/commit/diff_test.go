@@ -80,6 +80,10 @@ func TestCommitDiffDC(t *testing.T) {
 }
 
 func TestCommitDiffCloud(t *testing.T) {
+	// Run from a temp dir so applyRemoteDefaults does not pick up the
+	// real git remote (e.g. bitbucket.org on Bitbucket Pipelines).
+	t.Chdir(t.TempDir())
+
 	diffBody := "diff --git a/bar.js b/bar.js\nindex 111222..333444 100644\n--- a/bar.js\n+++ b/bar.js\n"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -196,6 +200,8 @@ func TestCommitDiffEmptyDC(t *testing.T) {
 }
 
 func TestCommitDiffEmptyCloud(t *testing.T) {
+	t.Chdir(t.TempDir())
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedPath := "/repositories/myws/my-repo/diff/def456..abc123"
 		if r.URL.Path != expectedPath {
