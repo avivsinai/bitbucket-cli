@@ -6,11 +6,24 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `bkt pr publish` and `bkt pr unpublish` commands to toggle draft status on Bitbucket Cloud and Data Center 8.18+ pull requests. Alias: `bkt pr ready` (#122).
+- `bkt pr create` now outputs the pull request URL on success (#105).
+- `bkt pr create` defaults `--source` to the current branch and `--target` to the repository default branch, making both flags optional (#116).
+- Bitbucket Pipelines install section in README with validated `curl | tar` snippet.
+- Privacy policy at `docs/PRIVACY.md`.
+- `.scratch/` convention for local working documents (gitignored).
+
 ### Fixed
+- `bkt pr create` now selects the git remote matching the active Bitbucket host instead of defaulting to the first remote (#116).
+- Deterministic remote name ordering in fallback when multiple remotes match (#116).
+- Cloud diff tests (`TestCommitDiffCloud`, `TestCommitDiffEmptyCloud`) no longer fail on Bitbucket Pipelines where the CWD has a `bitbucket.org` remote (#119).
+- Stale credential storage description in `docs/SECURITY.md` updated to reflect OS keychain, `BKT_TOKEN`, and encrypted file backend.
 - Consolidated skill publishing into the release workflow so it no longer depends on tag-push events that `GITHUB_TOKEN` cannot trigger.
 - Pinned all GitHub Actions to commit SHAs across every workflow for supply-chain safety.
 - Added missing `timeout-minutes` and `concurrency` blocks to all workflows.
 - Standalone publish-skill workflow now accepts `workflow_dispatch` with an explicit `tag` input.
+- Bitbucket Pipelines Go image updated from 1.24 to 1.25 to match `go.mod`.
 
 ## [0.16.4] - 2026-04-02
 ### Fixed
