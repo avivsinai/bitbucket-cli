@@ -292,8 +292,8 @@ func TestPublishReadyAlias(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		switch {
-		case r.Method == "GET":
+		switch r.Method {
+		case "GET":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":      5,
 				"title":   "PR",
@@ -310,7 +310,7 @@ func TestPublishReadyAlias(t *testing.T) {
 				},
 				"reviewers": []any{},
 			})
-		case r.Method == "PUT":
+		case "PUT":
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 5, "version": 2})
 		default:
 			http.NotFound(w, r)
