@@ -80,6 +80,8 @@ bkt context use cloud-team
 | View PR | `bkt pr view <id>` |
 | Create PR | `bkt pr create --title "..." --source feature --target main` |
 | Create draft PR | `bkt pr create --title "..." --source feature --target main --draft` |
+| Publish draft PR | `bkt pr publish <id>` |
+| Unpublish PR | `bkt pr publish --undo <id>` |
 | Merge PR | `bkt pr merge <id>` |
 | PR checks | `bkt pr checks <id> --wait` |
 | List branches | `bkt branch list` |
@@ -116,6 +118,10 @@ bkt pr create --title "feat: cache" --source feature/cache --target main --revie
 bkt pr create --title "WIP: refactor" --source refactor/auth --target main --draft
 
 bkt pr edit 123 --title "New title" --body "Updated description"
+
+# Publish / unpublish draft PRs
+bkt pr publish 42                         # Mark draft PR as ready for review
+bkt pr publish --undo 42                  # Convert PR back to draft
 
 # Review and merge
 bkt pr approve 42

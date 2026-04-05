@@ -62,6 +62,7 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(newReactionCmd(f))
 	cmd.AddCommand(newSuggestionCmd(f))
 	cmd.AddCommand(newChecksCmd(f))
+	cmd.AddCommand(newPublishCmd(f))
 
 	return cmd
 }
@@ -1536,6 +1537,166 @@ func runApprove(cmd *cobra.Command, f *cmdutil.Factory, opts *approveOptions) er
 
 		if _, err := fmt.Fprintf(ios.Out, "✓ Approved pull request #%d\n", opts.ID); err != nil {
 			return err
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+}
+
+type publishOptions struct {
+	Workspace string
+	Project   string
+	Repo      string
+	ID        int
+	Undo      bool
+}
+
+func newPublishCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &publishOptions{}
+	cmd := &cobra.Command{
+		Use:     "publish <id>",
+		Aliases: []string{"ready"},
+		Short:   "Mark a draft pull request as ready for review",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid pull request id %q", args[0])
+			}
+			opts.ID = id
+			return runPublish(cmd, f, opts)
+		},
+	}
+
+	cmd.Flags().BoolVar(&opts.Undo, "undo", false, "Convert a pull request back to draft")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
+	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+
+	return cmd
+}
+
+func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	override := cmdutil.FlagValue(cmd, "context")
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
+	if err != nil {
+		return err
+	}
+
+	wantDraft := opts.Undo
+
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeoutWrite)
+		defer cancel()
+
+		pr, err := client.GetPullRequest(ctx, projectKey, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		if pr.Draft == wantDraft {
+			if wantDraft {
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already a draft\n", opts.ID); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already published\n", opts.ID); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		_, err = client.UpdatePullRequest(ctx, projectKey, repoSlug, opts.ID, pr.Version, bbdc.UpdatePROptions{
+			Title:       pr.Title,
+			Description: pr.Description,
+			Draft:       &wantDraft,
+			Reviewers:   pr.Reviewers,
+			FromRef:     &pr.FromRef,
+			ToRef:       &pr.ToRef,
+		})
+		if err != nil {
+			return err
+		}
+
+		if wantDraft {
+			if _, err := fmt.Fprintf(ios.Out, "✓ Unpublished pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprintf(ios.Out, "✓ Published pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeoutWrite)
+		defer cancel()
+
+		pr, err := client.GetPullRequest(ctx, workspace, repoSlug, opts.ID)
+		if err != nil {
+			return err
+		}
+
+		if pr.Draft == wantDraft {
+			if wantDraft {
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already a draft\n", opts.ID); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already published\n", opts.ID); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		_, err = client.UpdatePullRequest(ctx, workspace, repoSlug, opts.ID, bbcloud.UpdatePullRequestInput{
+			Draft: &wantDraft,
+		})
+		if err != nil {
+			return err
+		}
+
+		if wantDraft {
+			if _, err := fmt.Fprintf(ios.Out, "✓ Unpublished pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprintf(ios.Out, "✓ Published pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
 		}
 		return nil
 
