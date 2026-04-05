@@ -1615,9 +1615,13 @@ func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) er
 
 		if pr.Draft == wantDraft {
 			if wantDraft {
-				_, _ = fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already a draft\n", opts.ID)
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already a draft\n", opts.ID); err != nil {
+					return err
+				}
 			} else {
-				_, _ = fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already published\n", opts.ID)
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already published\n", opts.ID); err != nil {
+					return err
+				}
 			}
 			return nil
 		}
@@ -1635,9 +1639,13 @@ func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) er
 		}
 
 		if wantDraft {
-			_, _ = fmt.Fprintf(ios.Out, "✓ Unpublished pull request #%d\n", opts.ID)
+			if _, err := fmt.Fprintf(ios.Out, "✓ Unpublished pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
 		} else {
-			_, _ = fmt.Fprintf(ios.Out, "✓ Published pull request #%d\n", opts.ID)
+			if _, err := fmt.Fprintf(ios.Out, "✓ Published pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
 		}
 		return nil
 
@@ -1663,9 +1671,13 @@ func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) er
 
 		if pr.Draft == wantDraft {
 			if wantDraft {
-				_, _ = fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already a draft\n", opts.ID)
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already a draft\n", opts.ID); err != nil {
+					return err
+				}
 			} else {
-				_, _ = fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already published\n", opts.ID)
+				if _, err := fmt.Fprintf(ios.ErrOut, "! Pull request #%d is already published\n", opts.ID); err != nil {
+					return err
+				}
 			}
 			return nil
 		}
@@ -1678,9 +1690,13 @@ func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) er
 		}
 
 		if wantDraft {
-			_, _ = fmt.Fprintf(ios.Out, "✓ Unpublished pull request #%d\n", opts.ID)
+			if _, err := fmt.Fprintf(ios.Out, "✓ Unpublished pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
 		} else {
-			_, _ = fmt.Fprintf(ios.Out, "✓ Published pull request #%d\n", opts.ID)
+			if _, err := fmt.Fprintf(ios.Out, "✓ Published pull request #%d\n", opts.ID); err != nil {
+				return err
+			}
 		}
 		return nil
 
