@@ -17,6 +17,9 @@ bin/
 # macOS
 .DS_Store
 
+# Scratch / working docs (not committed)
+.scratch/
+
 # AI agent configuration (track only skills for distribution)
 .claude/**
 !.claude/skills/
