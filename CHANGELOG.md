@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-04-05
 ### Added
 - `bkt pr publish` and `bkt pr unpublish` commands to toggle draft status on Bitbucket Cloud and Data Center 8.18+ pull requests. Alias: `bkt pr ready` (#122).
 - `bkt pr create` now outputs the pull request URL on success (#105).
@@ -24,6 +25,7 @@ All notable changes to this project will be documented here. The format follows
 - Added missing `timeout-minutes` and `concurrency` blocks to all workflows.
 - Standalone publish-skill workflow now accepts `workflow_dispatch` with an explicit `tag` input.
 - Bitbucket Pipelines Go image updated from 1.24 to 1.25 to match `go.mod`.
+
 
 ## [0.16.4] - 2026-04-02
 ### Fixed
