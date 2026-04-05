@@ -257,6 +257,8 @@ func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug st
 type UpdatePROptions struct {
 	Title       string
 	Description string
+	// Draft toggles draft status. Nil means do not change.
+	Draft *bool
 	// Reviewers to preserve (from GET response). If nil, reviewers may be cleared.
 	Reviewers []PullRequestReviewer
 	// FromRef to preserve (from GET response). Required by DC API.
@@ -278,6 +280,10 @@ func (c *Client) UpdatePullRequest(ctx context.Context, projectKey, repoSlug str
 		"version":     version,
 		"title":       opts.Title,
 		"description": opts.Description,
+	}
+
+	if opts.Draft != nil {
+		body["draft"] = *opts.Draft
 	}
 
 	// Include reviewers to prevent them from being cleared

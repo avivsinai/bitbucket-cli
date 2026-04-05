@@ -99,6 +99,7 @@ type PullRequest struct {
 	Description string `json:"description"`
 	State       string `json:"state"`
 	Version     int    `json:"version"`
+	Draft       bool   `json:"draft"`
 	Author      struct {
 		User User `json:"user"`
 	} `json:"author"`

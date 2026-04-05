@@ -31,6 +31,7 @@ type PullRequest struct {
 	ID     int    `json:"id"`
 	Title  string `json:"title"`
 	State  string `json:"state"`
+	Draft  bool   `json:"draft"`
 	Author struct {
 		DisplayName string `json:"display_name"`
 		Username    string `json:"username"`
@@ -315,6 +316,7 @@ func (c *Client) GetEffectiveDefaultReviewers(ctx context.Context, workspace, re
 type UpdatePullRequestInput struct {
 	Title       *string
 	Description *string
+	Draft       *bool
 }
 
 // UpdatePullRequest updates an existing pull request's title and/or description.
@@ -330,9 +332,12 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if input.Description != nil {
 		body["description"] = *input.Description
 	}
+	if input.Draft != nil {
+		body["draft"] = *input.Draft
+	}
 
 	if len(body) == 0 {
-		return nil, fmt.Errorf("at least one field (title or description) must be provided")
+		return nil, fmt.Errorf("at least one field (title, description, or draft) must be provided")
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d",
