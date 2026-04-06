@@ -4670,3 +4670,53 @@ func TestCreateCloudWithDefaultReviewersAPIError(t *testing.T) {
 		t.Errorf("error = %q, want it to contain 'fetching default reviewers'", err.Error())
 	}
 }
+
+func TestCreateCloudWithDefaultReviewersCurrentUserError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "cloud",
+				Workspace:   "ws",
+				DefaultRepo: "repo",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {
+				Kind:     "cloud",
+				BaseURL:  server.URL,
+				Username: "me",
+				Token:    "bad-token",
+			},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newCreateCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--title", "Test", "--source", "feat", "--target", "main", "--with-default-reviewers"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when CurrentUser fails")
+	}
+	if !strings.Contains(err.Error(), "resolving current user") {
+		t.Errorf("error = %q, want it to contain 'resolving current user'", err.Error())
+	}
+}
