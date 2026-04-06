@@ -1097,3 +1097,116 @@ func TestListPullRequestCommentsValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdatePullRequest(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":    42,
+			"title": "Updated",
+			"state": "OPEN",
+		})
+	}))
+
+	title := "New Title"
+	pr, err := client.UpdatePullRequest(context.Background(), "ws", "repo", 42, bbcloud.UpdatePullRequestInput{
+		Title: &title,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != "PUT" {
+		t.Errorf("expected PUT, got %s", gotMethod)
+	}
+	if gotPath != "/repositories/ws/repo/pullrequests/42" {
+		t.Errorf("unexpected path: %s", gotPath)
+	}
+	if gotBody["title"] != "New Title" {
+		t.Errorf("expected title in body, got %v", gotBody)
+	}
+	if pr.ID != 42 {
+		t.Errorf("expected PR ID 42, got %d", pr.ID)
+	}
+}
+
+func TestUpdatePullRequestWithReviewers(t *testing.T) {
+	var gotBody map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "PR"})
+	}))
+
+	_, err := client.UpdatePullRequest(context.Background(), "ws", "repo", 1, bbcloud.UpdatePullRequestInput{
+		Reviewers: []string{"alice", "{550e8400-e29b-41d4-a716-446655440000}"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reviewers, ok := gotBody["reviewers"].([]any)
+	if !ok {
+		t.Fatalf("expected reviewers array, got %v", gotBody["reviewers"])
+	}
+	if len(reviewers) != 2 {
+		t.Fatalf("expected 2 reviewers, got %d", len(reviewers))
+	}
+
+	r0 := reviewers[0].(map[string]any)
+	if r0["username"] != "alice" {
+		t.Errorf("expected first reviewer by username, got %v", r0)
+	}
+	r1 := reviewers[1].(map[string]any)
+	if r1["uuid"] != "{550e8400-e29b-41d4-a716-446655440000}" {
+		t.Errorf("expected second reviewer by uuid, got %v", r1)
+	}
+}
+
+func TestUpdatePullRequestEmptyReviewers(t *testing.T) {
+	var gotBody map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "PR"})
+	}))
+
+	_, err := client.UpdatePullRequest(context.Background(), "ws", "repo", 1, bbcloud.UpdatePullRequestInput{
+		Reviewers: []string{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reviewers, ok := gotBody["reviewers"].([]any)
+	if !ok {
+		t.Fatalf("expected reviewers array, got %v", gotBody["reviewers"])
+	}
+	if len(reviewers) != 0 {
+		t.Errorf("expected empty reviewers array, got %d", len(reviewers))
+	}
+}
+
+func TestUpdatePullRequestValidation(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	_, err := client.UpdatePullRequest(context.Background(), "", "repo", 1, bbcloud.UpdatePullRequestInput{})
+	if err == nil || !strings.Contains(err.Error(), "workspace") {
+		t.Errorf("expected workspace validation error, got %v", err)
+	}
+
+	_, err = client.UpdatePullRequest(context.Background(), "ws", "repo", 1, bbcloud.UpdatePullRequestInput{})
+	if err == nil || !strings.Contains(err.Error(), "at least one field") {
+		t.Errorf("expected empty input error, got %v", err)
+	}
+}

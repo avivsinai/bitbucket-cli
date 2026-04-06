@@ -2667,6 +2667,13 @@ func TestEditCloudReviewers(t *testing.T) {
 			want:        []string{aliceUUID},
 			wantWarning: `warning: reviewer "` + aliceUUID + `" is already on this pull request`,
 		},
+		{
+			name:    "cross-identity overlap uuid-only user uses uuid in error",
+			current: []bbcloud.User{{UUID: aliceUUID}},
+			add:     []string{"550e8400-e29b-41d4-a716-446655440000"},
+			remove:  []string{aliceUUID},
+			wantErr: aliceUUID,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
