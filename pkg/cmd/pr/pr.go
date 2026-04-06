@@ -600,6 +600,7 @@ type createOptions struct {
 	Source               string
 	Target               string
 	Description          string
+	Body                 string
 	Reviewers            []string
 	CloseSource          bool
 	WithDefaultReviewers bool
@@ -634,6 +635,16 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:   "create",
 		Short: "Create a new pull request",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --body and --description are mutually exclusive aliases
+			if cmd.Flags().Changed("body") && cmd.Flags().Changed("description") {
+				return fmt.Errorf("specify only one of --body or --description")
+			}
+
+			// --body is an alias for --description (for gh ergonomics)
+			if cmd.Flags().Changed("body") {
+				opts.Description = opts.Body
+			}
+
 			return runCreate(cmd, f, opts)
 		},
 	}
@@ -643,6 +654,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Title, "title", "", "Pull request title (defaults to the first unique commit subject)")
 	cmd.Flags().StringVar(&opts.Description, "description", "", "Pull request description")
+	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Pull request description (alias for --description)")
 	cmd.Flags().StringVar(&opts.Source, "source", "", "Source branch (defaults to the current branch)")
 	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (defaults to the remote's default branch)")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
