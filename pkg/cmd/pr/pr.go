@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"os/exec"
@@ -628,6 +629,162 @@ func mergeReviewers[T any](explicit []string, defaults []T, nameFunc func(T) str
 	return merged
 }
 
+// normalizeReviewerKey returns a canonical key for overlap/dedup checks.
+// Cloud UUIDs (bare or braced) are normalized to braced form; everything
+// else is returned as-is.
+func normalizeReviewerKey(s string) string {
+	if bbcloud.LooksLikeUUID(s) {
+		return bbcloud.NormalizeUUID(s)
+	}
+	return s
+}
+
+// reviewerOverlap returns the first entry that appears in both add and remove,
+// or "" if there is no overlap. Cloud UUIDs are normalized before comparison
+// so that bare and braced forms of the same UUID are treated as equal.
+func reviewerOverlap(add, remove []string) string {
+	addSet := make(map[string]bool, len(add))
+	for _, r := range add {
+		addSet[normalizeReviewerKey(r)] = true
+	}
+	for _, r := range remove {
+		if addSet[normalizeReviewerKey(r)] {
+			return r
+		}
+	}
+	return ""
+}
+
+// editDCReviewers computes the new reviewer list for a DC pull request by
+// adding and removing reviewers from the current list. Warnings for
+// already-present additions or missing removals are written to w.
+func editDCReviewers(w io.Writer, current []bbdc.PullRequestReviewer, add, remove []string) []bbdc.PullRequestReviewer {
+	removeSet := make(map[string]bool, len(remove))
+	for _, name := range remove {
+		removeSet[name] = true
+	}
+
+	currentNames := make(map[string]bool, len(current))
+	for _, r := range current {
+		currentNames[r.User.Name] = true
+	}
+
+	for _, name := range remove {
+		if !currentNames[name] {
+			fmt.Fprintf(w, "warning: reviewer %q is not on this pull request\n", name)
+		}
+	}
+
+	var result []bbdc.PullRequestReviewer
+	for _, r := range current {
+		if !removeSet[r.User.Name] {
+			result = append(result, r)
+		}
+	}
+
+	added := make(map[string]bool)
+	for _, name := range add {
+		if currentNames[name] || added[name] {
+			fmt.Fprintf(w, "warning: reviewer %q is already on this pull request\n", name)
+		} else {
+			added[name] = true
+			result = append(result, bbdc.PullRequestReviewer{User: bbdc.User{Name: name}})
+		}
+	}
+
+	return result
+}
+
+// matchesCloudUser reports whether input (a username or UUID string) identifies
+// the given Cloud user. UUIDs are compared after normalizing braces.
+func matchesCloudUser(u bbcloud.User, input string) bool {
+	if bbcloud.LooksLikeUUID(input) {
+		return u.UUID == bbcloud.NormalizeUUID(input)
+	}
+	return u.Username == input
+}
+
+// editCloudReviewers computes the new reviewer list for a Cloud pull request.
+// It returns a string slice suitable for UpdatePullRequestInput.Reviewers.
+// Each existing reviewer is preserved by UUID; new reviewers use the caller's
+// input format (username or UUID). Warnings are written to w.
+//
+// Returns an error if the same identity appears in both add and remove via
+// different identifier formats (e.g. username in add, UUID in remove).
+func editCloudReviewers(w io.Writer, current []bbcloud.User, add, remove []string) ([]string, error) {
+	// Cross-identity overlap check: resolve add and remove against current
+	// reviewers to detect the same person referenced by different formats.
+	for _, a := range add {
+		for _, r := range remove {
+			// Exact string match is already caught by reviewerOverlap.
+			// Here we check whether different strings resolve to the same user.
+			for _, u := range current {
+				if matchesCloudUser(u, a) && matchesCloudUser(u, r) {
+					display := u.Username
+					if display == "" {
+						display = u.UUID
+					}
+					return nil, fmt.Errorf("reviewer %q (--reviewer %s, --remove-reviewer %s) cannot be in both flags", display, a, r)
+				}
+			}
+		}
+	}
+
+	// Warn about removals that don't exist
+	for _, r := range remove {
+		found := false
+		for _, u := range current {
+			if matchesCloudUser(u, r) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(w, "warning: reviewer %q is not on this pull request\n", r)
+		}
+	}
+
+	// Keep existing reviewers not being removed (use UUID for stability)
+	result := make([]string, 0, len(current)+len(add))
+	for _, u := range current {
+		removed := false
+		for _, r := range remove {
+			if matchesCloudUser(u, r) {
+				removed = true
+				break
+			}
+		}
+		if !removed {
+			if u.UUID != "" {
+				result = append(result, u.UUID)
+			} else if u.Username != "" {
+				result = append(result, u.Username)
+			}
+		}
+	}
+
+	// Add new reviewers
+	added := make(map[string]bool)
+	for _, r := range add {
+		key := normalizeReviewerKey(r)
+		alreadyOnPR := false
+		for _, u := range current {
+			if matchesCloudUser(u, r) {
+				alreadyOnPR = true
+				break
+			}
+		}
+		if alreadyOnPR || added[key] {
+			fmt.Fprintf(w, "warning: reviewer %q is already on this pull request\n", r)
+		} else {
+			added[key] = true
+			result = append(result, r)
+		}
+	}
+
+	return result, nil
+}
+
 func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &createOptions{}
 	cmd := &cobra.Command{
@@ -944,13 +1101,15 @@ func resolveGitBaseRef(ctx context.Context, targetBranch, remoteName string) (st
 }
 
 type editOptions struct {
-	Project     string
-	Workspace   string
-	Repo        string
-	ID          int
-	Title       string
-	Description string
-	Body        string
+	Project         string
+	Workspace       string
+	Repo            string
+	ID              int
+	Title           string
+	Description     string
+	Body            string
+	Reviewers       []string
+	RemoveReviewers []string
 }
 
 func newEditCmd(f *cmdutil.Factory) *cobra.Command {
@@ -958,7 +1117,7 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edit <id>",
 		Short: "Edit a pull request",
-		Long:  "Edit a pull request's title and/or description.",
+		Long:  "Edit a pull request's title, description, and/or reviewers.",
 		Example: `  # Update pull request title
   bkt pr edit 123 --title "New feature: user authentication"
 
@@ -966,7 +1125,16 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
   bkt pr edit 123 --body "This PR adds OAuth2 support"
 
   # Update both title and description
-  bkt pr edit 123 -t "Fix login bug" -b "Resolves issue with session timeout"`,
+  bkt pr edit 123 -t "Fix login bug" -b "Resolves issue with session timeout"
+
+  # Add reviewers
+  bkt pr edit 123 --reviewer alice --reviewer bob
+
+  # Remove a reviewer
+  bkt pr edit 123 --remove-reviewer alice
+
+  # Add and remove reviewers in one call
+  bkt pr edit 123 --reviewer charlie --remove-reviewer alice`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
@@ -985,9 +1153,16 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 				opts.Description = opts.Body
 			}
 
+			// Same user cannot appear in both --reviewer and --remove-reviewer
+			if overlap := reviewerOverlap(opts.Reviewers, opts.RemoveReviewers); overlap != "" {
+				return fmt.Errorf("reviewer %q cannot be in both --reviewer and --remove-reviewer", overlap)
+			}
+
 			// Require at least one field to update
-			if !cmd.Flags().Changed("title") && !cmd.Flags().Changed("description") && !cmd.Flags().Changed("body") {
-				return fmt.Errorf("at least one of --title, --body, or --description is required")
+			hasFieldChange := cmd.Flags().Changed("title") || cmd.Flags().Changed("description") || cmd.Flags().Changed("body")
+			hasReviewerChange := cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer")
+			if !hasFieldChange && !hasReviewerChange {
+				return fmt.Errorf("at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required")
 			}
 
 			return runEdit(cmd, f, opts)
@@ -1000,6 +1175,8 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.Title, "title", "t", "", "Set the new title.")
 	cmd.Flags().StringVarP(&opts.Description, "description", "", "", "Set the new description.")
 	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Set the new body (alias for --description).")
+	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} to add (repeatable)")
+	cmd.Flags().StringSliceVar(&opts.RemoveReviewers, "remove-reviewer", nil, "Reviewer username or {UUID} to remove (repeatable)")
 
 	return cmd
 }
@@ -1048,10 +1225,15 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 			newDesc = opts.Description
 		}
 
+		newReviewers := pr.Reviewers
+		if cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer") {
+			newReviewers = editDCReviewers(ios.ErrOut, pr.Reviewers, opts.Reviewers, opts.RemoveReviewers)
+		}
+
 		updatedPR, err := client.UpdatePullRequest(ctx, projectKey, repoSlug, opts.ID, pr.Version, bbdc.UpdatePROptions{
 			Title:       newTitle,
 			Description: newDesc,
-			Reviewers:   pr.Reviewers,
+			Reviewers:   newReviewers,
 			FromRef:     &pr.FromRef,
 			ToRef:       &pr.ToRef,
 		})
@@ -1092,6 +1274,17 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 		}
 		if cmd.Flags().Changed("description") || cmd.Flags().Changed("body") {
 			input.Description = &opts.Description
+		}
+		if cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer") {
+			pr, err := client.GetPullRequest(ctx, workspace, repoSlug, opts.ID)
+			if err != nil {
+				return err
+			}
+			reviewers, err := editCloudReviewers(ios.ErrOut, pr.Reviewers, opts.Reviewers, opts.RemoveReviewers)
+			if err != nil {
+				return err
+			}
+			input.Reviewers = reviewers
 		}
 
 		updatedPR, err := client.UpdatePullRequest(ctx, workspace, repoSlug, opts.ID, input)
