@@ -883,7 +883,7 @@ via the --draft flag.`,
 	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (defaults to the remote's default branch)")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
-	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers (Data Center only)")
+	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers")
 	cmd.Flags().BoolVarP(&opts.Draft, "draft", "d", false, "Create pull request as a draft (DC 8.18+, Cloud always supported)")
 
 	return cmd
@@ -972,8 +972,31 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
+		reviewers := opts.Reviewers
 		if opts.WithDefaultReviewers {
-			return fmt.Errorf("--with-default-reviewers is not yet supported for Bitbucket Cloud (see https://github.com/avivsinai/bitbucket-cli/issues/67)")
+			me, err := client.CurrentUser(ctx)
+			if err != nil {
+				return fmt.Errorf("resolving current user: %w", err)
+			}
+			defaultUsers, err := client.GetEffectiveDefaultReviewers(ctx, workspace, repoSlug)
+			if err != nil {
+				return fmt.Errorf("fetching default reviewers: %w", err)
+			}
+			// Filter out the current user — Bitbucket Cloud rejects PRs where
+			// the author is listed as a reviewer. Compare by UUID because
+			// host.Username may be an email and User.Username can be empty.
+			var filtered []bbcloud.User
+			for _, u := range defaultUsers {
+				if u.UUID != me.UUID {
+					filtered = append(filtered, u)
+				}
+			}
+			reviewers = mergeReviewers(reviewers, filtered, func(u bbcloud.User) string {
+				if u.Username != "" {
+					return u.Username
+				}
+				return u.UUID
+			})
 		}
 
 		pr, err := client.CreatePullRequest(ctx, workspace, repoSlug, bbcloud.CreatePullRequestInput{
@@ -982,7 +1005,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			Source:      opts.Source,
 			Destination: opts.Target,
 			CloseSource: opts.CloseSource,
-			Reviewers:   opts.Reviewers,
+			Reviewers:   reviewers,
 			Draft:       opts.Draft,
 		})
 		if err != nil {
