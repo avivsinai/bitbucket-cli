@@ -62,6 +62,22 @@ func newRunCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Trigger a new pipeline run",
+		Long: `Trigger a new pipeline run on Bitbucket Cloud for the current repository.
+
+The pipeline runs against the specified Git ref (branch, tag, or commit). You can
+pass custom pipeline variables using the --var flag, which accepts KEY=VALUE pairs
+and can be repeated. This command is available for Bitbucket Cloud contexts only.`,
+		Example: `  # Run the pipeline on the default branch
+  bkt pipeline run
+
+  # Run the pipeline on a specific branch
+  bkt pipeline run --ref feature/my-branch
+
+  # Run with custom pipeline variables
+  bkt pipeline run --ref main --var ENV=staging --var DEBUG=true
+
+  # Run against a specific repository
+  bkt pipeline run --workspace myteam --repo backend-api --ref develop`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPipelineRun(cmd, f, opts)
 		},
@@ -81,6 +97,19 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List recent pipeline runs",
+		Long: `List recent pipeline runs for a Bitbucket Cloud repository.
+
+Displays build number, UUID, state, result, target branch, and creation time for
+each pipeline. By default the most recent 20 runs are shown; use --limit to adjust.
+This command is available for Bitbucket Cloud contexts only.`,
+		Example: `  # List the 20 most recent pipeline runs
+  bkt pipeline list
+
+  # List the last 5 pipeline runs
+  bkt pipeline list --limit 5
+
+  # List pipelines for a specific repository
+  bkt pipeline list --workspace myteam --repo backend-api`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPipelineList(cmd, f, opts)
 		},
@@ -98,8 +127,20 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view <id>",
 		Short: "Show details for a pipeline run",
-		Long:  "Show details for a pipeline run. The <id> can be either a build number (e.g., 10) or a UUID.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Show details for a pipeline run on Bitbucket Cloud.
+
+Displays the pipeline state, result, and a breakdown of each step with its UUID,
+status, and name. The <id> argument accepts either a build number (e.g., 10) or a
+pipeline UUID. This command is available for Bitbucket Cloud contexts only.`,
+		Example: `  # View pipeline run by build number
+  bkt pipeline view 42
+
+  # View pipeline run by UUID
+  bkt pipeline view '{a1b2c3d4-e5f6-7890-abcd-ef1234567890}'
+
+  # View a pipeline in a specific repository
+  bkt pipeline view 10 --workspace myteam --repo backend-api`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Identifier = args[0]
 			return runPipelineView(cmd, f, opts)
@@ -117,8 +158,24 @@ func newLogsCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs <id>",
 		Short: "Fetch logs for a pipeline run",
-		Long:  "Fetch logs for a pipeline run. The <id> can be either a build number (e.g., 10) or a UUID.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Fetch logs for a pipeline run on Bitbucket Cloud.
+
+Prints the log output for a pipeline step. By default the last step is selected;
+use --step to target a specific step UUID. The <id> argument accepts either a build
+number (e.g., 10) or a pipeline UUID. This command is available for Bitbucket Cloud
+contexts only.`,
+		Example: `  # Fetch logs for the latest step of pipeline #42
+  bkt pipeline logs 42
+
+  # Fetch logs for a specific step
+  bkt pipeline logs 42 --step '{step-uuid-here}'
+
+  # Fetch logs using a pipeline UUID
+  bkt pipeline logs '{a1b2c3d4-e5f6-7890-abcd-ef1234567890}'
+
+  # Fetch logs for a pipeline in a specific repository
+  bkt pipeline logs 10 --workspace myteam --repo backend-api`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Identifier = args[0]
 			return runPipelineLogs(cmd, f, opts)

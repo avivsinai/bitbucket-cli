@@ -27,6 +27,22 @@ func newProtectCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "protect",
 		Short: "Manage branch protection rules",
+		Long: `Manage branch protection rules (restrictions) for a Bitbucket Data Center
+repository. Supports listing existing restrictions, adding new ones, and
+removing them by ID.
+
+Restriction types include no-creates, no-deletes, fast-forward-only, and
+require-approvals. Restrictions can target specific users or groups.
+
+This command group currently supports Data Center contexts only.`,
+		Example: `  # List all branch restrictions
+  bkt branch protect list
+
+  # Prevent direct pushes to main
+  bkt branch protect add main --type fast-forward-only
+
+  # Remove a restriction by ID
+  bkt branch protect remove 42`,
 	}
 
 	cmd.AddCommand(newProtectListCmd(f))
@@ -41,6 +57,17 @@ func newProtectListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List branch restrictions",
+		Long: `List all branch restrictions configured for a Bitbucket Data Center repository.
+
+Each restriction is shown with its ID, type, and the branch matcher it applies
+to. Use the restriction ID with "protect remove" to delete a rule.
+
+This command currently supports Data Center contexts only.`,
+		Example: `  # List all restrictions in the current context
+  bkt branch protect list
+
+  # List restrictions for a specific project and repo
+  bkt branch protect list --project MYPROJ --repo backend`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProtectList(cmd, f, opts)
 		},
@@ -57,7 +84,30 @@ func newProtectAddCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <branch>",
 		Short: "Add a branch restriction",
-		Args:  cobra.ExactArgs(1),
+		Long: `Add a branch restriction to a Bitbucket Data Center repository.
+
+Available restriction types:
+  no-creates          Prevent creating branches matching the pattern
+  no-deletes          Prevent deleting branches matching the pattern
+  fast-forward-only   Only allow fast-forward merges (no force pushes)
+  require-approvals   Require pull request approval before merging
+
+Restrictions can be scoped to specific users or groups with the --user and
+--group flags, which are repeatable.
+
+This command currently supports Data Center contexts only.`,
+		Example: `  # Prevent force pushes to main
+  bkt branch protect add main --type fast-forward-only
+
+  # Require PR approvals on release branches
+  bkt branch protect add release/v2 --type require-approvals
+
+  # Block branch deletion for specific users
+  bkt branch protect add main --type no-deletes --user alice --user bob
+
+  # Restrict a branch for a group
+  bkt branch protect add develop --type no-creates --group developers`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Branch = args[0]
 			return runProtectAdd(cmd, f, opts)
@@ -78,7 +128,16 @@ func newProtectRemoveCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <restriction-id>",
 		Short: "Remove a branch restriction",
-		Args:  cobra.ExactArgs(1),
+		Long: `Remove a branch restriction from a Bitbucket Data Center repository by its
+numeric ID. Use "bkt branch protect list" to find restriction IDs.
+
+This command currently supports Data Center contexts only.`,
+		Example: `  # Remove a restriction by ID
+  bkt branch protect remove 42
+
+  # Remove a restriction in a specific project and repo
+  bkt branch protect remove 15 --project MYPROJ --repo backend`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {

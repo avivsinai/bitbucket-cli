@@ -19,6 +19,20 @@ func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Inspect commit and pull request statuses",
+		Long: `Inspect build and CI statuses attached to commits and pull requests. Subcommands
+cover Data Center commit statuses, pull request head-commit statuses, Cloud
+pipeline runs, and API rate-limit telemetry.`,
+		Example: `  # Show build statuses for a commit (Data Center)
+  bkt status commit abc1234
+
+  # Show build statuses for a pull request (Data Center)
+  bkt status pr 42
+
+  # Show a Cloud pipeline run
+  bkt status pipeline {pipeline-uuid}
+
+  # Check API rate limits for the active context
+  bkt status rate-limit`,
 	}
 
 	cmd.AddCommand(newCommitCmd(f))
@@ -33,7 +47,21 @@ func newCommitCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "commit <sha>",
 		Short: "Show the build statuses for a commit",
-		Args:  cobra.ExactArgs(1),
+		Long: `Display the CI/build statuses reported against a specific commit SHA. Each
+status includes the state (SUCCESSFUL, FAILED, INPROGRESS), the build key,
+name, optional description, and a link to the build.
+
+Currently supports Data Center contexts only. The commit does not need to
+belong to any particular branch or pull request.`,
+		Example: `  # Show statuses for a commit
+  bkt status commit abc1234def5678
+
+  # Show statuses using a full 40-character SHA
+  bkt status commit 6f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a
+
+  # Output as JSON
+  bkt status commit abc1234 --output json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCommit(cmd, f, args[0])
 		},
@@ -87,7 +115,22 @@ func newPullRequestCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pr <id>",
 		Short: "Show the build statuses for a pull request head commit",
-		Args:  cobra.ExactArgs(1),
+		Long: `Look up the head (latest) commit of a pull request and display all CI/build
+statuses attached to it. The output includes the pull request title and the
+resolved commit SHA alongside the status details.
+
+The project and repository are resolved from the active context or can be
+overridden with --project and --repo. Currently supports Data Center
+contexts only.`,
+		Example: `  # Show statuses for pull request #42
+  bkt status pr 42
+
+  # Specify project and repo explicitly
+  bkt status pr 42 --project MYPROJ --repo my-service
+
+  # Output as JSON
+  bkt status pr 42 --output json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {

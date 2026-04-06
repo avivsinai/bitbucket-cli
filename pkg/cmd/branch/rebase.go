@@ -20,7 +20,23 @@ func newRebaseCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rebase <branch>",
 		Short: "Rebase the current branch onto another branch",
-		Args:  cobra.ExactArgs(1),
+		Long: `Rebase the current local branch onto another branch using git rebase.
+
+By default, all remotes are fetched before rebasing to ensure the target branch
+is up to date. Use --no-fetch to skip the fetch step if you have already
+fetched recently. Use --interactive to open an interactive rebase session.
+
+This command is a local git convenience wrapper and does not call the Bitbucket
+API. It works regardless of whether the context is Data Center or Cloud.`,
+		Example: `  # Rebase onto main
+  bkt branch rebase main
+
+  # Interactive rebase onto develop
+  bkt branch rebase develop --interactive
+
+  # Rebase without fetching first
+  bkt branch rebase main --no-fetch`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Onto = args[0]
 			return runRebase(cmd, f, opts)

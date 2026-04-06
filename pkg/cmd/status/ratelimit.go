@@ -16,6 +16,20 @@ func newRateLimitCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rate-limit",
 		Short: "Show API rate limit telemetry for the active context",
+		Long: `Query the Bitbucket API and display the current rate-limit counters for the
+active context. The output includes the overall limit, remaining requests,
+reset time, and the header source from which the values were read.
+
+Works on both Data Center and Cloud contexts. A lightweight ping request is
+sent to populate the rate-limit headers before reporting.`,
+		Example: `  # Show rate limits for the active context
+  bkt status rate-limit
+
+  # Show rate limits as JSON
+  bkt status rate-limit --output json
+
+  # Check rate limits for a specific context
+  bkt status rate-limit --context my-cloud-ctx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRateLimit(cmd, f)
 		},

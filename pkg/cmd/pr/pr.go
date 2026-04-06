@@ -42,6 +42,21 @@ func NewCmdPR(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pr",
 		Short: "Manage pull requests",
+		Long: `Create, list, review, merge, and manage pull requests on Bitbucket Data Center
+and Bitbucket Cloud. Most subcommands work on both platforms; platform-specific
+limitations are noted in each subcommand's help.`,
+		Example: `  # List open pull requests in the current repository
+  bkt pr list
+
+  # View details of a specific pull request
+  bkt pr view 42
+
+  # Create a pull request from the current branch
+  bkt pr create --title "Add user authentication"
+
+  # Approve and merge a pull request
+  bkt pr approve 42
+  bkt pr merge 42`,
 	}
 
 	cmd.AddCommand(newListCmd(f))
@@ -82,6 +97,24 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List pull requests",
+		Long: `List pull requests for a repository, filtered by state. On Data Center, the
+project and repo are resolved from the active context (or --project/--repo).
+On Cloud, the workspace and repo are used instead.
+
+When --mine is set without a specific repository, the command lists pull
+requests authored by the authenticated user across all repositories. On Data
+Center this uses the dashboard API; on Cloud it queries the workspace.`,
+		Example: `  # List open pull requests
+  bkt pr list
+
+  # List merged pull requests
+  bkt pr list --state MERGED
+
+  # List your own pull requests across all repositories
+  bkt pr list --mine
+
+  # List pull requests with a limit
+  bkt pr list --limit 50 --state OPEN`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd, f, opts)
 		},
@@ -400,7 +433,20 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view <id>",
 		Short: "Show details for a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Display the title, state, author, source and target branches, description, and
+reviewers for a pull request. Use --web to open the pull request in your
+default browser instead of printing to the terminal.
+
+Works on both Data Center and Cloud.`,
+		Example: `  # View pull request details
+  bkt pr view 42
+
+  # Open the pull request in a browser
+  bkt pr view 42 --web
+
+  # View a pull request in a different repository
+  bkt pr view 10 --repo my-other-repo`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -633,6 +679,27 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new pull request",
+		Long: `Create a new pull request. The source branch defaults to the current git branch,
+and the target branch defaults to the remote's default branch (e.g. main).
+The title defaults to the first unique commit subject on the source branch.
+
+Reviewers can be added with repeatable --reviewer flags. On Data Center,
+--with-default-reviewers merges the repository's configured default reviewers
+into the reviewer list (not yet supported on Cloud).
+
+Draft pull requests are supported on Cloud (always) and on Data Center 8.18+
+via the --draft flag.`,
+		Example: `  # Create a pull request with auto-detected title
+  bkt pr create
+
+  # Create with an explicit title and description
+  bkt pr create --title "Add OAuth2 support" --description "Implements RFC 6749"
+
+  # Create with reviewers and close source branch on merge
+  bkt pr create -t "Fix login bug" --reviewer alice --reviewer bob --close-source
+
+  # Create a draft pull request
+  bkt pr create --title "WIP: new feature" --draft`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, f, opts)
 		},
@@ -1129,7 +1196,22 @@ func newCheckoutCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkout <id>",
 		Short: "Check out the pull request branch",
-		Args:  cobra.ExactArgs(1),
+		Long: `Fetch and check out the source branch of a pull request into a local branch.
+By default the local branch is named pr/<id>.
+
+On Data Center, the PR head is fetched via the refs/pull-requests/<id>/from
+ref. On Cloud, the source branch name is resolved from the API and fetched
+directly. For fork-based Cloud pull requests, a remote is automatically
+added (or reused) for the fork repository.`,
+		Example: `  # Check out pull request #42
+  bkt pr checkout 42
+
+  # Check out into a custom branch name
+  bkt pr checkout 42 --branch feature-review
+
+  # Check out from a specific remote
+  bkt pr checkout 42 --remote upstream`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -1289,7 +1371,18 @@ func newDiffCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <id>",
 		Short: "Show the diff for a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Display the full unified diff for a pull request, streamed through the
+configured pager when available. Use --stat for a compact summary of changed
+files, additions, and deletions instead of the full patch.
+
+Works on both Data Center and Cloud. On Cloud, --stat also lists per-file
+change counts.`,
+		Example: `  # Show the full diff
+  bkt pr diff 42
+
+  # Show diff statistics only
+  bkt pr diff 42 --stat`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -1461,7 +1554,17 @@ func newApproveCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "approve <id>",
 		Short: "Approve a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Approve a pull request as the authenticated user. This adds your approval to
+the pull request, which may satisfy merge checks that require reviewer
+approvals.
+
+Works on both Data Center and Cloud.`,
+		Example: `  # Approve a pull request
+  bkt pr approve 42
+
+  # Approve a pull request in a specific repository
+  bkt pr approve 42 --repo my-service`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -1559,7 +1662,18 @@ func newPublishCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "publish <id>",
 		Aliases: []string{"ready"},
 		Short:   "Mark a draft pull request as ready for review",
-		Args:    cobra.ExactArgs(1),
+		Long: `Toggle a pull request between draft and published states. By default, this
+command publishes a draft pull request so it is visible for review. Use --undo
+to convert a published pull request back to draft.
+
+Works on both Data Center (8.18+) and Cloud. If the pull request is already
+in the desired state, the command prints a warning and exits without error.`,
+		Example: `  # Publish a draft pull request
+  bkt pr publish 42
+
+  # Convert a pull request back to draft
+  bkt pr publish 42 --undo`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -1719,7 +1833,21 @@ func newMergeCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "merge <id>",
 		Short: "Merge a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Merge a pull request. The source branch is closed by default (use
+--close-source=false to keep it). An optional merge strategy can be specified
+(e.g. fast-forward, squash) and a custom merge commit message can be provided.
+
+Works on both Data Center and Cloud. On Data Center, the current PR version
+is used for optimistic locking.`,
+		Example: `  # Merge a pull request
+  bkt pr merge 42
+
+  # Merge with a custom commit message
+  bkt pr merge 42 --message "Release v1.2.0"
+
+  # Merge using fast-forward strategy and keep source branch
+  bkt pr merge 42 --strategy fast-forward --close-source=false`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -1826,7 +1954,17 @@ func newDeclineCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "decline <id>",
 		Short: "Decline a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Decline (close without merging) a pull request. On Data Center, the optional
+--delete-source flag also deletes the source branch after declining. This flag
+is not supported on Cloud.
+
+Works on both Data Center and Cloud.`,
+		Example: `  # Decline a pull request
+  bkt pr decline 42
+
+  # Decline and delete the source branch (Data Center only)
+  bkt pr decline 42 --delete-source`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -1956,7 +2094,13 @@ func newReopenCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reopen <id>",
 		Short: "Reopen a declined pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Reopen a previously declined pull request, returning it to the OPEN state.
+
+Works on both Data Center and Cloud. On Data Center, the current PR version
+is used for optimistic locking.`,
+		Example: `  # Reopen a declined pull request
+  bkt pr reopen 42`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -2061,7 +2205,24 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "comment <id> --text <message>",
 		Short: "Comment on a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Add a comment to a pull request. Comments can be general (activity-level),
+threaded replies (via --parent), or inline on a specific file and line in the
+diff (via --file with --from-line or --to-line). Use --pending to create a
+draft review comment that is not visible until submitted.
+
+Works on both Data Center and Cloud.`,
+		Example: `  # Add a general comment
+  bkt pr comment 42 --text "Looks good to me"
+
+  # Reply to an existing comment thread
+  bkt pr comment 42 --text "Fixed in the latest push" --parent 1001
+
+  # Add an inline comment on a specific line in the new file
+  bkt pr comment 42 --text "Nit: rename this variable" --file src/main.go --to-line 55
+
+  # Add a pending (draft) inline comment
+  bkt pr comment 42 --text "Consider error handling here" --file api.go --to-line 30 --pending`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -2225,7 +2386,29 @@ func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "checks <id>",
 		Aliases: []string{"builds"},
 		Short:   "Show build/CI status for a pull request",
-		Args:    cobra.ExactArgs(1),
+		Long: `Display CI/build statuses for the head commit of a pull request. Use --wait to
+poll until all builds complete, with exponential backoff and jitter. The
+--fail-fast flag exits on the first failure. Use --web to open the first
+build's URL in your browser.
+
+On Data Center, statuses are fetched from the commit build-status API using
+the source branch's latest commit. On Cloud, the source commit hash from the
+pull request is used.
+
+Exit codes in --wait mode: 0 = all passed, 1 = a build failed,
+8 = timed out with builds still pending.`,
+		Example: `  # Show current build status
+  bkt pr checks 42
+
+  # Wait for all builds to finish
+  bkt pr checks 42 --wait
+
+  # Wait with fail-fast and a custom timeout
+  bkt pr checks 42 --wait --fail-fast --timeout 10m
+
+  # Open the first build URL in a browser
+  bkt pr checks 42 --web`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {

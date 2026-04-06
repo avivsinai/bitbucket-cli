@@ -36,6 +36,14 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage Bitbucket authentication credentials",
+		Long: `Manage authentication credentials for Bitbucket Data Center and Cloud hosts.
+
+Tokens are stored in the OS keychain by default. For Data Center hosts, bkt
+uses Personal Access Tokens (PATs). For Bitbucket Cloud, bkt uses Atlassian
+API tokens (app passwords).
+
+Use "bkt auth login" to add a host, "bkt auth status" to inspect stored
+credentials, and "bkt auth logout" to remove them.`,
 	}
 
 	cmd.AddCommand(newLoginCmd(f))
@@ -63,7 +71,34 @@ func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login [host]",
 		Short: "Authenticate against a Bitbucket Data Center or Cloud host",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Authenticate against a Bitbucket Data Center or Cloud host and store
+credentials in the OS keychain.
+
+For Data Center (--kind dc, the default), you authenticate with a Personal
+Access Token (PAT). The token needs Repository Read/Write and Project Read
+permissions. Use --web to open the PAT management page in your browser.
+
+For Bitbucket Cloud (--kind cloud), you authenticate with an Atlassian API
+token. The token must be created with Bitbucket scopes (Account Read,
+Repositories Read/Write, Pull Requests Read/Write). Use --web to open the
+Atlassian token management page.
+
+Credentials are verified against the remote host before being stored. If no
+OS keychain is available, pass --allow-insecure-store to use encrypted file
+fallback. In non-interactive environments, provide --username and --token
+on the command line or via stdin.`,
+		Example: `  # Interactive login to a Data Center instance
+  bkt auth login https://bitbucket.example.com
+
+  # Login to Bitbucket Cloud interactively
+  bkt auth login https://bitbucket.org --kind cloud
+
+  # Open browser to create a PAT, then prompt for credentials
+  bkt auth login https://bitbucket.example.com --web
+
+  # Non-interactive login with flags (CI pipelines)
+  bkt auth login https://bitbucket.example.com --username admin --token "$PAT"`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				opts.Host = args[0]
@@ -330,6 +365,20 @@ func newStatusCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show authentication status for configured hosts",
+		Long: `Display the authentication status for all configured Bitbucket hosts and
+contexts.
+
+For each host, the output includes the base URL, deployment kind (dc or
+cloud), the stored username, and the token source (OS keychain or the
+BKT_TOKEN environment variable). Configured contexts are listed with their
+associated host, project/workspace, and default repository.
+
+Use --output json to get machine-readable output suitable for scripting.`,
+		Example: `  # Show all configured hosts and contexts
+  bkt auth status
+
+  # Get status as JSON
+  bkt auth status --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runStatus(cmd, f)
 		},
@@ -485,7 +534,24 @@ func newLogoutCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logout [host]",
 		Short: "Remove stored credentials for a host",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Remove stored credentials for a Bitbucket host and delete the host entry
+from the configuration file.
+
+The host can be specified as a positional argument or with the --host flag,
+using either the host key (e.g. "bitbucket.example.com") or the full base
+URL. Any contexts associated with the removed host are also deleted.
+
+This command does not work when the BKT_TOKEN environment variable is set,
+because the token is externally managed in that case.`,
+		Example: `  # Remove credentials by host key
+  bkt auth logout bitbucket.example.com
+
+  # Remove credentials by base URL
+  bkt auth logout https://bitbucket.example.com
+
+  # Remove Bitbucket Cloud credentials
+  bkt auth logout api.bitbucket.org`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				opts.Host = args[0]

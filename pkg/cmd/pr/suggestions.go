@@ -25,7 +25,17 @@ func newSuggestionCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "suggestion <id> <comment-id> <suggestion-id>",
 		Short: "Apply or preview a code suggestion",
-		Args:  cobra.ExactArgs(3),
+		Long: `Apply or preview a code suggestion attached to a pull request comment. By
+default, the suggestion is applied directly. Use --preview to see the
+suggested change without applying it.
+
+Data Center only. Not yet supported on Cloud.`,
+		Example: `  # Apply a code suggestion
+  bkt pr suggestion 42 1001 1
+
+  # Preview a suggestion without applying
+  bkt pr suggestion 42 1001 1 --preview`,
+		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prID, err := strconv.Atoi(args[0])
 			if err != nil {

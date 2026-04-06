@@ -16,6 +16,18 @@ func NewCmdContext(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "context",
 		Short: "Manage Bitbucket CLI contexts",
+		Long: `Manage named contexts that store connection defaults for different Bitbucket
+hosts, projects, workspaces, and repositories. Each context bundles a host with
+its associated scope so you can switch between environments without repeating
+flags on every command.`,
+		Example: `  # Create a Data Center context and make it active
+  bkt context create work --host bitbucket.mycompany.com --project TEAM --set-active
+
+  # List all configured contexts
+  bkt context list
+
+  # Switch to a different context
+  bkt context use personal`,
 	}
 
 	cmd.AddCommand(newCreateCmd(f))
@@ -39,7 +51,19 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a new CLI context",
-		Args:  cobra.ExactArgs(1),
+		Long: `Create a named context that stores connection defaults for a Bitbucket host.
+A context binds a host to a project (Data Center) or workspace (Cloud) and an
+optional default repository, so subsequent commands inherit these values
+without requiring flags.`,
+		Example: `  # Create a Data Center context
+  bkt context create work --host bitbucket.mycompany.com --project TEAM
+
+  # Create a Cloud context with a default repository
+  bkt context create oss --host bitbucket.org --workspace my-team --repo api-service
+
+  # Create a context and immediately make it active
+  bkt context create staging --host staging.bb.internal --project OPS --set-active`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, f, args[0], opts)
 		},
@@ -133,7 +157,15 @@ func newUseCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "use <name>",
 		Short: "Activate an existing context",
-		Args:  cobra.ExactArgs(1),
+		Long: `Set the named context as the active context. All subsequent commands will
+resolve their host, project/workspace, and repository defaults from this
+context unless overridden with explicit flags.`,
+		Example: `  # Switch to the "work" context
+  bkt context use work
+
+  # Switch to a personal Cloud context
+  bkt context use personal`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUse(cmd, f, args[0])
 		},
@@ -171,6 +203,17 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List available contexts",
+		Long: `List all configured contexts along with their host, project or workspace,
+and default repository. The currently active context is marked with an
+asterisk (*).`,
+		Example: `  # List all contexts
+  bkt context list
+
+  # List contexts using the short alias
+  bkt context ls
+
+  # List contexts as JSON
+  bkt context list --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd, f)
 		},
@@ -264,7 +307,15 @@ func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "delete <name>",
 		Aliases: []string{"rm"},
 		Short:   "Delete a context",
-		Args:    cobra.ExactArgs(1),
+		Long: `Remove a named context from the configuration. If the deleted context is
+currently active, the active context is cleared and you will need to select
+another one with "bkt context use".`,
+		Example: `  # Delete a context by name
+  bkt context delete old-server
+
+  # Delete using the short alias
+  bkt context rm staging`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd, f, args[0])
 		},
