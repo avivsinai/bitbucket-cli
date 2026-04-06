@@ -15,7 +15,7 @@ import (
 func NewCommand(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "perms",
-		Short: "Manage Bitbucket permissions",
+		Short: "Manage Bitbucket permissions (DC only)",
 		Long: `Manage user permissions at the project and repository level on Bitbucket Data Center.
 
 Grant, revoke, and list permissions for individual users. Project-level
@@ -58,7 +58,7 @@ type projectRevokeOptions struct {
 func newProjectCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
-		Short: "Manage project-level permissions",
+		Short: "Manage project-level permissions (DC only)",
 		Long: `Manage project-level permissions on Bitbucket Data Center.
 
 Project permissions control default access for all repositories within a project.
@@ -78,7 +78,7 @@ PROJECT_READ, PROJECT_WRITE, and PROJECT_ADMIN.`,
 	listOpts := &projectListOptions{Limit: 100}
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "List project permissions",
+		Short: "List project permissions (DC only)",
 		Long: `List the permission entries for a Bitbucket Data Center project.
 
 Displays each user who has been granted explicit access to the project along
@@ -103,7 +103,7 @@ Use --limit to control how many entries are returned; set it to 0 to fetch all.`
 	grantOpts := &projectGrantOptions{}
 	grant := &cobra.Command{
 		Use:   "grant",
-		Short: "Grant project permissions",
+		Short: "Grant project permissions (DC only)",
 		Long: `Grant a permission level to a user on a Bitbucket Data Center project.
 
 The user receives the specified permission for the project and inherits it
@@ -131,7 +131,7 @@ PROJECT_ADMIN. If --perm is omitted it defaults to PROJECT_READ.`,
 	revokeOpts := &projectRevokeOptions{}
 	revoke := &cobra.Command{
 		Use:   "revoke",
-		Short: "Revoke project permissions",
+		Short: "Revoke project permissions (DC only)",
 		Long: `Revoke a user's permission on a Bitbucket Data Center project.
 
 Removes the explicit project-level permission entry for the specified user.
@@ -177,7 +177,7 @@ type repoRevokeOptions struct {
 func newRepoCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repo",
-		Short: "Manage repository-level permissions",
+		Short: "Manage repository-level permissions (DC only)",
 		Long: `Manage repository-level permissions on Bitbucket Data Center.
 
 Repository permissions override the project defaults for a specific repository.
@@ -197,7 +197,7 @@ REPO_READ, REPO_WRITE, and REPO_ADMIN.`,
 	listOpts := &repoListOptions{Limit: 100}
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "List repository permissions",
+		Short: "List repository permissions (DC only)",
 		Long: `List the permission entries for a Bitbucket Data Center repository.
 
 Displays each user who has been granted explicit access to the repository along
@@ -224,7 +224,7 @@ to control how many entries are returned; set it to 0 to fetch all.`,
 	grantOpts := &repoGrantOptions{}
 	grant := &cobra.Command{
 		Use:   "grant",
-		Short: "Grant repository permissions",
+		Short: "Grant repository permissions (DC only)",
 		Long: `Grant a permission level to a user on a Bitbucket Data Center repository.
 
 The user receives the specified permission for the repository, overriding any
@@ -254,7 +254,7 @@ REPO_READ.`,
 	revokeOpts := &repoRevokeOptions{}
 	revoke := &cobra.Command{
 		Use:   "revoke",
-		Short: "Revoke repository permissions",
+		Short: "Revoke repository permissions (DC only)",
 		Long: `Revoke a user's permission on a Bitbucket Data Center repository.
 
 Removes the explicit repository-level permission entry for the specified user.

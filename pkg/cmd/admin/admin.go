@@ -16,7 +16,7 @@ import (
 func NewCmdAdmin(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "admin",
-		Short: "Administrative operations for Bitbucket",
+		Short: "Administrative operations for Bitbucket (DC only)",
 		Long: `Perform administrative operations on a Bitbucket Data Center instance.
 
 This command group provides access to server-level management tasks such as
@@ -41,7 +41,7 @@ Center context; they are not available for Bitbucket Cloud.`,
 func newSecretsCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
-		Short: "Manage secrets manager operations",
+		Short: "Manage secrets manager operations (DC only)",
 		Long: `Manage encryption keys and secrets through the Bitbucket Data Center
 Secrets Manager plugin. Use the subcommands to rotate keys and perform
 other secrets-related maintenance tasks on your DC instance.`,
@@ -59,7 +59,7 @@ other secrets-related maintenance tasks on your DC instance.`,
 func newSecretsRotateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rotate",
-		Short: "Rotate encryption keys via the Secrets Manager plugin",
+		Short: "Rotate encryption keys via the Secrets Manager plugin (DC only)",
 		Long: `Trigger an encryption key rotation on a Bitbucket Data Center instance
 through the Secrets Manager plugin. This is a server-side operation that
 generates a new encryption key and re-encrypts stored secrets. The command
@@ -115,7 +115,7 @@ func runSecretsRotate(cmd *cobra.Command, f *cmdutil.Factory) error {
 func newLoggingCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logging",
-		Short: "Inspect or update logging settings",
+		Short: "Inspect or update logging settings (DC only)",
 		Long: `Inspect or update the logging configuration of a Bitbucket Data Center
 instance. You can view the current log level and async setting, or change
 them at runtime without restarting the server. This command group is only
@@ -139,7 +139,7 @@ available for Data Center contexts.`,
 func newLoggingGetCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get",
-		Short: "Show current logging configuration",
+		Short: "Show current logging configuration (DC only)",
 		Long: `Display the current logging configuration of a Bitbucket Data Center
 instance, including the active log level and whether asynchronous logging
 is enabled. Output defaults to human-readable text but supports JSON via
@@ -167,7 +167,7 @@ func newLoggingSetCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "set",
-		Short: "Update logging configuration",
+		Short: "Update logging configuration (DC only)",
 		Long: `Update the logging configuration of a Bitbucket Data Center instance at
 runtime. You can change the log level (TRACE, DEBUG, INFO, WARN, ERROR)
 and toggle asynchronous logging without restarting the server. This

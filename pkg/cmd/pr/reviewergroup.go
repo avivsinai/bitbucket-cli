@@ -13,7 +13,7 @@ import (
 func newReviewerGroupCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reviewer-group",
-		Short: "Manage default reviewer groups",
+		Short: "Manage default reviewer groups (DC only)",
 		Long: `List, add, or remove default reviewer groups for a repository.
 
 Data Center only. Not yet supported on Cloud.`,
@@ -44,7 +44,7 @@ func newReviewerGroupListCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reviewerGroupOptions{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List default reviewer groups",
+		Short: "List default reviewer groups (DC only)",
 		Long:  `List the default reviewer groups configured for a repository. Data Center only.`,
 		Example: `  # List reviewer groups
   bkt pr reviewer-group list`,
@@ -61,7 +61,7 @@ func newReviewerGroupAddCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reviewerGroupOptions{}
 	cmd := &cobra.Command{
 		Use:   "add <group>",
-		Short: "Add a default reviewer group",
+		Short: "Add a default reviewer group (DC only)",
 		Long:  `Add a default reviewer group to the repository. Data Center only.`,
 		Example: `  # Add a reviewer group
   bkt pr reviewer-group add backend-team`,
@@ -80,7 +80,7 @@ func newReviewerGroupRemoveCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reviewerGroupOptions{}
 	cmd := &cobra.Command{
 		Use:   "remove <group>",
-		Short: "Remove a default reviewer group",
+		Short: "Remove a default reviewer group (DC only)",
 		Long:  `Remove a default reviewer group from the repository. Data Center only.`,
 		Example: `  # Remove a reviewer group
   bkt pr reviewer-group remove backend-team`,

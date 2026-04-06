@@ -18,7 +18,7 @@ import (
 func NewCmdPipeline(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pipeline",
-		Short: "Run and inspect Bitbucket Cloud pipelines",
+		Short: "Run and inspect Bitbucket Cloud pipelines (Cloud only)",
 		Long:  "Interact with Bitbucket Cloud Pipelines. Commands are no-ops for Data Center contexts.",
 	}
 
@@ -61,7 +61,7 @@ func newRunCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &runOptions{}
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Trigger a new pipeline run",
+		Short: "Trigger a new pipeline run (Cloud only)",
 		Long: `Trigger a new pipeline run on Bitbucket Cloud for the current repository.
 
 The pipeline runs against the specified Git ref (branch, tag, or commit). You can
@@ -96,7 +96,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List recent pipeline runs",
+		Short:   "List recent pipeline runs (Cloud only)",
 		Long: `List recent pipeline runs for a Bitbucket Cloud repository.
 
 Displays build number, UUID, state, result, target branch, and creation time for
@@ -126,7 +126,7 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &viewOptions{}
 	cmd := &cobra.Command{
 		Use:   "view <id>",
-		Short: "Show details for a pipeline run",
+		Short: "Show details for a pipeline run (Cloud only)",
 		Long: `Show details for a pipeline run on Bitbucket Cloud.
 
 Displays the pipeline state, result, and a breakdown of each step with its UUID,
@@ -157,7 +157,7 @@ func newLogsCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &logsOptions{}
 	cmd := &cobra.Command{
 		Use:   "logs <id>",
-		Short: "Fetch logs for a pipeline run",
+		Short: "Fetch logs for a pipeline run (Cloud only)",
 		Long: `Fetch logs for a pipeline run on Bitbucket Cloud.
 
 Prints the log output for a pipeline step. By default the last step is selected;

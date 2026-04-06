@@ -17,7 +17,7 @@ import (
 func NewCmdIssue(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "issue",
-		Short: "Work with Bitbucket Cloud issues",
+		Short: "Work with Bitbucket Cloud issues (Cloud only)",
 		Long: `Create and manage issues in Bitbucket Cloud repositories.
 
 Note: The issue tracker is only available for Bitbucket Cloud. Bitbucket Data Center
@@ -59,7 +59,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List issues in a repository",
+		Short:   "List issues in a repository (Cloud only)",
 		Long: `List issues in a Bitbucket Cloud repository with optional filters.
 
 Results can be filtered by state, kind, priority, assignee, and milestone.
@@ -213,7 +213,7 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &viewOptions{}
 	cmd := &cobra.Command{
 		Use:   "view <issue-id>",
-		Short: "Display details for an issue",
+		Short: "Display details for an issue (Cloud only)",
 		Long: `Display detailed information about a Bitbucket Cloud issue, including its
 state, kind, priority, reporter, assignee, and description. Optionally
 include comments with --comments or open the issue in a browser with --web.`,
@@ -435,7 +435,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a new issue",
+		Short: "Create a new issue (Cloud only)",
 		Long: `Create a new issue in a Bitbucket Cloud repository.
 
 You must provide a title. Kind defaults to "bug" if not specified. Other
@@ -571,7 +571,7 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &editOptions{}
 	cmd := &cobra.Command{
 		Use:   "edit <issue-id>",
-		Short: "Edit an existing issue",
+		Short: "Edit an existing issue (Cloud only)",
 		Long: `Edit an existing issue's fields in a Bitbucket Cloud repository.
 
 Only the fields you specify via flags are updated; all other fields are
@@ -731,7 +731,7 @@ func newCloseCmd(f *cmdutil.Factory) *cobra.Command {
 	var workspace, repo string
 	cmd := &cobra.Command{
 		Use:   "close <issue-id>",
-		Short: "Close an issue",
+		Short: "Close an issue (Cloud only)",
 		Long: `Close an open issue in a Bitbucket Cloud repository by setting its state
 to "closed". This is a shorthand for 'bkt issue edit <id> --state closed'.`,
 		Example: `  # Close issue #42
@@ -758,7 +758,7 @@ func newReopenCmd(f *cmdutil.Factory) *cobra.Command {
 	var workspace, repo string
 	cmd := &cobra.Command{
 		Use:   "reopen <issue-id>",
-		Short: "Reopen a closed issue",
+		Short: "Reopen a closed issue (Cloud only)",
 		Long: `Reopen a previously closed issue in a Bitbucket Cloud repository by
 setting its state back to "open". This is a shorthand for
 'bkt issue edit <id> --state open'.`,
@@ -866,7 +866,7 @@ func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &deleteOptions{}
 	cmd := &cobra.Command{
 		Use:   "delete <issue-id>",
-		Short: "Delete an issue",
+		Short: "Delete an issue (Cloud only)",
 		Long: `Permanently delete an issue from a Bitbucket Cloud repository.
 
 A confirmation prompt is shown before deletion unless --confirm is passed.
@@ -986,7 +986,7 @@ func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &commentOptions{}
 	cmd := &cobra.Command{
 		Use:   "comment <issue-id>",
-		Short: "Add or list comments on an issue",
+		Short: "Add or list comments on an issue (Cloud only)",
 		Long: `Add a new comment to or list existing comments on a Bitbucket Cloud issue.
 
 Use --body to post a comment or --list to display existing comments. When
@@ -1145,7 +1145,7 @@ func newStatusCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &statusOptions{}
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show issues relevant to you",
+		Short: "Show issues relevant to you (Cloud only)",
 		Long: `Show issues assigned to you, created by you, and recently updated.
 
 This command requires authentication to identify the current user.`,

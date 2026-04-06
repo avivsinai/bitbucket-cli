@@ -23,7 +23,7 @@ type taskOptions struct {
 func newTaskCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "task",
-		Short: "Manage pull request tasks",
+		Short: "Manage pull request tasks (DC only)",
 		Long: `List, create, complete, or reopen tasks on a pull request. Tasks track
 action items that must be resolved before merging.
 
@@ -53,7 +53,7 @@ func newTaskListCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &taskOptions{}
 	cmd := &cobra.Command{
 		Use:   "list <id>",
-		Short: "List tasks for a pull request",
+		Short: "List tasks for a pull request (DC only)",
 		Long:  `List all tasks on a pull request, showing each task's state (OPEN/RESOLVED), ID, and text. Data Center only.`,
 		Example: `  # List tasks on pull request #42
   bkt pr task list 42`,
@@ -76,7 +76,7 @@ func newTaskCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &taskOptions{}
 	cmd := &cobra.Command{
 		Use:   "create <id>",
-		Short: "Create a task on a pull request",
+		Short: "Create a task on a pull request (DC only)",
 		Long:  `Create a new task on a pull request with the specified text. Data Center only.`,
 		Example: `  # Create a task
   bkt pr task create 42 --text "Add unit tests for the new endpoint"`,
@@ -103,7 +103,7 @@ func newTaskCompleteCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &taskOptions{}
 	cmd := &cobra.Command{
 		Use:   "complete <id> <task-id>",
-		Short: "Complete a pull request task",
+		Short: "Complete a pull request task (DC only)",
 		Long:  `Mark a pull request task as completed (resolved). Data Center only.`,
 		Example: `  # Complete task 99 on pull request #42
   bkt pr task complete 42 99`,
@@ -132,7 +132,7 @@ func newTaskReopenCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &taskOptions{}
 	cmd := &cobra.Command{
 		Use:   "reopen <id> <task-id>",
-		Short: "Reopen a resolved task",
+		Short: "Reopen a resolved task (DC only)",
 		Long:  `Reopen a previously completed (resolved) task on a pull request. Data Center only.`,
 		Example: `  # Reopen task 99 on pull request #42
   bkt pr task reopen 42 99`,

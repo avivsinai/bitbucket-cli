@@ -209,7 +209,7 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &createOptions{}
 	cmd := &cobra.Command{
 		Use:   "create <branch>",
-		Short: "Create a new branch",
+		Short: "Create a new branch (DC only)",
 		Long: `Create a new branch in a Bitbucket Data Center repository.
 
 The --from flag is required and specifies the branch or commit to use as the
@@ -294,7 +294,7 @@ func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete <branch>",
 		Aliases: []string{"rm"},
-		Short:   "Delete a branch",
+		Short:   "Delete a branch (DC only)",
 		Long: `Delete a branch from a Bitbucket Data Center repository.
 
 Use --dry-run to validate that the branch can be deleted without actually
@@ -368,7 +368,7 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *delete
 func newSetDefaultCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set-default <branch>",
-		Short: "Set the default branch",
+		Short: "Set the default branch (DC only)",
 		Long: `Set the default branch for a Bitbucket Data Center repository.
 
 The default branch is the one shown by default when browsing the repository

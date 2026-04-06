@@ -24,7 +24,7 @@ func newSuggestionCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &suggestionOptions{}
 	cmd := &cobra.Command{
 		Use:   "suggestion <id> <comment-id> <suggestion-id>",
-		Short: "Apply or preview a code suggestion",
+		Short: "Apply or preview a code suggestion (DC only)",
 		Long: `Apply or preview a code suggestion attached to a pull request comment. By
 default, the suggestion is applied directly. Use --preview to see the
 suggested change without applying it.

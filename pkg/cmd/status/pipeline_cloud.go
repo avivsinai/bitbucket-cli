@@ -21,7 +21,7 @@ func newCloudPipelineCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &cloudStatusOptions{}
 	cmd := &cobra.Command{
 		Use:   "pipeline <uuid>",
-		Short: "Show Bitbucket Cloud pipeline status",
+		Short: "Show Bitbucket Cloud pipeline status (Cloud only)",
 		Long: `Display the status of a Bitbucket Cloud Pipelines run identified by its UUID.
 The output includes the pipeline state, result, target ref, creation and
 completion timestamps, and a breakdown of individual steps with their names

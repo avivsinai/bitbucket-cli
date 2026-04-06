@@ -46,7 +46,7 @@ pipeline runs, and API rate-limit telemetry.`,
 func newCommitCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "commit <sha>",
-		Short: "Show the build statuses for a commit",
+		Short: "Show the build statuses for a commit (DC only)",
 		Long: `Display the CI/build statuses reported against a specific commit SHA. Each
 status includes the state (SUCCESSFUL, FAILED, INPROGRESS), the build key,
 name, optional description, and a link to the build.
@@ -114,7 +114,7 @@ func newPullRequestCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &prOptions{}
 	cmd := &cobra.Command{
 		Use:   "pr <id>",
-		Short: "Show the build statuses for a pull request head commit",
+		Short: "Show the build statuses for a pull request head commit (DC only)",
 		Long: `Look up the head (latest) commit of a pull request and display all CI/build
 statuses attached to it. The output includes the pull request title and the
 resolved commit SHA alongside the status details.

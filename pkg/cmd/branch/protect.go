@@ -26,7 +26,7 @@ type protectOptions struct {
 func newProtectCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "protect",
-		Short: "Manage branch protection rules",
+		Short: "Manage branch protection rules (DC only)",
 		Long: `Manage branch protection rules (restrictions) for a Bitbucket Data Center
 repository. Supports listing existing restrictions, adding new ones, and
 removing them by ID.
@@ -56,7 +56,7 @@ func newProtectListCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &protectOptions{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List branch restrictions",
+		Short: "List branch restrictions (DC only)",
 		Long: `List all branch restrictions configured for a Bitbucket Data Center repository.
 
 Each restriction is shown with its ID, type, and the branch matcher it applies
@@ -83,7 +83,7 @@ func newProtectAddCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &protectOptions{}
 	cmd := &cobra.Command{
 		Use:   "add <branch>",
-		Short: "Add a branch restriction",
+		Short: "Add a branch restriction (DC only)",
 		Long: `Add a branch restriction to a Bitbucket Data Center repository.
 
 Available restriction types:
@@ -127,7 +127,7 @@ func newProtectRemoveCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &protectOptions{}
 	cmd := &cobra.Command{
 		Use:   "remove <restriction-id>",
-		Short: "Remove a branch restriction",
+		Short: "Remove a branch restriction (DC only)",
 		Long: `Remove a branch restriction from a Bitbucket Data Center repository by its
 numeric ID. Use "bkt branch protect list" to find restriction IDs.
 

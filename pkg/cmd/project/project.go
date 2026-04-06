@@ -16,7 +16,7 @@ import (
 func NewCmdProject(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
-		Short: "Work with Bitbucket projects",
+		Short: "Work with Bitbucket projects (DC only)",
 		Long: `List and inspect Bitbucket projects. Projects are top-level containers that
 group related repositories.
 
@@ -47,7 +47,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List Bitbucket Data Center projects",
+		Short:   "List Bitbucket Data Center projects (DC only)",
 		Long: `List all projects visible to the authenticated user on a Bitbucket Data Center
 instance. Each project is displayed with its key, name, description, web URL,
 and visibility status. Use --limit to control the number of results returned.
