@@ -4441,3 +4441,317 @@ func TestCreateCommandBodyFlag(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateCloudWithDefaultReviewers(t *testing.T) {
+	tests := []struct {
+		name              string
+		currentUser       map[string]any // response for GET /user
+		explicitReviewers []string
+		defaultReviewers  []map[string]any
+		wantReviewers     []map[string]string
+	}{
+		{
+			name:        "adds default reviewers",
+			currentUser: map[string]any{"username": "me", "uuid": "{me}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{aaa}"}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"username": "alice"},
+				{"username": "bob"},
+			},
+		},
+		{
+			name:        "excludes current user by UUID",
+			currentUser: map[string]any{"username": "alice", "uuid": "{aaa}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{aaa}"}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"username": "bob"},
+			},
+		},
+		{
+			name:        "excludes current user even when host.Username is an email",
+			currentUser: map[string]any{"username": "alice", "uuid": "{aaa}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{aaa}"}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"username": "bob"},
+			},
+		},
+		{
+			name:              "merges with explicit reviewers and deduplicates",
+			currentUser:       map[string]any{"username": "me", "uuid": "{me}"},
+			explicitReviewers: []string{"alice", "charlie"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{aaa}"}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"username": "alice"},
+				{"username": "charlie"},
+				{"username": "bob"},
+			},
+		},
+		{
+			name:             "empty default reviewers",
+			currentUser:      map[string]any{"username": "me", "uuid": "{me}"},
+			defaultReviewers: []map[string]any{},
+			wantReviewers:    nil,
+		},
+		{
+			name:        "all defaults are current user",
+			currentUser: map[string]any{"username": "me", "uuid": "{me}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "me", "uuid": "{me}"}},
+			},
+			wantReviewers: nil,
+		},
+		{
+			name:        "falls back to UUID when username is empty",
+			currentUser: map[string]any{"username": "me", "uuid": "{00000000-0000-0000-0000-000000000001}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "", "uuid": "{00000000-0000-0000-0000-000000000099}"}},
+				{"user": map[string]any{"username": "bob", "uuid": "{00000000-0000-0000-0000-000000000002}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"uuid": "{00000000-0000-0000-0000-000000000099}"},
+				{"username": "bob"},
+			},
+		},
+		{
+			name:              "dedup explicit UUID against default username for same user",
+			currentUser:       map[string]any{"username": "me", "uuid": "{me}"},
+			explicitReviewers: []string{"{00000000-0000-0000-0000-00000000000a}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{00000000-0000-0000-0000-00000000000a}"}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"uuid": "{00000000-0000-0000-0000-00000000000a}"},
+				{"username": "bob"},
+			},
+		},
+		{
+			name:              "dedup bare UUID against braced UUID",
+			currentUser:       map[string]any{"username": "me", "uuid": "{me}"},
+			explicitReviewers: []string{"00000000-0000-0000-0000-00000000000a"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{00000000-0000-0000-0000-00000000000a}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"uuid": "{00000000-0000-0000-0000-00000000000a}"},
+			},
+		},
+		{
+			name:        "skips default reviewer with no username and no UUID",
+			currentUser: map[string]any{"username": "me", "uuid": "{me}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "", "uuid": ""}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"username": "bob"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/user" {
+					_ = json.NewEncoder(w).Encode(tt.currentUser)
+					return
+				}
+				if strings.Contains(r.URL.Path, "effective-default-reviewers") {
+					_ = json.NewEncoder(w).Encode(map[string]any{"values": tt.defaultReviewers})
+					return
+				}
+				if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pullrequests") {
+					_ = json.NewDecoder(r.Body).Decode(&gotBody)
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "test"})
+					return
+				}
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "cloud",
+						Workspace:   "ws",
+						DefaultRepo: "repo",
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {
+						Kind:     "cloud",
+						BaseURL:  server.URL,
+						Username: "alice@example.com",
+						Token:    "test-token",
+					},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			args := []string{"--title", "Test PR", "--source", "feat", "--target", "main", "--with-default-reviewers"}
+			for _, r := range tt.explicitReviewers {
+				args = append(args, "--reviewer", r)
+			}
+
+			cmd := newCreateCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(args)
+
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			gotReviewers, _ := gotBody["reviewers"].([]any)
+			if len(tt.wantReviewers) == 0 {
+				if len(gotReviewers) != 0 {
+					t.Errorf("expected no reviewers, got %v", gotReviewers)
+				}
+				return
+			}
+
+			if len(gotReviewers) != len(tt.wantReviewers) {
+				t.Fatalf("expected %d reviewers, got %d: %v", len(tt.wantReviewers), len(gotReviewers), gotReviewers)
+			}
+			for i, want := range tt.wantReviewers {
+				got, ok := gotReviewers[i].(map[string]any)
+				if !ok {
+					t.Fatalf("reviewer[%d] is not a map", i)
+				}
+				for k, v := range want {
+					if got[k] != v {
+						t.Errorf("reviewer[%d][%q] = %v, want %v", i, k, got[k], v)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCreateCloudWithDefaultReviewersAPIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/user" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"username": "me", "uuid": "{me}"})
+			return
+		}
+		if strings.Contains(r.URL.Path, "effective-default-reviewers") {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "cloud",
+				Workspace:   "ws",
+				DefaultRepo: "repo",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {
+				Kind:     "cloud",
+				BaseURL:  server.URL,
+				Username: "me",
+				Token:    "test-token",
+			},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newCreateCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--title", "Test", "--source", "feat", "--target", "main", "--with-default-reviewers"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when API fails")
+	}
+	if !strings.Contains(err.Error(), "fetching default reviewers") {
+		t.Errorf("error = %q, want it to contain 'fetching default reviewers'", err.Error())
+	}
+}
+
+func TestCreateCloudWithDefaultReviewersCurrentUserError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "cloud",
+				Workspace:   "ws",
+				DefaultRepo: "repo",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {
+				Kind:     "cloud",
+				BaseURL:  server.URL,
+				Username: "me",
+				Token:    "bad-token",
+			},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newCreateCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--title", "Test", "--source", "feat", "--target", "main", "--with-default-reviewers"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when CurrentUser fails")
+	}
+	if !strings.Contains(err.Error(), "resolving current user") {
+		t.Errorf("error = %q, want it to contain 'resolving current user'", err.Error())
+	}
+}

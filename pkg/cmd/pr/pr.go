@@ -679,6 +679,50 @@ func mergeReviewers[T any](explicit []string, defaults []T, nameFunc func(T) str
 	return merged
 }
 
+// mergeCloudReviewers combines explicit reviewer strings with default reviewer
+// users for Bitbucket Cloud, deduplicating across username and UUID formats.
+// A default reviewer is skipped if any explicit entry matches by username or
+// by normalized UUID. Defaults without a username are identified by UUID.
+func mergeCloudReviewers(explicit []string, defaults []bbcloud.User) []string {
+	seen := make(map[string]bool, len(explicit)+len(defaults))
+	var merged []string
+
+	for _, r := range explicit {
+		key := normalizeReviewerKey(r)
+		if key != "" && !seen[key] {
+			seen[key] = true
+			merged = append(merged, r)
+		}
+	}
+
+	for _, u := range defaults {
+		uuidKey := ""
+		if u.UUID != "" {
+			uuidKey = bbcloud.NormalizeUUID(u.UUID)
+		}
+		if (u.Username != "" && seen[u.Username]) || (uuidKey != "" && seen[uuidKey]) {
+			continue
+		}
+		id := u.Username
+		if id == "" {
+			id = uuidKey
+		}
+		if id == "" {
+			continue
+		}
+		seen[id] = true
+		if uuidKey != "" {
+			seen[uuidKey] = true
+		}
+		if u.Username != "" {
+			seen[u.Username] = true
+		}
+		merged = append(merged, id)
+	}
+
+	return merged
+}
+
 // normalizeReviewerKey returns a canonical key for overlap/dedup checks.
 // Cloud UUIDs (bare or braced) are normalized to braced form; everything
 // else is returned as-is.
@@ -844,9 +888,9 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 and the target branch defaults to the remote's default branch (e.g. main).
 The title defaults to the first unique commit subject on the source branch.
 
-Reviewers can be added with repeatable --reviewer flags. On Data Center,
+Reviewers can be added with repeatable --reviewer flags.
 --with-default-reviewers merges the repository's configured default reviewers
-into the reviewer list (not yet supported on Cloud).
+into the reviewer list. On Cloud, the current user is automatically excluded.
 
 Draft pull requests are supported on Cloud (always) and on Data Center 8.18+
 via the --draft flag.`,
@@ -886,7 +930,7 @@ via the --draft flag.`,
 	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (defaults to the remote's default branch)")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
-	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers (Data Center only)")
+	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers")
 	cmd.Flags().BoolVarP(&opts.Draft, "draft", "d", false, "Create pull request as a draft (DC 8.18+, Cloud always supported)")
 
 	return cmd
@@ -975,8 +1019,26 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
+		reviewers := opts.Reviewers
 		if opts.WithDefaultReviewers {
-			return fmt.Errorf("--with-default-reviewers is not yet supported for Bitbucket Cloud (see https://github.com/avivsinai/bitbucket-cli/issues/67)")
+			me, err := client.CurrentUser(ctx)
+			if err != nil {
+				return fmt.Errorf("resolving current user: %w", err)
+			}
+			defaultUsers, err := client.GetEffectiveDefaultReviewers(ctx, workspace, repoSlug)
+			if err != nil {
+				return fmt.Errorf("fetching default reviewers: %w", err)
+			}
+			// Filter out the current user — Bitbucket Cloud rejects PRs where
+			// the author is listed as a reviewer. Compare by UUID because
+			// host.Username may be an email and User.Username can be empty.
+			var filtered []bbcloud.User
+			for _, u := range defaultUsers {
+				if u.UUID != me.UUID {
+					filtered = append(filtered, u)
+				}
+			}
+			reviewers = mergeCloudReviewers(reviewers, filtered)
 		}
 
 		pr, err := client.CreatePullRequest(ctx, workspace, repoSlug, bbcloud.CreatePullRequestInput{
@@ -985,7 +1047,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			Source:      opts.Source,
 			Destination: opts.Target,
 			CloseSource: opts.CloseSource,
-			Reviewers:   opts.Reviewers,
+			Reviewers:   reviewers,
 			Draft:       opts.Draft,
 		})
 		if err != nil {
