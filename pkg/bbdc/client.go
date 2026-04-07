@@ -15,6 +15,7 @@ type Options struct {
 	BaseURL     string
 	Username    string
 	Token       string
+	AuthMethod  string // "basic" (default) or "bearer"
 	EnableCache bool
 	Retry       httpx.RetryPolicy
 }
@@ -39,6 +40,7 @@ func New(opts Options) (*Client, error) {
 		BaseURL:     opts.BaseURL,
 		Username:    opts.Username,
 		Password:    opts.Token,
+		AuthMethod:  opts.AuthMethod,
 		UserAgent:   "bkt-cli",
 		EnableCache: opts.EnableCache,
 		Retry:       opts.Retry,
