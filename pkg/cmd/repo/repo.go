@@ -112,9 +112,10 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		projectKey = strings.ToUpper(projectKey)
 
 		client, err := bbdc.New(bbdc.Options{
-			BaseURL:  host.BaseURL,
-			Username: host.Username,
-			Token:    host.Token,
+			BaseURL:    host.BaseURL,
+			Username:   host.Username,
+			Token:      host.Token,
+			AuthMethod: host.AuthMethod,
 		})
 		if err != nil {
 			return err
@@ -344,9 +345,10 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		}
 
 		client, err := bbdc.New(bbdc.Options{
-			BaseURL:  host.BaseURL,
-			Username: host.Username,
-			Token:    host.Token,
+			BaseURL:    host.BaseURL,
+			Username:   host.Username,
+			Token:      host.Token,
+			AuthMethod: host.AuthMethod,
 		})
 		if err != nil {
 			return err

@@ -86,9 +86,10 @@ func runCommit(cmd *cobra.Command, f *cmdutil.Factory, sha string) error {
 	}
 
 	client, err := bbdc.New(bbdc.Options{
-		BaseURL:  host.BaseURL,
-		Username: host.Username,
-		Token:    host.Token,
+		BaseURL:    host.BaseURL,
+		Username:   host.Username,
+		Token:      host.Token,
+		AuthMethod: host.AuthMethod,
 	})
 	if err != nil {
 		return err
@@ -178,9 +179,10 @@ func runPullRequest(cmd *cobra.Command, f *cmdutil.Factory, prID int, opts *prOp
 	}
 
 	client, err := bbdc.New(bbdc.Options{
-		BaseURL:  host.BaseURL,
-		Username: host.Username,
-		Token:    host.Token,
+		BaseURL:    host.BaseURL,
+		Username:   host.Username,
+		Token:      host.Token,
+		AuthMethod: host.AuthMethod,
 	})
 	if err != nil {
 		return err
