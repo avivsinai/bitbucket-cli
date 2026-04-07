@@ -363,9 +363,9 @@ func TestNormalizeUUID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := normalizeUUID(tt.input)
+			got := NormalizeUUID(tt.input)
 			if got != tt.expected {
-				t.Errorf("normalizeUUID(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("NormalizeUUID(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}
@@ -392,9 +392,9 @@ func TestLooksLikeUUID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := looksLikeUUID(tt.input)
+			got := LooksLikeUUID(tt.input)
 			if got != tt.want {
-				t.Errorf("looksLikeUUID(%q) = %v, want %v", tt.input, got, tt.want)
+				t.Errorf("LooksLikeUUID(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
 	}

@@ -120,8 +120,8 @@ type Pipeline struct {
 	CompletedOn string `json:"completed_on"`
 }
 
-// normalizeUUID ensures a UUID has curly braces, as required by Bitbucket Cloud API.
-func normalizeUUID(uuid string) string {
+// NormalizeUUID ensures a UUID has curly braces, as required by Bitbucket Cloud API.
+func NormalizeUUID(uuid string) string {
 	uuid = strings.Trim(uuid, "{}")
 	return "{" + uuid + "}"
 }
@@ -130,10 +130,10 @@ func normalizeUUID(uuid string) string {
 // or fully wrapped in curly braces. Half-braced inputs are rejected.
 var uuidPattern = regexp.MustCompile(`^(?:\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$`)
 
-// looksLikeUUID returns true if s is a canonical UUID, optionally wrapped in
+// LooksLikeUUID returns true if s is a canonical UUID, optionally wrapped in
 // curly braces. Bitbucket Cloud usernames contain alphanumerics, underscores,
 // and dots, so they never match this pattern.
-func looksLikeUUID(s string) bool {
+func LooksLikeUUID(s string) bool {
 	return uuidPattern.MatchString(strings.TrimSpace(s))
 }
 
@@ -388,7 +388,7 @@ func (c *Client) GetPipeline(ctx context.Context, workspace, repoSlug, uuid stri
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(normalizeUUID(uuid)),
+		url.PathEscape(NormalizeUUID(uuid)),
 	)
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)
 	if err != nil {
@@ -447,7 +447,7 @@ func (c *Client) ListPipelineSteps(ctx context.Context, workspace, repoSlug, pip
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(normalizeUUID(pipelineUUID)),
+		url.PathEscape(NormalizeUUID(pipelineUUID)),
 	)
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)
 	if err != nil {
@@ -479,8 +479,8 @@ func (c *Client) GetPipelineLogs(ctx context.Context, workspace, repoSlug, pipel
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/%s/log",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(normalizeUUID(pipelineUUID)),
-		url.PathEscape(normalizeUUID(stepUUID)),
+		url.PathEscape(NormalizeUUID(pipelineUUID)),
+		url.PathEscape(NormalizeUUID(stepUUID)),
 	)
 
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)

@@ -56,7 +56,8 @@ type PullRequest struct {
 			Href string `json:"href"`
 		} `json:"html"`
 	} `json:"links"`
-	Summary struct {
+	Reviewers []User `json:"reviewers"`
+	Summary   struct {
 		Raw string `json:"raw"`
 	} `json:"summary"`
 }
@@ -236,8 +237,8 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if len(input.Reviewers) > 0 {
 		var reviewers []map[string]string
 		for _, reviewer := range input.Reviewers {
-			if looksLikeUUID(reviewer) {
-				reviewers = append(reviewers, map[string]string{"uuid": normalizeUUID(reviewer)})
+			if LooksLikeUUID(reviewer) {
+				reviewers = append(reviewers, map[string]string{"uuid": NormalizeUUID(reviewer)})
 			} else {
 				reviewers = append(reviewers, map[string]string{"username": reviewer})
 			}
@@ -317,6 +318,9 @@ type UpdatePullRequestInput struct {
 	Title       *string
 	Description *string
 	Draft       *bool
+	// Reviewers sets the PR reviewer list. nil = don't change; non-nil = replace
+	// with this list (empty slice clears all reviewers).
+	Reviewers []string
 }
 
 // UpdatePullRequest updates an existing pull request's title and/or description.
@@ -335,9 +339,20 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if input.Draft != nil {
 		body["draft"] = *input.Draft
 	}
+	if input.Reviewers != nil {
+		reviewers := make([]map[string]string, 0, len(input.Reviewers))
+		for _, reviewer := range input.Reviewers {
+			if LooksLikeUUID(reviewer) {
+				reviewers = append(reviewers, map[string]string{"uuid": NormalizeUUID(reviewer)})
+			} else {
+				reviewers = append(reviewers, map[string]string{"username": reviewer})
+			}
+		}
+		body["reviewers"] = reviewers
+	}
 
 	if len(body) == 0 {
-		return nil, fmt.Errorf("at least one field (title, description, or draft) must be provided")
+		return nil, fmt.Errorf("at least one field must be provided")
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d",

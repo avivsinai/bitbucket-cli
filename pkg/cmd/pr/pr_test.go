@@ -2006,7 +2006,7 @@ func TestEditCommandArgumentParsing(t *testing.T) {
 		{
 			name:          "no flags",
 			args:          []string{"123"},
-			errorContains: "at least one of --title, --body, or --description is required",
+			errorContains: "at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required",
 		},
 		{
 			name:          "both body and description",
@@ -2466,6 +2466,616 @@ func TestRunEditCloud(t *testing.T) {
 				if !strings.Contains(output, expected) {
 					t.Errorf("expected output to contain %q, got:\n%s", expected, output)
 				}
+			}
+		})
+	}
+}
+
+func TestReviewerOverlap(t *testing.T) {
+	tests := []struct {
+		name   string
+		add    []string
+		remove []string
+		want   string
+	}{
+		{name: "no overlap", add: []string{"alice"}, remove: []string{"bob"}, want: ""},
+		{name: "overlap", add: []string{"alice", "bob"}, remove: []string{"bob"}, want: "bob"},
+		{name: "both empty", add: nil, remove: nil, want: ""},
+		{name: "add only", add: []string{"alice"}, remove: nil, want: ""},
+		{name: "remove only", add: nil, remove: []string{"alice"}, want: ""},
+		{name: "bare uuid vs braced uuid", add: []string{"550e8400-e29b-41d4-a716-446655440000"}, remove: []string{"{550e8400-e29b-41d4-a716-446655440000}"}, want: "{550e8400-e29b-41d4-a716-446655440000}"},
+		{name: "braced uuid vs braced uuid", add: []string{"{550e8400-e29b-41d4-a716-446655440000}"}, remove: []string{"{550e8400-e29b-41d4-a716-446655440000}"}, want: "{550e8400-e29b-41d4-a716-446655440000}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := reviewerOverlap(tt.add, tt.remove)
+			if got != tt.want {
+				t.Errorf("reviewerOverlap(%v, %v) = %q, want %q", tt.add, tt.remove, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEditDCReviewers(t *testing.T) {
+	tests := []struct {
+		name        string
+		current     []bbdc.PullRequestReviewer
+		add         []string
+		remove      []string
+		wantNames   []string
+		wantWarning string
+	}{
+		{
+			name: "add reviewer",
+			current: []bbdc.PullRequestReviewer{
+				{User: bbdc.User{Name: "alice"}},
+			},
+			add:       []string{"bob"},
+			wantNames: []string{"alice", "bob"},
+		},
+		{
+			name: "remove reviewer",
+			current: []bbdc.PullRequestReviewer{
+				{User: bbdc.User{Name: "alice"}},
+				{User: bbdc.User{Name: "bob"}},
+			},
+			remove:    []string{"bob"},
+			wantNames: []string{"alice"},
+		},
+		{
+			name: "add and remove",
+			current: []bbdc.PullRequestReviewer{
+				{User: bbdc.User{Name: "alice"}},
+				{User: bbdc.User{Name: "bob"}},
+			},
+			add:       []string{"charlie"},
+			remove:    []string{"bob"},
+			wantNames: []string{"alice", "charlie"},
+		},
+		{
+			name: "add already present warns",
+			current: []bbdc.PullRequestReviewer{
+				{User: bbdc.User{Name: "alice"}},
+			},
+			add:         []string{"alice"},
+			wantNames:   []string{"alice"},
+			wantWarning: `warning: reviewer "alice" is already on this pull request`,
+		},
+		{
+			name:        "remove not present warns",
+			current:     []bbdc.PullRequestReviewer{},
+			remove:      []string{"alice"},
+			wantNames:   nil,
+			wantWarning: `warning: reviewer "alice" is not on this pull request`,
+		},
+		{
+			name:      "remove all reviewers",
+			current:   []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "alice"}}},
+			remove:    []string{"alice"},
+			wantNames: nil,
+		},
+		{
+			name:        "duplicate add deduplicates",
+			current:     []bbdc.PullRequestReviewer{},
+			add:         []string{"bob", "bob"},
+			wantNames:   []string{"bob"},
+			wantWarning: `warning: reviewer "bob" is already on this pull request`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var errBuf strings.Builder
+			got := editDCReviewers(&errBuf, tt.current, tt.add, tt.remove)
+
+			var gotNames []string
+			for _, r := range got {
+				gotNames = append(gotNames, r.User.Name)
+			}
+			if len(gotNames) != len(tt.wantNames) {
+				t.Fatalf("got reviewers %v, want %v", gotNames, tt.wantNames)
+			}
+			for i, name := range gotNames {
+				if name != tt.wantNames[i] {
+					t.Errorf("reviewer[%d] = %q, want %q", i, name, tt.wantNames[i])
+				}
+			}
+
+			if tt.wantWarning != "" && !strings.Contains(errBuf.String(), tt.wantWarning) {
+				t.Errorf("expected warning containing %q, got %q", tt.wantWarning, errBuf.String())
+			}
+			if tt.wantWarning == "" && errBuf.String() != "" {
+				t.Errorf("expected no warnings, got %q", errBuf.String())
+			}
+		})
+	}
+}
+
+func TestEditCloudReviewers(t *testing.T) {
+	const (
+		aliceUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+		bobUUID   = "{660e8400-e29b-41d4-a716-446655440000}"
+	)
+	tests := []struct {
+		name        string
+		current     []bbcloud.User
+		add         []string
+		remove      []string
+		want        []string
+		wantWarning string
+		wantErr     string
+	}{
+		{
+			name:    "add reviewer by username",
+			current: []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			add:     []string{"bob"},
+			want:    []string{aliceUUID, "bob"},
+		},
+		{
+			name: "remove reviewer by username",
+			current: []bbcloud.User{
+				{UUID: aliceUUID, Username: "alice"},
+				{UUID: bobUUID, Username: "bob"},
+			},
+			remove: []string{"bob"},
+			want:   []string{aliceUUID},
+		},
+		{
+			name:    "remove last reviewer returns empty slice",
+			current: []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			remove:  []string{aliceUUID},
+			want:    []string{},
+		},
+		{
+			name:        "add already present warns",
+			current:     []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			add:         []string{"alice"},
+			want:        []string{aliceUUID},
+			wantWarning: `warning: reviewer "alice" is already on this pull request`,
+		},
+		{
+			name:        "remove not present warns",
+			current:     []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			remove:      []string{"bob"},
+			want:        []string{aliceUUID},
+			wantWarning: `warning: reviewer "bob" is not on this pull request`,
+		},
+		{
+			name:    "add and remove",
+			current: []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			add:     []string{"charlie"},
+			remove:  []string{"alice"},
+			want:    []string{"charlie"},
+		},
+		{
+			name:    "cross-identity overlap errors",
+			current: []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			add:     []string{"alice"},
+			remove:  []string{aliceUUID},
+			wantErr: "cannot be in both flags",
+		},
+		{
+			name:        "duplicate add deduplicates",
+			current:     []bbcloud.User{},
+			add:         []string{"bob", "bob"},
+			want:        []string{"bob"},
+			wantWarning: `warning: reviewer "bob" is already on this pull request`,
+		},
+		{
+			name:        "duplicate add by uuid deduplicates",
+			current:     []bbcloud.User{},
+			add:         []string{aliceUUID, aliceUUID},
+			want:        []string{aliceUUID},
+			wantWarning: `warning: reviewer "` + aliceUUID + `" is already on this pull request`,
+		},
+		{
+			name:    "cross-identity overlap uuid-only user uses uuid in error",
+			current: []bbcloud.User{{UUID: aliceUUID}},
+			add:     []string{"550e8400-e29b-41d4-a716-446655440000"},
+			remove:  []string{aliceUUID},
+			wantErr: aliceUUID,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var errBuf strings.Builder
+			got, err := editCloudReviewers(&errBuf, tt.current, tt.add, tt.remove)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i, v := range got {
+				if v != tt.want[i] {
+					t.Errorf("result[%d] = %q, want %q", i, v, tt.want[i])
+				}
+			}
+
+			if tt.wantWarning != "" && !strings.Contains(errBuf.String(), tt.wantWarning) {
+				t.Errorf("expected warning containing %q, got %q", tt.wantWarning, errBuf.String())
+			}
+			if tt.wantWarning == "" && errBuf.String() != "" {
+				t.Errorf("expected no warnings, got %q", errBuf.String())
+			}
+		})
+	}
+}
+
+func TestEditCommandReviewerArgumentParsing(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		errorContains string
+	}{
+		{
+			name:          "reviewer only is valid",
+			args:          []string{"123", "--reviewer", "alice"},
+			errorContains: "", // no error expected
+		},
+		{
+			name:          "remove-reviewer only is valid",
+			args:          []string{"123", "--remove-reviewer", "alice"},
+			errorContains: "",
+		},
+		{
+			name:          "overlap errors",
+			args:          []string{"123", "--reviewer", "alice", "--remove-reviewer", "alice"},
+			errorContains: `reviewer "alice" cannot be in both --reviewer and --remove-reviewer`,
+		},
+		{
+			name:          "no flags at all",
+			args:          []string{"123"},
+			errorContains: "at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			needsServer := tt.errorContains == ""
+			var server *httptest.Server
+			if needsServer {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					pr := bbdc.PullRequest{
+						ID: 123, Title: "Title", Version: 1,
+						FromRef: bbdc.Ref{ID: "refs/heads/feature", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+						ToRef:   bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+					}
+					_ = json.NewEncoder(w).Encode(pr)
+				}))
+				defer server.Close()
+			}
+
+			baseURL := "https://unused.example.com"
+			if needsServer {
+				baseURL = server.URL
+			}
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: baseURL, Token: "test-token"},
+				},
+			}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+
+			err := cmd.Execute()
+
+			if tt.errorContains == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.errorContains)
+				}
+				if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Fatalf("expected error containing %q, got %q", tt.errorContains, err.Error())
+				}
+			}
+		})
+	}
+}
+
+func TestRunEditDataCenterReviewers(t *testing.T) {
+	tests := []struct {
+		name            string
+		reviewers       []string
+		removeReviewers []string
+		prResponse      bbdc.PullRequest
+		putBodyCheck    func(t *testing.T, body map[string]any)
+		stderrContains  string
+	}{
+		{
+			name:      "add reviewer",
+			reviewers: []string{"charlie"},
+			prResponse: bbdc.PullRequest{
+				ID: 1, Title: "PR", Version: 1,
+				Reviewers: []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "alice"}}},
+				FromRef:   bbdc.Ref{ID: "refs/heads/f", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:     bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type in PUT body")
+				}
+				if len(reviewers) != 2 {
+					t.Fatalf("expected 2 reviewers, got %d", len(reviewers))
+				}
+			},
+		},
+		{
+			name:            "remove reviewer",
+			removeReviewers: []string{"alice"},
+			prResponse: bbdc.PullRequest{
+				ID: 1, Title: "PR", Version: 1,
+				Reviewers: []bbdc.PullRequestReviewer{
+					{User: bbdc.User{Name: "alice"}},
+					{User: bbdc.User{Name: "bob"}},
+				},
+				FromRef: bbdc.Ref{ID: "refs/heads/f", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:   bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type in PUT body")
+				}
+				if len(reviewers) != 1 {
+					t.Fatalf("expected 1 reviewer, got %d", len(reviewers))
+				}
+			},
+		},
+		{
+			name:      "add already present warns",
+			reviewers: []string{"alice"},
+			prResponse: bbdc.PullRequest{
+				ID: 1, Title: "PR", Version: 1,
+				Reviewers: []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "alice"}}},
+				FromRef:   bbdc.Ref{ID: "refs/heads/f", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:     bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers := body["reviewers"].([]any)
+				if len(reviewers) != 1 {
+					t.Fatalf("expected 1 reviewer (no duplicate), got %d", len(reviewers))
+				}
+			},
+			stderrContains: "already on this pull request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var putBody map[string]any
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "GET" {
+					_ = json.NewEncoder(w).Encode(tt.prResponse)
+					return
+				}
+				if r.Method == "PUT" {
+					_ = json.NewDecoder(r.Body).Decode(&putBody)
+					resp := tt.prResponse
+					resp.Version++
+					_ = json.NewEncoder(w).Encode(resp)
+					return
+				}
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			stderr := &strings.Builder{}
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: stderr},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+
+			args := []string{"1"}
+			for _, r := range tt.reviewers {
+				args = append(args, "--reviewer", r)
+			}
+			for _, r := range tt.removeReviewers {
+				args = append(args, "--remove-reviewer", r)
+			}
+			cmd.SetArgs(args)
+			cmd.SetContext(context.Background())
+
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.putBodyCheck != nil && putBody != nil {
+				tt.putBodyCheck(t, putBody)
+			}
+
+			if tt.stderrContains != "" && !strings.Contains(stderr.String(), tt.stderrContains) {
+				t.Errorf("expected stderr containing %q, got %q", tt.stderrContains, stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunEditCloudReviewers(t *testing.T) {
+	const (
+		aliceUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+		bobUUID   = "{660e8400-e29b-41d4-a716-446655440000}"
+	)
+	tests := []struct {
+		name            string
+		reviewers       []string
+		removeReviewers []string
+		prResponse      bbcloud.PullRequest
+		putBodyCheck    func(t *testing.T, body map[string]any)
+		stderrContains  string
+	}{
+		{
+			name:      "add reviewer by username",
+			reviewers: []string{"bob"},
+			prResponse: bbcloud.PullRequest{
+				ID:        1,
+				Title:     "PR",
+				Reviewers: []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type")
+				}
+				if len(reviewers) != 2 {
+					t.Fatalf("expected 2 reviewers, got %d", len(reviewers))
+				}
+				// Second reviewer should be added by username
+				r1 := reviewers[1].(map[string]any)
+				if r1["username"] != "bob" {
+					t.Errorf("expected second reviewer username 'bob', got %v", r1)
+				}
+			},
+		},
+		{
+			name:            "remove reviewer by username",
+			removeReviewers: []string{"alice"},
+			prResponse: bbcloud.PullRequest{
+				ID:    1,
+				Title: "PR",
+				Reviewers: []bbcloud.User{
+					{UUID: aliceUUID, Username: "alice"},
+					{UUID: bobUUID, Username: "bob"},
+				},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers := body["reviewers"].([]any)
+				if len(reviewers) != 1 {
+					t.Fatalf("expected 1 reviewer, got %d", len(reviewers))
+				}
+			},
+		},
+		{
+			name:      "add already present warns",
+			reviewers: []string{"alice"},
+			prResponse: bbcloud.PullRequest{
+				ID:        1,
+				Title:     "PR",
+				Reviewers: []bbcloud.User{{UUID: aliceUUID, Username: "alice"}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers := body["reviewers"].([]any)
+				if len(reviewers) != 1 {
+					t.Fatalf("expected 1 reviewer (no duplicate), got %d", len(reviewers))
+				}
+			},
+			stderrContains: "already on this pull request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var putBody map[string]any
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "GET" {
+					_ = json.NewEncoder(w).Encode(tt.prResponse)
+					return
+				}
+				if r.Method == "PUT" {
+					_ = json.NewDecoder(r.Body).Decode(&putBody)
+					_ = json.NewEncoder(w).Encode(tt.prResponse)
+					return
+				}
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+				},
+			}
+
+			stdout := &strings.Builder{}
+			stderr := &strings.Builder{}
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: stderr},
+				Config:         func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+
+			args := []string{"1"}
+			for _, r := range tt.reviewers {
+				args = append(args, "--reviewer", r)
+			}
+			for _, r := range tt.removeReviewers {
+				args = append(args, "--remove-reviewer", r)
+			}
+			cmd.SetArgs(args)
+			cmd.SetContext(context.Background())
+
+			err := cmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.putBodyCheck != nil && putBody != nil {
+				tt.putBodyCheck(t, putBody)
+			}
+
+			if tt.stderrContains != "" && !strings.Contains(stderr.String(), tt.stderrContains) {
+				t.Errorf("expected stderr containing %q, got %q", tt.stderrContains, stderr.String())
 			}
 		})
 	}
