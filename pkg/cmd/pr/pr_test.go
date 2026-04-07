@@ -4524,6 +4524,30 @@ func TestCreateCloudWithDefaultReviewers(t *testing.T) {
 				{"username": "bob"},
 			},
 		},
+		{
+			name:              "dedup explicit UUID against default username for same user",
+			currentUser:       map[string]any{"username": "me", "uuid": "{me}"},
+			explicitReviewers: []string{"{00000000-0000-0000-0000-00000000000a}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{00000000-0000-0000-0000-00000000000a}"}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"uuid": "{00000000-0000-0000-0000-00000000000a}"},
+				{"username": "bob"},
+			},
+		},
+		{
+			name:              "dedup bare UUID against braced UUID",
+			currentUser:       map[string]any{"username": "me", "uuid": "{me}"},
+			explicitReviewers: []string{"00000000-0000-0000-0000-00000000000a"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": "{00000000-0000-0000-0000-00000000000a}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"uuid": "{00000000-0000-0000-0000-00000000000a}"},
+			},
+		},
 	}
 
 	for _, tt := range tests {

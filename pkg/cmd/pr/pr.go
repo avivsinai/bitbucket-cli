@@ -676,6 +676,50 @@ func mergeReviewers[T any](explicit []string, defaults []T, nameFunc func(T) str
 	return merged
 }
 
+// mergeCloudReviewers combines explicit reviewer strings with default reviewer
+// users for Bitbucket Cloud, deduplicating across username and UUID formats.
+// A default reviewer is skipped if any explicit entry matches by username or
+// by normalized UUID. Defaults without a username are identified by UUID.
+func mergeCloudReviewers(explicit []string, defaults []bbcloud.User) []string {
+	seen := make(map[string]bool, len(explicit)+len(defaults))
+	var merged []string
+
+	for _, r := range explicit {
+		key := normalizeReviewerKey(r)
+		if key != "" && !seen[key] {
+			seen[key] = true
+			merged = append(merged, r)
+		}
+	}
+
+	for _, u := range defaults {
+		uuidKey := ""
+		if u.UUID != "" {
+			uuidKey = bbcloud.NormalizeUUID(u.UUID)
+		}
+		if (u.Username != "" && seen[u.Username]) || (uuidKey != "" && seen[uuidKey]) {
+			continue
+		}
+		id := u.Username
+		if id == "" {
+			id = uuidKey
+		}
+		if id == "" {
+			continue
+		}
+		seen[id] = true
+		if uuidKey != "" {
+			seen[uuidKey] = true
+		}
+		if u.Username != "" {
+			seen[u.Username] = true
+		}
+		merged = append(merged, id)
+	}
+
+	return merged
+}
+
 // normalizeReviewerKey returns a canonical key for overlap/dedup checks.
 // Cloud UUIDs (bare or braced) are normalized to braced form; everything
 // else is returned as-is.
@@ -841,9 +885,9 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 and the target branch defaults to the remote's default branch (e.g. main).
 The title defaults to the first unique commit subject on the source branch.
 
-Reviewers can be added with repeatable --reviewer flags. On Data Center,
+Reviewers can be added with repeatable --reviewer flags.
 --with-default-reviewers merges the repository's configured default reviewers
-into the reviewer list (not yet supported on Cloud).
+into the reviewer list. On Cloud, the current user is automatically excluded.
 
 Draft pull requests are supported on Cloud (always) and on Data Center 8.18+
 via the --draft flag.`,
@@ -991,12 +1035,7 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 					filtered = append(filtered, u)
 				}
 			}
-			reviewers = mergeReviewers(reviewers, filtered, func(u bbcloud.User) string {
-				if u.Username != "" {
-					return u.Username
-				}
-				return u.UUID
-			})
+			reviewers = mergeCloudReviewers(reviewers, filtered)
 		}
 
 		pr, err := client.CreatePullRequest(ctx, workspace, repoSlug, bbcloud.CreatePullRequestInput{
