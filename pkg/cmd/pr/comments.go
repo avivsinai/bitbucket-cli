@@ -132,8 +132,14 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 					return err
 				}
 				if c.Anchor != nil {
-					if _, err := fmt.Fprintf(ios.Out, "%sFile: %s:%d\n", indent, c.Anchor.Path, c.Anchor.Line); err != nil {
-						return err
+					if c.Anchor.Line > 0 {
+						if _, err := fmt.Fprintf(ios.Out, "%sFile: %s:%d\n", indent, c.Anchor.Path, c.Anchor.Line); err != nil {
+							return err
+						}
+					} else {
+						if _, err := fmt.Fprintf(ios.Out, "%sFile: %s\n", indent, c.Anchor.Path); err != nil {
+							return err
+						}
 					}
 				}
 				if kind == "Task" {
@@ -144,8 +150,12 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 					if _, err := fmt.Fprintf(ios.Out, "%sComplete: %s\n", indent, complete); err != nil {
 						return err
 					}
-				} else if c.ThreadResolved {
-					if _, err := fmt.Fprintf(ios.Out, "%sResolved: yes\n", indent); err != nil {
+				} else {
+					resolved := "no"
+					if c.ThreadResolved {
+						resolved = "yes"
+					}
+					if _, err := fmt.Fprintf(ios.Out, "%sResolved: %s\n", indent, resolved); err != nil {
 						return err
 					}
 				}
@@ -234,10 +244,12 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 						return err
 					}
 				}
+				resolved := "no"
 				if c.Resolution != nil {
-					if _, err := fmt.Fprintln(ios.Out, "Resolved: yes"); err != nil {
-						return err
-					}
+					resolved = "yes"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "Resolved: %s\n", resolved); err != nil {
+					return err
 				}
 				if _, err := fmt.Fprintf(ios.Out, "\n%s\n\n", c.Content.Raw); err != nil {
 					return err
