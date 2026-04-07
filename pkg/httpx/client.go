@@ -95,6 +95,9 @@ func New(opts Options) (*Client, error) {
 	if authMethod == "" {
 		authMethod = "basic"
 	}
+	if authMethod != "basic" && authMethod != "bearer" {
+		return nil, fmt.Errorf("unsupported auth method %q; use \"basic\" or \"bearer\"", authMethod)
+	}
 
 	client := &Client{
 		baseURL:    base,

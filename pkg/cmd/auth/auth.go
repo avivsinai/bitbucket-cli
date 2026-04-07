@@ -136,6 +136,9 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 	if authMethod != "basic" && authMethod != "bearer" {
 		return fmt.Errorf("unsupported auth method %q; use \"basic\" or \"bearer\"", authMethod)
 	}
+	if kind == "cloud" && authMethod != "basic" {
+		return fmt.Errorf("--auth-method is only supported for Data Center hosts")
+	}
 
 	cfg, err := f.ResolveConfig()
 	if err != nil {
@@ -169,9 +172,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			}
 		}
 
-		if authMethod == "bearer" {
-			// Bearer auth uses only the token; no username needed.
-		} else {
+		if authMethod != "bearer" {
 			if opts.Username == "" {
 				if !isTerminal(ios.In) {
 					return fmt.Errorf("username is required when not running in a TTY")
@@ -206,21 +207,30 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 		defer cancel()
 
-		// For bearer auth without a username, verify by calling the application properties endpoint.
+		// Verify credentials by fetching user info from an authenticated endpoint.
+		// /rest/api/1.0/users?limit=1 requires authentication, unlike /application-properties.
+		var displayName string
 		if authMethod == "bearer" && opts.Username == "" {
-			req, reqErr := client.HTTP().NewRequest(ctx, "GET", "/rest/api/1.0/application-properties", nil)
+			var result struct {
+				Values []struct {
+					Name        string `json:"name"`
+					DisplayName string `json:"displayName"`
+				} `json:"values"`
+			}
+			req, reqErr := client.HTTP().NewRequest(ctx, "GET", "/rest/api/1.0/users?limit=1", nil)
 			if reqErr != nil {
 				return fmt.Errorf("verify credentials: %w", reqErr)
 			}
-			if doErr := client.HTTP().Do(req, &struct{}{}); doErr != nil {
+			if doErr := client.HTTP().Do(req, &result); doErr != nil {
 				return fmt.Errorf("verify credentials: %w", doErr)
 			}
+			displayName = "bearer token"
 		} else {
 			user, userErr := client.CurrentUser(ctx, opts.Username)
 			if userErr != nil {
 				return fmt.Errorf("verify credentials: %w", userErr)
 			}
-			_ = user
+			displayName = cmdutil.FirstNonEmpty(user.FullName, user.Name, opts.Username)
 		}
 
 		if err := storeHostToken(hostKey, opts.Token, opts.AllowInsecureStore); err != nil {
@@ -239,14 +249,8 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			return err
 		}
 
-		if authMethod == "bearer" && opts.Username == "" {
-			if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to %s using bearer token\n", baseURL); err != nil {
-				return err
-			}
-		} else {
-			if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to %s as %s\n", baseURL, opts.Username); err != nil {
-				return err
-			}
+		if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to %s as %s\n", baseURL, displayName); err != nil {
+			return err
 		}
 	case "cloud":
 		if opts.Web && isTerminal(ios.In) {

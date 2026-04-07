@@ -136,7 +136,10 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			return err
 		}
 
-		if opts.Mine && host.Username != "" {
+		if opts.Mine {
+			if host.Username == "" {
+				return fmt.Errorf("--mine requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)")
+			}
 			filtered := prs[:0]
 			current := strings.ToLower(host.Username)
 			for _, pr := range prs {

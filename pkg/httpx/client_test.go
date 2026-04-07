@@ -663,6 +663,16 @@ func TestNewRequiresScheme(t *testing.T) {
 	}
 }
 
+func TestNewRejectsUnsupportedAuthMethod(t *testing.T) {
+	_, err := New(Options{BaseURL: "https://example.com", AuthMethod: "oauth"})
+	if err == nil {
+		t.Fatal("expected error for unsupported auth method")
+	}
+	if !strings.Contains(err.Error(), "unsupported auth method") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDoWithIOWriter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
