@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-04-07
 ### Added
 - `bkt auth login --auth-method bearer` for Data Center instances that require bearer token authentication instead of basic auth (#97).
 - `bkt pr create --with-default-reviewers` now works on Bitbucket Cloud, fetching effective default reviewers via the API with UUID-based self-exclusion and deduplication (#127).
@@ -13,6 +14,7 @@ All notable changes to this project will be documented here. The format follows
 
 ### Fixed
 - Bearer auth propagation to all inline `bbdc.New()` call sites in `repo list`, `repo view`, `status commit`, and `status pr` (#112).
+
 
 ## [0.18.0] - 2026-04-07
 ### Added
