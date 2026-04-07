@@ -23,7 +23,7 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-local
+.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-local generate-skill
 
 build: $(BIN_DIR)/bkt
 
@@ -70,6 +70,9 @@ snapshot:
 
 clean:
 	rm -rf $(BIN_DIR) dist/
+
+generate-skill:
+	$(GO) run ./cmd/docgen -o skills/bkt/rules
 
 release:
 	@test -n "$(RELEASE_VERSION)" || (echo "usage: make release RELEASE_VERSION=X.Y.Z [RELEASE_DATE=YYYY-MM-DD] [RELEASE_SKIP_VERIFY=1] [RELEASE_ALLOW_EMPTY=1] [RELEASE_NO_AUTO_MERGE=1]" && exit 1)
