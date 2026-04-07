@@ -6,10 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-04-07
 ### Added
 - `bkt pr edit --reviewer` and `--remove-reviewer` flags to add or remove reviewers on existing pull requests for both Data Center and Cloud (#128).
 - `bkt pr create --body` / `-b` as an alias for `--description`, matching `gh` CLI conventions (#126).
 - `Long` and `Example` docstrings for all Cobra commands, improving `--help` output and enabling future skill auto-generation (#129).
+
 
 ## [0.17.0] - 2026-04-05
 ### Added
