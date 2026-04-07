@@ -16,8 +16,8 @@ type commentsOptions struct {
 	Workspace string
 	Project   string
 	Repo      string
-	State   string // "all", "resolved", "unresolved"
-	Details bool
+	State     string // "all", "resolved", "unresolved"
+	Details   bool
 }
 
 func newCommentsCmd(f *cmdutil.Factory) *cobra.Command {
