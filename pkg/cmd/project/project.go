@@ -16,7 +16,18 @@ import (
 func NewCmdProject(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
-		Short: "Work with Bitbucket projects",
+		Short: "Work with Bitbucket projects (DC only)",
+		Long: `List and inspect Bitbucket projects. Projects are top-level containers that
+group related repositories.
+
+Note: Project commands are currently supported for Bitbucket Data Center only.
+Cloud workspaces use a different organizational model and are managed through
+other commands.`,
+		Example: `  # List all visible projects
+  bkt project list
+
+  # List projects on a specific host
+  bkt project list --host my-dc-server`,
 	}
 
 	cmd.AddCommand(newListCmd(f))
@@ -36,7 +47,24 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List Bitbucket Data Center projects",
+		Short:   "List Bitbucket Data Center projects (DC only)",
+		Long: `List all projects visible to the authenticated user on a Bitbucket Data Center
+instance. Each project is displayed with its key, name, description, web URL,
+and visibility status. Use --limit to control the number of results returned.
+
+This command is only available for Data Center hosts. Attempting to run it
+against a Cloud context will return an error.`,
+		Example: `  # List projects (default limit of 30)
+  bkt project list
+
+  # List all projects without a limit
+  bkt project ls --limit 0
+
+  # List projects on a specific Data Center host
+  bkt project list --host my-dc-server
+
+  # List projects in JSON format
+  bkt project list --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd, f, opts)
 		},

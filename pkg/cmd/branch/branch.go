@@ -17,6 +17,21 @@ func NewCmdBranch(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "branch",
 		Short: "Inspect and manage branches",
+		Long: `Inspect and manage branches in a Bitbucket repository.
+
+Supports listing, creating, deleting, rebasing, and setting the default branch.
+Branch protection rules are available through the "protect" subcommand.
+
+Listing works on both Bitbucket Data Center and Cloud. Create, delete,
+set-default, and protect subcommands currently support Data Center only.`,
+		Example: `  # List branches in the current context
+  bkt branch list
+
+  # Create a branch from main (Data Center)
+  bkt branch create feature/login --from main
+
+  # Delete a stale branch (Data Center)
+  bkt branch delete feature/old-experiment`,
 	}
 
 	cmd.AddCommand(newListCmd(f))
@@ -43,6 +58,22 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List branches",
+		Long: `List branches in a Bitbucket repository.
+
+Works on both Bitbucket Data Center and Cloud. On Data Center, uses --project
+and --repo to identify the repository. On Cloud, uses --workspace and --repo.
+The default branch is marked with an asterisk (*).`,
+		Example: `  # List branches in the current context
+  bkt branch list
+
+  # Filter branches by name
+  bkt branch list --filter feature/
+
+  # List up to 10 branches
+  bkt branch list --limit 10
+
+  # List branches in a specific Cloud workspace and repo
+  bkt branch list --workspace myteam --repo backend`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd, f, opts)
 		},
@@ -178,8 +209,22 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &createOptions{}
 	cmd := &cobra.Command{
 		Use:   "create <branch>",
-		Short: "Create a new branch",
-		Args:  cobra.ExactArgs(1),
+		Short: "Create a new branch (DC only)",
+		Long: `Create a new branch in a Bitbucket Data Center repository.
+
+The --from flag is required and specifies the branch or commit to use as the
+starting point. An optional --message flag lets you attach a creation message.
+
+This command currently supports Data Center contexts only.`,
+		Example: `  # Create a feature branch from main
+  bkt branch create feature/user-auth --from main
+
+  # Create a branch from a specific commit
+  bkt branch create hotfix/login --from abc1234
+
+  # Create a branch with a message
+  bkt branch create release/v2.0 --from main --message "Release candidate"`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, f, args[0], opts)
 		},
@@ -249,8 +294,22 @@ func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete <branch>",
 		Aliases: []string{"rm"},
-		Short:   "Delete a branch",
-		Args:    cobra.ExactArgs(1),
+		Short:   "Delete a branch (DC only)",
+		Long: `Delete a branch from a Bitbucket Data Center repository.
+
+Use --dry-run to validate that the branch can be deleted without actually
+removing it. This is useful for confirming permissions and branch existence.
+
+This command currently supports Data Center contexts only.`,
+		Example: `  # Delete a branch
+  bkt branch delete feature/old-experiment
+
+  # Dry-run to verify before deleting
+  bkt branch delete feature/old-experiment --dry-run
+
+  # Delete a branch in a specific project and repo
+  bkt branch delete bugfix/stale --project MYPROJ --repo backend`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd, f, args[0], opts)
 		},
@@ -309,8 +368,19 @@ func runDelete(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *delete
 func newSetDefaultCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set-default <branch>",
-		Short: "Set the default branch",
-		Args:  cobra.ExactArgs(1),
+		Short: "Set the default branch (DC only)",
+		Long: `Set the default branch for a Bitbucket Data Center repository.
+
+The default branch is the one shown by default when browsing the repository
+and is used as the base for new pull requests.
+
+This command currently supports Data Center contexts only.`,
+		Example: `  # Set main as the default branch
+  bkt branch set-default main
+
+  # Switch the default branch to develop
+  bkt branch set-default develop`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSetDefault(cmd, f, args[0])
 		},

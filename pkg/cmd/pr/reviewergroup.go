@@ -13,7 +13,18 @@ import (
 func newReviewerGroupCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reviewer-group",
-		Short: "Manage default reviewer groups",
+		Short: "Manage default reviewer groups (DC only)",
+		Long: `List, add, or remove default reviewer groups for a repository.
+
+Data Center only. Not yet supported on Cloud.`,
+		Example: `  # List configured reviewer groups
+  bkt pr reviewer-group list
+
+  # Add a reviewer group
+  bkt pr reviewer-group add backend-team
+
+  # Remove a reviewer group
+  bkt pr reviewer-group remove backend-team`,
 	}
 
 	cmd.AddCommand(newReviewerGroupListCmd(f))
@@ -33,7 +44,10 @@ func newReviewerGroupListCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reviewerGroupOptions{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List default reviewer groups",
+		Short: "List default reviewer groups (DC only)",
+		Long:  `List the default reviewer groups configured for a repository. Data Center only.`,
+		Example: `  # List reviewer groups
+  bkt pr reviewer-group list`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runReviewerGroupList(cmd, f, opts)
 		},
@@ -47,8 +61,11 @@ func newReviewerGroupAddCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reviewerGroupOptions{}
 	cmd := &cobra.Command{
 		Use:   "add <group>",
-		Short: "Add a default reviewer group",
-		Args:  cobra.ExactArgs(1),
+		Short: "Add a default reviewer group (DC only)",
+		Long:  `Add a default reviewer group to the repository. Data Center only.`,
+		Example: `  # Add a reviewer group
+  bkt pr reviewer-group add backend-team`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Name = args[0]
 			return runReviewerGroupAdd(cmd, f, opts)
@@ -63,8 +80,11 @@ func newReviewerGroupRemoveCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reviewerGroupOptions{}
 	cmd := &cobra.Command{
 		Use:   "remove <group>",
-		Short: "Remove a default reviewer group",
-		Args:  cobra.ExactArgs(1),
+		Short: "Remove a default reviewer group (DC only)",
+		Long:  `Remove a default reviewer group from the repository. Data Center only.`,
+		Example: `  # Remove a reviewer group
+  bkt pr reviewer-group remove backend-team`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Name = args[0]
 			return runReviewerGroupRemove(cmd, f, opts)

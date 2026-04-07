@@ -24,7 +24,20 @@ type autoMergeOptions struct {
 func newAutoMergeCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auto-merge",
-		Short: "Manage pull request auto-merge",
+		Short: "Manage pull request auto-merge (DC only)",
+		Long: `Enable, disable, or check the status of auto-merge for a pull request.
+When auto-merge is enabled, the pull request is merged automatically once
+all required conditions (approvals, build checks) are met.
+
+Data Center only. Not yet supported on Cloud.`,
+		Example: `  # Enable auto-merge for a pull request
+  bkt pr auto-merge enable 42
+
+  # Check auto-merge status
+  bkt pr auto-merge status 42
+
+  # Disable auto-merge
+  bkt pr auto-merge disable 42`,
 	}
 
 	cmd.AddCommand(newAutoMergeEnableCmd(f))
@@ -38,8 +51,20 @@ func newAutoMergeEnableCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &autoMergeOptions{CloseSource: true}
 	cmd := &cobra.Command{
 		Use:   "enable <id>",
-		Short: "Enable auto-merge for a pull request",
-		Args:  cobra.ExactArgs(1),
+		Short: "Enable auto-merge for a pull request (DC only)",
+		Long: `Enable auto-merge for a pull request on Data Center. The pull request will be
+merged automatically when all preconditions are satisfied. You can optionally
+specify a merge strategy, a custom merge commit message, and whether the
+source branch should be closed after merge.`,
+		Example: `  # Enable auto-merge with defaults
+  bkt pr auto-merge enable 42
+
+  # Enable with a specific merge strategy and message
+  bkt pr auto-merge enable 42 --strategy squash --message "Squash merge feature X"
+
+  # Enable but keep the source branch
+  bkt pr auto-merge enable 42 --close-source=false`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -63,8 +88,11 @@ func newAutoMergeDisableCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &autoMergeOptions{}
 	cmd := &cobra.Command{
 		Use:   "disable <id>",
-		Short: "Disable auto-merge",
-		Args:  cobra.ExactArgs(1),
+		Short: "Disable auto-merge (DC only)",
+		Long:  `Disable auto-merge for a pull request on Data Center. The pull request will no longer merge automatically.`,
+		Example: `  # Disable auto-merge
+  bkt pr auto-merge disable 42`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -83,8 +111,11 @@ func newAutoMergeStatusCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &autoMergeOptions{}
 	cmd := &cobra.Command{
 		Use:   "status <id>",
-		Short: "Show auto-merge configuration",
-		Args:  cobra.ExactArgs(1),
+		Short: "Show auto-merge configuration (DC only)",
+		Long:  `Show the current auto-merge configuration for a pull request on Data Center, including whether it is enabled, the merge strategy, commit message, and close-source-branch setting.`,
+		Example: `  # Check auto-merge status
+  bkt pr auto-merge status 42`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {

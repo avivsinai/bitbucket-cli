@@ -19,7 +19,7 @@ import (
 func NewCommand(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "variable",
-		Short: "Manage pipeline variables",
+		Short: "Manage pipeline variables (Cloud only)",
 		Long: `Create and manage pipeline variables in Bitbucket Cloud repositories.
 
 Pipeline variables are available during pipeline execution. Variables can be
@@ -87,7 +87,14 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List pipeline variables",
+		Short:   "List pipeline variables (Cloud only)",
+		Long: `List pipeline variables for a Bitbucket Cloud repository, workspace, or
+deployment environment. By default, repository-scoped variables are shown.
+Use --scope to switch to workspace variables, or --deployment to list
+variables tied to a specific deployment environment.
+
+Secured variable values are masked in the output. This command is only
+available for Bitbucket Cloud contexts.`,
 		Example: `  # List repository variables (default)
   bkt variable list
 
@@ -268,7 +275,13 @@ func newGetCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "get <variable-name>",
-		Short: "Get a pipeline variable",
+		Short: "Get a pipeline variable (Cloud only)",
+		Long: `Retrieve a single pipeline variable by name from a Bitbucket Cloud repository,
+workspace, or deployment environment. The variable key is matched exactly
+(case-sensitive). Secured variables are flagged in the output and their values
+cannot be retrieved from the API.
+
+This command is only available for Bitbucket Cloud contexts.`,
 		Example: `  # Get a repository variable by name
   bkt variable get MY_VAR
 
@@ -436,7 +449,13 @@ func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete <variable-name>",
 		Aliases: []string{"rm"},
-		Short:   "Delete a pipeline variable",
+		Short:   "Delete a pipeline variable (Cloud only)",
+		Long: `Delete a pipeline variable by name from a Bitbucket Cloud repository,
+workspace, or deployment environment. By default, the command prompts for
+confirmation before deleting. Use --yes to skip the prompt in scripts or
+CI pipelines.
+
+This command is only available for Bitbucket Cloud contexts.`,
 		Example: `  # Delete a repository variable (will prompt for confirmation)
   bkt variable delete MY_VAR
 
@@ -621,7 +640,7 @@ func newSetCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "set [<variable-name>]",
-		Short: "Create or update a pipeline variable",
+		Short: "Create or update a pipeline variable (Cloud only)",
 		Long: `Create or update a pipeline variable.
 
 If the variable already exists, it will be updated. Otherwise, a new variable

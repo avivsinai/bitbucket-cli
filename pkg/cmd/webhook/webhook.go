@@ -18,6 +18,21 @@ func NewCommand(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "webhook",
 		Short: "Manage Bitbucket webhooks",
+		Long: `Create, list, delete, and test webhooks on Bitbucket repositories.
+
+Webhooks notify external services when events occur in a repository (e.g. push,
+pull-request creation). Both Data Center and Cloud are supported, though the
+identifier format differs: Data Center uses numeric IDs while Cloud uses UUIDs.
+
+The test subcommand is available for Data Center only.`,
+		Example: `  # List all webhooks on the current repository
+  bkt webhook list
+
+  # Create a webhook for push events
+  bkt webhook create --name ci-trigger --url https://ci.example.com/hook --event repo:refs_changed
+
+  # Delete a webhook by ID (Data Center) or UUID (Cloud)
+  bkt webhook delete 42`,
 	}
 
 	cmd.AddCommand(newListCmd(f))
@@ -40,6 +55,21 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List configured webhooks",
+		Long: `List all webhooks configured on a Bitbucket repository.
+
+For Data Center, the output includes the numeric webhook ID, status, name, and
+callback URL. For Cloud, the output includes the webhook UUID, status, and URL.
+
+Use --project/--repo for Data Center or --workspace/--repo for Cloud to override
+the values from the current context.`,
+		Example: `  # List webhooks using the current context
+  bkt webhook list
+
+  # List webhooks for a specific Data Center repository
+  bkt webhook list --project MYPROJ --repo my-repo
+
+  # List webhooks for a specific Cloud repository
+  bkt webhook list --workspace myteam --repo my-repo`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd, f, opts)
 		},
@@ -168,6 +198,23 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new webhook",
+		Long: `Create a new webhook on a Bitbucket repository.
+
+You must specify a name, a callback URL, and at least one event to subscribe to.
+The webhook is created active by default; pass --active=false to create it in a
+disabled state.
+
+Event names differ between Data Center and Cloud. For Data Center, common events
+include repo:refs_changed and pr:opened. For Cloud, events follow the pattern
+repo:push, pullrequest:created, and similar.`,
+		Example: `  # Create a webhook for push events (Data Center)
+  bkt webhook create --name ci-trigger --url https://ci.example.com/hook --event repo:refs_changed
+
+  # Create a webhook for multiple events (Cloud)
+  bkt webhook create --name slack-notify --url https://hooks.slack.com/abc --event repo:push --event pullrequest:created
+
+  # Create a webhook in a disabled state
+  bkt webhook create --name staging-hook --url https://staging.example.com/hook --event repo:push --active=false`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, f, opts)
 		},
@@ -283,7 +330,20 @@ func newDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "delete <id|uuid>",
 		Aliases: []string{"rm"},
 		Short:   "Delete a webhook",
-		Args:    cobra.ExactArgs(1),
+		Long: `Delete a webhook from a Bitbucket repository.
+
+For Data Center, pass the numeric webhook ID (shown by "bkt webhook list").
+For Cloud, pass the webhook UUID. The webhook is removed immediately and cannot
+be recovered.`,
+		Example: `  # Delete a webhook by numeric ID (Data Center)
+  bkt webhook delete 42
+
+  # Delete a webhook by UUID (Cloud)
+  bkt webhook delete {a1b2c3d4-e5f6-7890-abcd-ef1234567890}
+
+  # Delete a webhook from a specific repository
+  bkt webhook delete 7 --project MYPROJ --repo my-repo`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Identifier = args[0]
 			return runDelete(cmd, f, opts)
@@ -371,7 +431,17 @@ func newTestCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "test <id>",
 		Short: "Trigger a webhook test delivery",
-		Args:  cobra.ExactArgs(1),
+		Long: `Send a test payload to a webhook's callback URL to verify connectivity.
+
+This command is supported for Data Center only. It triggers a diagnostic POST
+request from the Bitbucket server to the webhook's configured URL and reports
+whether the delivery succeeded.`,
+		Example: `  # Test a webhook by ID
+  bkt webhook test 42
+
+  # Test a webhook in a specific repository
+  bkt webhook test 7 --project MYPROJ --repo my-repo`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ID = args[0]
 			return runTest(cmd, f, opts)

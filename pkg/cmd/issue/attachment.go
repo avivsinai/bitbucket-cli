@@ -18,7 +18,7 @@ func newAttachmentCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "attachment",
 		Aliases: []string{"attach"},
-		Short:   "Work with issue attachments",
+		Short:   "Work with issue attachments (Cloud only)",
 		Long: `Manage file attachments on Bitbucket Cloud issues.
 
 Attachments can be uploaded, downloaded, listed, and deleted from issues.`,
@@ -43,7 +43,9 @@ func newAttachmentListCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &attachmentListOptions{}
 	cmd := &cobra.Command{
 		Use:   "list <issue-id>",
-		Short: "List attachments on an issue",
+		Short: "List attachments on an issue (Cloud only)",
+		Long: `List all file attachments on a Bitbucket Cloud issue. Each attachment
+is shown with its filename and URL.`,
 		Example: `  # List attachments on issue #42
   bkt issue attachment list 42
 
@@ -157,7 +159,11 @@ func newAttachmentUploadCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &attachmentUploadOptions{}
 	cmd := &cobra.Command{
 		Use:   "upload <issue-id> <files>...",
-		Short: "Upload file attachments to an issue",
+		Short: "Upload file attachments to an issue (Cloud only)",
+		Long: `Upload one or more files as attachments to a Bitbucket Cloud issue.
+
+All specified files are validated before any uploads begin. Directories
+cannot be uploaded.`,
 		Example: `  # Upload a single file
   bkt issue attachment upload 42 screenshot.png
 
@@ -273,7 +279,7 @@ func newAttachmentDownloadCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "download <issue-id> [<filename>]",
-		Short: "Download attachments from an issue",
+		Short: "Download attachments from an issue (Cloud only)",
 		Long: `Download one or more attachments from an issue.
 
 If a specific filename is provided, only that file is downloaded.
@@ -465,7 +471,11 @@ func newAttachmentDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &attachmentDeleteOptions{}
 	cmd := &cobra.Command{
 		Use:   "delete <issue-id> <filename>",
-		Short: "Delete an attachment from an issue",
+		Short: "Delete an attachment from an issue (Cloud only)",
+		Long: `Delete a single file attachment from a Bitbucket Cloud issue.
+
+A confirmation prompt is shown before deletion unless --confirm is passed.
+This action cannot be undone.`,
 		Example: `  # Delete an attachment (will prompt for confirmation)
   bkt issue attachment delete 42 screenshot.png
 

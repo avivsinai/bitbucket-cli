@@ -15,7 +15,22 @@ import (
 func NewCommand(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "perms",
-		Short: "Manage Bitbucket permissions",
+		Short: "Manage Bitbucket permissions (DC only)",
+		Long: `Manage user permissions at the project and repository level on Bitbucket Data Center.
+
+Grant, revoke, and list permissions for individual users. Project-level
+permissions apply to all repositories within that project, while repository-level
+permissions override the project defaults for a specific repository.
+
+This command group is available for Data Center contexts only.`,
+		Example: `  # List who has access to a project
+  bkt perms project list --project MYPROJ
+
+  # Grant a user write access to a specific repository
+  bkt perms repo grant --project MYPROJ --repo my-service --user jdoe --perm REPO_WRITE
+
+  # Revoke a user's project-level permission
+  bkt perms project revoke --project MYPROJ --user jdoe`,
 	}
 
 	cmd.AddCommand(newProjectCmd(f))
@@ -43,13 +58,40 @@ type projectRevokeOptions struct {
 func newProjectCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
-		Short: "Manage project-level permissions",
+		Short: "Manage project-level permissions (DC only)",
+		Long: `Manage project-level permissions on Bitbucket Data Center.
+
+Project permissions control default access for all repositories within a project.
+You can list current permission entries, grant a permission level to a user, or
+revoke a user's project permission entirely. Valid permission levels are
+PROJECT_READ, PROJECT_WRITE, and PROJECT_ADMIN.`,
+		Example: `  # List all users with permissions on a project
+  bkt perms project list --project MYPROJ
+
+  # Grant admin access to a user
+  bkt perms project grant --project MYPROJ --user jdoe --perm PROJECT_ADMIN
+
+  # Revoke a user's project permission
+  bkt perms project revoke --project MYPROJ --user jdoe`,
 	}
 
 	listOpts := &projectListOptions{Limit: 100}
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "List project permissions",
+		Short: "List project permissions (DC only)",
+		Long: `List the permission entries for a Bitbucket Data Center project.
+
+Displays each user who has been granted explicit access to the project along
+with their permission level (PROJECT_READ, PROJECT_WRITE, or PROJECT_ADMIN).
+Use --limit to control how many entries are returned; set it to 0 to fetch all.`,
+		Example: `  # List permissions for a project
+  bkt perms project list --project MYPROJ
+
+  # List all permissions without a cap
+  bkt perms project list --project MYPROJ --limit 0
+
+  # Output as JSON
+  bkt perms project list --project MYPROJ --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProjectList(cmd, f, listOpts)
 		},
@@ -61,7 +103,21 @@ func newProjectCmd(f *cmdutil.Factory) *cobra.Command {
 	grantOpts := &projectGrantOptions{}
 	grant := &cobra.Command{
 		Use:   "grant",
-		Short: "Grant project permissions",
+		Short: "Grant project permissions (DC only)",
+		Long: `Grant a permission level to a user on a Bitbucket Data Center project.
+
+The user receives the specified permission for the project and inherits it
+across all repositories within that project unless overridden at the repository
+level. Valid values for --perm are PROJECT_READ, PROJECT_WRITE, and
+PROJECT_ADMIN. If --perm is omitted it defaults to PROJECT_READ.`,
+		Example: `  # Grant read access (default)
+  bkt perms project grant --project MYPROJ --user jdoe
+
+  # Grant write access
+  bkt perms project grant --project MYPROJ --user jdoe --perm PROJECT_WRITE
+
+  # Grant admin access
+  bkt perms project grant --project MYPROJ --user jdoe --perm PROJECT_ADMIN`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProjectGrant(cmd, f, grantOpts)
 		},
@@ -75,7 +131,17 @@ func newProjectCmd(f *cmdutil.Factory) *cobra.Command {
 	revokeOpts := &projectRevokeOptions{}
 	revoke := &cobra.Command{
 		Use:   "revoke",
-		Short: "Revoke project permissions",
+		Short: "Revoke project permissions (DC only)",
+		Long: `Revoke a user's permission on a Bitbucket Data Center project.
+
+Removes the explicit project-level permission entry for the specified user.
+After revocation the user loses access granted at the project level, though
+they may still have access through repository-level or global permissions.`,
+		Example: `  # Revoke a user's project permission
+  bkt perms project revoke --project MYPROJ --user jdoe
+
+  # Revoke using a different context
+  bkt perms project revoke --project MYPROJ --user jdoe --context my-dc`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProjectRevoke(cmd, f, revokeOpts)
 		},
@@ -111,13 +177,40 @@ type repoRevokeOptions struct {
 func newRepoCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repo",
-		Short: "Manage repository-level permissions",
+		Short: "Manage repository-level permissions (DC only)",
+		Long: `Manage repository-level permissions on Bitbucket Data Center.
+
+Repository permissions override the project defaults for a specific repository.
+You can list current permission entries, grant a permission level to a user, or
+revoke a user's repository permission entirely. Valid permission levels are
+REPO_READ, REPO_WRITE, and REPO_ADMIN.`,
+		Example: `  # List permissions on a repository
+  bkt perms repo list --project MYPROJ --repo my-service
+
+  # Grant write access to a user
+  bkt perms repo grant --project MYPROJ --repo my-service --user jdoe --perm REPO_WRITE
+
+  # Revoke a user's repository permission
+  bkt perms repo revoke --project MYPROJ --repo my-service --user jdoe`,
 	}
 
 	listOpts := &repoListOptions{Limit: 100}
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "List repository permissions",
+		Short: "List repository permissions (DC only)",
+		Long: `List the permission entries for a Bitbucket Data Center repository.
+
+Displays each user who has been granted explicit access to the repository along
+with their permission level (REPO_READ, REPO_WRITE, or REPO_ADMIN). Use --limit
+to control how many entries are returned; set it to 0 to fetch all.`,
+		Example: `  # List permissions for a repository
+  bkt perms repo list --project MYPROJ --repo my-service
+
+  # Fetch all permission entries
+  bkt perms repo list --project MYPROJ --repo my-service --limit 0
+
+  # Output as JSON
+  bkt perms repo list --project MYPROJ --repo my-service --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRepoList(cmd, f, listOpts)
 		},
@@ -131,7 +224,21 @@ func newRepoCmd(f *cmdutil.Factory) *cobra.Command {
 	grantOpts := &repoGrantOptions{}
 	grant := &cobra.Command{
 		Use:   "grant",
-		Short: "Grant repository permissions",
+		Short: "Grant repository permissions (DC only)",
+		Long: `Grant a permission level to a user on a Bitbucket Data Center repository.
+
+The user receives the specified permission for the repository, overriding any
+project-level permission they may already have. Valid values for --perm are
+REPO_READ, REPO_WRITE, and REPO_ADMIN. If --perm is omitted it defaults to
+REPO_READ.`,
+		Example: `  # Grant read access (default)
+  bkt perms repo grant --project MYPROJ --repo my-service --user jdoe
+
+  # Grant write access
+  bkt perms repo grant --project MYPROJ --repo my-service --user jdoe --perm REPO_WRITE
+
+  # Grant admin access
+  bkt perms repo grant --project MYPROJ --repo my-service --user jdoe --perm REPO_ADMIN`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRepoGrant(cmd, f, grantOpts)
 		},
@@ -147,7 +254,17 @@ func newRepoCmd(f *cmdutil.Factory) *cobra.Command {
 	revokeOpts := &repoRevokeOptions{}
 	revoke := &cobra.Command{
 		Use:   "revoke",
-		Short: "Revoke repository permissions",
+		Short: "Revoke repository permissions (DC only)",
+		Long: `Revoke a user's permission on a Bitbucket Data Center repository.
+
+Removes the explicit repository-level permission entry for the specified user.
+After revocation the user may still have access through project-level or global
+permissions.`,
+		Example: `  # Revoke a user's repository permission
+  bkt perms repo revoke --project MYPROJ --repo my-service --user jdoe
+
+  # Revoke using a different context
+  bkt perms repo revoke --project MYPROJ --repo my-service --user jdoe --context my-dc`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRepoRevoke(cmd, f, revokeOpts)
 		},

@@ -24,7 +24,27 @@ func newDiffCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <from> <to>",
 		Short: "Show the diff between two commits or refs",
-		Args:  cobra.ExactArgs(2),
+		Long: `Display a unified diff between two commits, branches, or tags. The output is
+streamed through the configured pager when available.
+
+On Data Center the two refs are resolved independently by the server. On Cloud
+the refs are joined with ".." and sent as a single diff spec; note that branch
+names containing literal ".." characters may confuse the Cloud API.
+
+Use --project/--repo (DC) or --workspace/--repo (Cloud) to override the values
+from the current context.`,
+		Example: `  # Diff two commits
+  bkt commit diff abc1234 def5678
+
+  # Diff the current branch against main
+  bkt commit diff feature/signup main
+
+  # Diff with explicit repo override
+  bkt commit diff v1.0.0 v1.1.0 --repo my-service
+
+  # Diff on a Cloud workspace
+  bkt commit diff develop main --workspace myteam --repo backend`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.From = args[0]
 			opts.To = args[1]

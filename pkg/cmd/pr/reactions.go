@@ -22,7 +22,18 @@ type reactionOptions struct {
 func newReactionCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reaction",
-		Short: "Manage comment reactions",
+		Short: "Manage comment reactions (DC only)",
+		Long: `List, add, or remove emoji reactions on pull request comments.
+
+Data Center only. Not yet supported on Cloud.`,
+		Example: `  # List reactions on a comment
+  bkt pr reaction list 42 1001
+
+  # Add a thumbs-up reaction
+  bkt pr reaction add 42 1001 --emoji :thumbsup:
+
+  # Remove a reaction
+  bkt pr reaction remove 42 1001 --emoji :thumbsup:`,
 	}
 
 	cmd.AddCommand(newReactionListCmd(f))
@@ -36,8 +47,11 @@ func newReactionListCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reactionOptions{}
 	cmd := &cobra.Command{
 		Use:   "list <id> <comment-id>",
-		Short: "List comment reactions",
-		Args:  cobra.ExactArgs(2),
+		Short: "List comment reactions (DC only)",
+		Long:  `List all emoji reactions on a specific pull request comment. Shows each emoji and its count. Data Center only.`,
+		Example: `  # List reactions on comment 1001 of PR #42
+  bkt pr reaction list 42 1001`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prID, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -62,8 +76,11 @@ func newReactionAddCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reactionOptions{}
 	cmd := &cobra.Command{
 		Use:   "add <id> <comment-id>",
-		Short: "Add a reaction to a comment",
-		Args:  cobra.ExactArgs(2),
+		Short: "Add a reaction to a comment (DC only)",
+		Long:  `Add an emoji reaction to a pull request comment. Data Center only.`,
+		Example: `  # Add a thumbs-up reaction to comment 1001
+  bkt pr reaction add 42 1001 --emoji :thumbsup:`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prID, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -89,8 +106,11 @@ func newReactionRemoveCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &reactionOptions{}
 	cmd := &cobra.Command{
 		Use:   "remove <id> <comment-id>",
-		Short: "Remove a reaction",
-		Args:  cobra.ExactArgs(2),
+		Short: "Remove a reaction (DC only)",
+		Long:  `Remove an emoji reaction from a pull request comment. Data Center only.`,
+		Example: `  # Remove a thumbs-up reaction from comment 1001
+  bkt pr reaction remove 42 1001 --emoji :thumbsup:`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prID, err := strconv.Atoi(args[0])
 			if err != nil {

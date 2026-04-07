@@ -53,6 +53,20 @@ func NewCmdExtension(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "extension",
 		Short: "Manage bkt CLI extensions",
+		Long: `Install, list, remove, and execute external bkt CLI extensions.
+
+Extensions are Git repositories that contain an executable following the
+bkt-<name> naming convention. Once installed, an extension can be invoked
+directly through "bkt extension exec" or discovered with "bkt extension list".
+Extensions work identically for both Bitbucket Cloud and Data Center contexts.`,
+		Example: `  # Install an extension from a Git repository
+  bkt extension install https://bitbucket.org/myteam/bkt-lint
+
+  # List all installed extensions
+  bkt extension list
+
+  # Run an installed extension with arguments
+  bkt extension exec lint --fix`,
 	}
 
 	cmd.AddCommand(newInstallCmd(f))
@@ -67,7 +81,22 @@ func newInstallCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <repository>",
 		Short: "Install an extension from a repository",
-		Args:  cobra.ExactArgs(1),
+		Long: `Clone a Git repository into the bkt extensions directory and register it as
+a CLI extension. The repository must contain an executable named bkt-<name>
+at the top level or inside a bin/ subdirectory. The extension name is inferred
+from the repository URL by stripping the optional "bkt-" prefix.
+
+If the extension is already installed, the command returns an error. Remove it
+first with "bkt extension remove" before reinstalling.`,
+		Example: `  # Install from a full HTTPS URL
+  bkt extension install https://bitbucket.org/myteam/bkt-lint
+
+  # Install from an SSH URL
+  bkt extension install git@bitbucket.org:myteam/bkt-deploy.git
+
+  # Install from a GitHub repository
+  bkt extension install https://github.com/user/bkt-formatter`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtensionInstall(cmd, f, args[0])
 		},
@@ -80,6 +109,18 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List installed extensions",
+		Long: `Display all extensions currently installed in the bkt extensions directory.
+Each entry shows the extension name and, when available, the relative path
+to its executable. If no extensions are installed, a hint is printed
+suggesting the install command.`,
+		Example: `  # List all installed extensions
+  bkt extension list
+
+  # List using the short alias
+  bkt extension ls
+
+  # List in JSON format
+  bkt extension list --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtensionList(cmd, f)
 		},
@@ -92,7 +133,15 @@ func newRemoveCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "remove <name>",
 		Aliases: []string{"rm"},
 		Short:   "Remove an installed extension",
-		Args:    cobra.ExactArgs(1),
+		Long: `Remove a previously installed extension by deleting its directory from the
+bkt extensions folder. The name argument is the extension name (not the full
+repository URL). Use "bkt extension list" to see installed extension names.`,
+		Example: `  # Remove an extension by name
+  bkt extension remove lint
+
+  # Remove using the short alias
+  bkt extension rm deploy`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtensionRemove(cmd, f, args[0])
 		},
@@ -104,7 +153,20 @@ func newExecCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exec <name> [args...]",
 		Short: "Execute an installed extension",
-		Args:  cobra.MinimumNArgs(1),
+		Long: `Run an installed extension by name, forwarding any additional arguments to the
+extension executable. The extension runs in its own directory with
+BKT_EXTENSION_DIR and BKT_EXTENSION_NAME environment variables set.
+Sensitive bkt configuration variables (tokens, keyring passphrase) are
+stripped from the environment before the extension process starts.`,
+		Example: `  # Run an extension with no arguments
+  bkt extension exec lint
+
+  # Pass arguments to the extension
+  bkt extension exec lint --fix --verbose
+
+  # Run an extension that accepts a file path
+  bkt extension exec formatter src/main.go`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtensionExec(cmd, f, args[0], args[1:])
 		},

@@ -21,8 +21,24 @@ func newCloudPipelineCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &cloudStatusOptions{}
 	cmd := &cobra.Command{
 		Use:   "pipeline <uuid>",
-		Short: "Show Bitbucket Cloud pipeline status",
-		Args:  cobra.ExactArgs(1),
+		Short: "Show Bitbucket Cloud pipeline status (Cloud only)",
+		Long: `Display the status of a Bitbucket Cloud Pipelines run identified by its UUID.
+The output includes the pipeline state, result, target ref, creation and
+completion timestamps, and a breakdown of individual steps with their names
+and statuses.
+
+The workspace and repository are resolved from the active Cloud context or
+can be overridden with --workspace and --repo. This command requires a Cloud
+context and does not work with Data Center.`,
+		Example: `  # Show pipeline status by UUID
+  bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678}
+
+  # Override workspace and repo
+  bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --workspace myteam --repo backend
+
+  # Output as JSON
+  bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --output json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.UUID = args[0]
 			return runCloudPipelineStatus(cmd, f, opts)

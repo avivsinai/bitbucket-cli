@@ -24,7 +24,20 @@ func newCommentsCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "comments <id>",
 		Short: "List comments on a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `List all comments on a pull request. On Cloud, use --state to filter by
+resolution status (resolved or unresolved). The --state flag is not supported
+on Data Center because the DC API does not expose resolution status.
+
+Works on both Data Center and Cloud.`,
+		Example: `  # List all comments
+  bkt pr comments 42
+
+  # List only unresolved comments (Cloud only)
+  bkt pr comments 42 --state unresolved
+
+  # List resolved comments (Cloud only)
+  bkt pr comments 42 --state resolved`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {

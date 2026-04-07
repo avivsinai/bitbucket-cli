@@ -20,6 +20,11 @@ func NewCmdRepo(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repo",
 		Short: "Work with Bitbucket repositories",
+		Long: `Work with Bitbucket repositories on both Data Center and Cloud.
+
+List, view, create, clone, and browse repositories within a project (Data Center)
+or workspace (Cloud). Use --project for Data Center hosts and --workspace for
+Cloud hosts when the active context does not define defaults.`,
 	}
 
 	cmd.AddCommand(newListCmd(f))
@@ -57,6 +62,22 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List repositories within the active scope",
+		Long: `List repositories in a Bitbucket project (Data Center) or workspace (Cloud).
+
+On Data Center, a project key is required via --project or the active context.
+On Cloud, a workspace is required via --workspace or the active context.
+Use --limit to control the number of results (0 returns all).`,
+		Example: `  # List repositories in the active context
+  bkt repo list
+
+  # List repositories in a specific Data Center project
+  bkt repo list --project MYPROJ
+
+  # List repositories in a Cloud workspace with a custom limit
+  bkt repo list --workspace my-team --limit 50
+
+  # List all repositories (no limit)
+  bkt repo list --limit 0`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(cmd, f, opts)
 		},
@@ -259,7 +280,25 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view [repository]",
 		Short: "Display details for a repository",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Display details for a repository, including its name, web URL, and clone URLs.
+
+On Data Center, the project key and repository slug are resolved from the active
+context or overridden with --project and --repo. On Cloud, the workspace and
+repository slug are resolved similarly via --workspace and --repo.
+
+Pass a repository slug as an argument or use the --repo flag.`,
+		Example: `  # View the repository configured in the active context
+  bkt repo view
+
+  # View a specific repository by slug
+  bkt repo view my-service
+
+  # View a Data Center repository with explicit project
+  bkt repo view --project PLATFORM --repo api-gateway
+
+  # View a Cloud repository in a specific workspace
+  bkt repo view --workspace my-team --repo frontend-app`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				opts.Repo = args[0]
@@ -624,7 +663,25 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <repository>",
 		Short: "Create a new repository",
-		Args:  cobra.ExactArgs(1),
+		Long: `Create a new repository in a Bitbucket project (Data Center) or workspace (Cloud).
+
+On Data Center, the repository is created under the specified project with optional
+flags for visibility, forking policy, and default branch. On Cloud, the repository
+is created in the specified workspace; use --cloud-project to assign it to a
+Bitbucket Cloud project. Repositories are private by default on Cloud; pass
+--public to make them public.`,
+		Example: `  # Create a repository in the active context
+  bkt repo create my-new-service
+
+  # Create a public repository with a description
+  bkt repo create my-lib --public --description "Shared utility library"
+
+  # Create in a specific Data Center project with a default branch
+  bkt repo create api-gateway --project PLATFORM --default-branch main
+
+  # Create in a Cloud workspace and assign to a project
+  bkt repo create frontend-app --workspace my-team --cloud-project WEB`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoSlug := args[0]
 			return runCreate(cmd, f, repoSlug, opts)
@@ -752,7 +809,26 @@ func newCloneCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clone <repository>",
 		Short: "Clone a repository",
-		Args:  cobra.ExactArgs(1),
+		Long: `Clone a Bitbucket repository to your local machine.
+
+Resolves the clone URL from the Bitbucket API using the active context. By
+default the HTTPS clone URL is used; pass --ssh to use the SSH URL instead.
+Use --dest to specify a destination directory.
+
+Works with both Data Center (requires --project or context default) and Cloud
+(requires --workspace or context default).`,
+		Example: `  # Clone the specified repository
+  bkt repo clone my-service
+
+  # Clone using SSH
+  bkt repo clone my-service --ssh
+
+  # Clone into a specific directory
+  bkt repo clone my-service --dest ~/projects/my-service
+
+  # Clone from a specific Data Center project
+  bkt repo clone my-service --project PLATFORM`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Repo = args[0]
 			return runClone(cmd, f, opts)

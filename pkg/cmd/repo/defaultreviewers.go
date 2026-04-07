@@ -20,6 +20,11 @@ func newDefaultReviewersCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "default-reviewers",
 		Short: "List effective default reviewers for a repository",
+		Long: `Manage default reviewers configured for a repository.
+
+On Cloud, returns the effective default reviewers (merged from workspace and
+repository-level settings). On Data Center, returns the default reviewers
+configured at the repository level within the project.`,
 	}
 	cmd.AddCommand(newDefaultReviewersListCmd(f))
 	return cmd
@@ -30,6 +35,23 @@ func newDefaultReviewersListCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List default reviewers",
+		Long: `List the default reviewers configured for a repository.
+
+On Cloud, this returns the effective default reviewers that would be automatically
+added to new pull requests, including reviewers inherited from workspace-level
+settings. On Data Center, this returns the default reviewer conditions set at the
+repository level within the project.
+
+The workspace/project and repository are resolved from the active context unless
+overridden with flags.`,
+		Example: `  # List default reviewers for the active context repository
+  bkt repo default-reviewers list
+
+  # List default reviewers for a specific Cloud repository
+  bkt repo default-reviewers list --workspace my-team --repo api-service
+
+  # List default reviewers for a Data Center repository
+  bkt repo default-reviewers list --project PLATFORM --repo backend`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDefaultReviewersList(cmd, f, opts)
 		},
