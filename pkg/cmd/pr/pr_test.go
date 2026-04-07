@@ -4548,6 +4548,17 @@ func TestCreateCloudWithDefaultReviewers(t *testing.T) {
 				{"uuid": "{00000000-0000-0000-0000-00000000000a}"},
 			},
 		},
+		{
+			name:        "skips default reviewer with no username and no UUID",
+			currentUser: map[string]any{"username": "me", "uuid": "{me}"},
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "", "uuid": ""}},
+				{"user": map[string]any{"username": "bob", "uuid": "{bbb}"}},
+			},
+			wantReviewers: []map[string]string{
+				{"username": "bob"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
