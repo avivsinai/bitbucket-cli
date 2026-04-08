@@ -31,6 +31,28 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 	}
 
 	if contextName == "" {
+		envKey, envHost, envErr := hostFromEnv(os.Getenv(secret.EnvHost))
+		if envErr != nil {
+			return "", nil, nil, fmt.Errorf("BKT_HOST: %w", envErr)
+		}
+		if envHost != nil {
+			// Prefer the saved host entry when config already has one for this
+			// key — it preserves persisted fields (username, auth_method, etc.)
+			// that the synthesized host would silently drop.
+			if saved, ok := cfg.Hosts[envKey]; ok {
+				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
+					return "", nil, nil, err
+				}
+				envHost = saved
+			}
+			ctx := contextFromEnv()
+			ctx.Host = envKey
+			applyRemoteDefaults(ctx, envHost)
+			return "", ctx, envHost, nil
+		}
+		if secret.TokenFromEnv() != "" {
+			return "", nil, nil, errTokenSetButNoHost
+		}
 		return "", nil, nil, fmt.Errorf("no active context; run `%s context use <name>`", f.ExecutableName)
 	}
 
@@ -87,6 +109,13 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 			}
 		}
 
+		envKey, envHost, envErr := hostFromEnv(hostIdentifier)
+		if envErr != nil {
+			return "", nil, fmt.Errorf("--host %q: %w", hostIdentifier, envErr)
+		}
+		if envHost != nil {
+			return envKey, envHost, nil
+		}
 		return "", nil, fmt.Errorf("host %q not found; run `%s auth login` first", hostIdentifier, f.ExecutableName)
 	}
 
@@ -114,8 +143,33 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 
 	switch len(cfg.Hosts) {
 	case 0:
+		envKey, envHost, envErr := hostFromEnv(os.Getenv(secret.EnvHost))
+		if envErr != nil {
+			return "", nil, fmt.Errorf("BKT_HOST: %w", envErr)
+		}
+		if envHost != nil {
+			return envKey, envHost, nil
+		}
+		if secret.TokenFromEnv() != "" {
+			return "", nil, errTokenSetButNoHost
+		}
 		return "", nil, fmt.Errorf("no hosts configured; run `%s auth login` first", f.ExecutableName)
 	case 1:
+		// BKT_HOST may target a different server than the single saved host;
+		// honour it for consistency with the ResolveContext and default paths.
+		envKey, envHost, envErr := hostFromEnv(os.Getenv(secret.EnvHost))
+		if envErr != nil {
+			return "", nil, fmt.Errorf("BKT_HOST: %w", envErr)
+		}
+		if envHost != nil {
+			if saved, ok := cfg.Hosts[envKey]; ok {
+				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
+					return "", nil, err
+				}
+				return envKey, saved, nil
+			}
+			return envKey, envHost, nil
+		}
 		for key, host := range cfg.Hosts {
 			if err := loadHostToken(f.ExecutableName, key, host); err != nil {
 				return "", nil, err
@@ -123,6 +177,20 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 			return key, host, nil
 		}
 	default:
+		// BKT_HOST disambiguates among multiple configured hosts.
+		envKey, envHost, envErr := hostFromEnv(os.Getenv(secret.EnvHost))
+		if envErr != nil {
+			return "", nil, fmt.Errorf("BKT_HOST: %w", envErr)
+		}
+		if envHost != nil {
+			if saved, ok := cfg.Hosts[envKey]; ok {
+				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
+					return "", nil, err
+				}
+				return envKey, saved, nil
+			}
+			return envKey, envHost, nil
+		}
 		var keys []string
 		for key := range cfg.Hosts {
 			keys = append(keys, key)
@@ -186,6 +254,68 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 
 	host.Token = token
 	return nil
+}
+
+// errTokenSetButNoHost is returned when BKT_TOKEN is set but BKT_HOST is not.
+var errTokenSetButNoHost = errors.New("BKT_TOKEN is set but BKT_HOST is not; set BKT_HOST to the Bitbucket server URL")
+
+// hostFromEnv synthesises an ephemeral *config.Host from environment variables.
+// rawURL may be a full URL or bare hostname; it is normalised internally.
+// Returns ("", nil, nil) when BKT_TOKEN or rawURL is empty — the caller should
+// fall through to its original error path in that case.
+func hostFromEnv(rawURL string) (string, *config.Host, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", nil, nil
+	}
+	token := secret.TokenFromEnv()
+	if token == "" {
+		return "", nil, nil
+	}
+
+	baseURL, err := NormalizeBaseURL(rawURL)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// Canonicalise Bitbucket Cloud base URLs to the API origin.
+	// Exact hostname matching avoids false positives for DC hosts whose names
+	// happen to contain or end with "bitbucket.org" (e.g. bitbucket.org.corp.com).
+	hostname := hostHostname(baseURL)
+	isCloud := hostname == "bitbucket.org" || hostname == "api.bitbucket.org"
+	if isCloud {
+		// Covers: https://bitbucket.org, https://api.bitbucket.org (bare, no /2.0),
+		// and https://api.bitbucket.org/2.0 (no-op rewrite).
+		baseURL = "https://api.bitbucket.org/2.0"
+	}
+
+	key, err := HostKeyFromURL(baseURL)
+	if err != nil {
+		return "", nil, err
+	}
+
+	kind := "dc"
+	if isCloud {
+		kind = "cloud"
+	}
+
+	return key, &config.Host{
+		Kind:       kind,
+		BaseURL:    baseURL,
+		Username:   strings.TrimSpace(os.Getenv(secret.EnvUsername)),
+		AuthMethod: strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)),
+		Token:      token,
+	}, nil
+}
+
+// contextFromEnv builds an ephemeral *config.Context from environment variables.
+// It is always non-nil; fields are empty strings when the vars are unset.
+func contextFromEnv() *config.Context {
+	return &config.Context{
+		ProjectKey:  strings.TrimSpace(os.Getenv(secret.EnvProject)),
+		Workspace:   strings.TrimSpace(os.Getenv(secret.EnvWorkspace)),
+		DefaultRepo: strings.TrimSpace(os.Getenv(secret.EnvRepo)),
+	}
 }
 
 func applyRemoteDefaults(ctx *config.Context, host *config.Host) {

@@ -21,6 +21,21 @@ const (
 	// When set, it bypasses the keyring entirely.
 	EnvToken = "BKT_TOKEN"
 
+	// EnvHost is the Bitbucket server base URL for headless / config-free use.
+	// Must be set alongside BKT_TOKEN to enable env-var–driven host resolution.
+	EnvHost = "BKT_HOST"
+	// EnvUsername is the username for basic authentication in headless mode.
+	EnvUsername = "BKT_USERNAME"
+	// EnvAuthMethod overrides the authentication method ("basic" or "bearer")
+	// when using BKT_TOKEN without a config file.
+	EnvAuthMethod = "BKT_AUTH_METHOD"
+	// EnvProject is the default Data Center project key in headless mode.
+	EnvProject = "BKT_PROJECT"
+	// EnvWorkspace is the default Bitbucket Cloud workspace in headless mode.
+	EnvWorkspace = "BKT_WORKSPACE"
+	// EnvRepo is the default repository slug in headless mode.
+	EnvRepo = "BKT_REPO"
+
 	envAllowInsecure = "BKT_ALLOW_INSECURE_STORE"
 	envPassphrase    = "BKT_KEYRING_PASSPHRASE"
 	envTimeout       = "BKT_KEYRING_TIMEOUT"

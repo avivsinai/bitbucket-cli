@@ -34,6 +34,33 @@ If not installed:
 bkt auth status
 ```
 
+**Bitbucket Cloud Token Requirements:**
+- Create an "API token with scopes" (not a general API token)
+- Select **Bitbucket** as the application
+- Required scope: **Account: Read** (`read:user:bitbucket`)
+- Additional scopes as needed: Repositories, Pull requests, Issues
+
+### Headless / CI authentication (no prior login required)
+
+Set `BKT_TOKEN` and `BKT_HOST` to use `bkt` in containers or CI pipelines without running `bkt auth login` first:
+
+```bash
+# Data Center
+export BKT_HOST=https://bitbucket.example.com
+export BKT_TOKEN=my-personal-access-token
+export BKT_PROJECT=MYPROJ   # optional default project
+export BKT_REPO=my-service  # optional default repo
+bkt pr list
+
+# Bitbucket Cloud (bitbucket.org auto-detected)
+export BKT_HOST=https://bitbucket.org
+export BKT_TOKEN=my-api-token
+export BKT_USERNAME=me@example.com
+export BKT_WORKSPACE=my-workspace
+export BKT_REPO=my-repo
+bkt pr list
+```
+
 If not authenticated, log in:
 
 ```bash
@@ -129,15 +156,18 @@ Every command accepts these inherited flags:
 
 ## Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `BKT_CONFIG_DIR` | Config directory override |
-| `BKT_ALLOW_INSECURE_STORE` | Allow file-based credential storage |
-| `BKT_KEYRING_TIMEOUT` | Keyring operation timeout (e.g. `2m`) |
-
-## Command Reference
-
-For detailed flags, usage, and examples per command, consult the rule files below. Read the relevant rule file when you need specifics — don't guess at flags.
+| Variable | Description |
+|---|---|
+| `BKT_TOKEN` | Authentication token. Bypasses keyring. |
+| `BKT_HOST` | Bitbucket server URL. Required with `BKT_TOKEN` for config-free use. |
+| `BKT_USERNAME` | Username for basic auth in headless mode. |
+| `BKT_AUTH_METHOD` | Auth method: `basic` (default) or `bearer`. |
+| `BKT_PROJECT` | Default Data Center project key (headless mode). |
+| `BKT_WORKSPACE` | Default Bitbucket Cloud workspace (headless mode). |
+| `BKT_REPO` | Default repository slug (headless mode). |
+| `BKT_CONFIG_DIR` | Config directory override. |
+| `BKT_ALLOW_INSECURE_STORE` | Allow file-based credential storage. |
+| `BKT_KEYRING_TIMEOUT` | Keyring operation timeout (e.g. `2m`). |
 
 ## References
 
