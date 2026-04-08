@@ -880,6 +880,154 @@ func TestDoDiscardsBodyWhenVNil(t *testing.T) {
 	}
 }
 
+func TestTokenRefresherCalledOn401(t *testing.T) {
+	var hits int32
+	var authHeaders [2]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		if int(count) <= len(authHeaders) {
+			authHeaders[count-1] = r.Header.Get("Authorization")
+		}
+		if count == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload{Message: "ok"})
+	}))
+	t.Cleanup(server.Close)
+
+	refreshed := false
+	client, err := New(Options{
+		BaseURL:  server.URL,
+		Username: "user",
+		Password: "old-token",
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			refreshed = true
+			return "new-token", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	var out payload
+	if err := client.Do(req, &out); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if out.Message != "ok" {
+		t.Fatalf("expected ok, got %q", out.Message)
+	}
+	if !refreshed {
+		t.Fatal("expected TokenRefresher to be called")
+	}
+	if hits != 2 {
+		t.Fatalf("expected 2 requests (original + retry), got %d", hits)
+	}
+	if authHeaders[0] == authHeaders[1] {
+		t.Errorf("expected Authorization header to change after token refresh, but both requests sent %q", authHeaders[0])
+	}
+	if authHeaders[1] != "Bearer new-token" {
+		t.Errorf("retry Authorization = %q, want %q", authHeaders[1], "Bearer new-token")
+	}
+}
+
+func TestTokenRefresherErrorPropagated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			return "", errors.New("refresh failed: token revoked")
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	err = client.Do(req, nil)
+	if err == nil {
+		t.Fatal("expected error when refresh fails")
+	}
+	if !strings.Contains(err.Error(), "refresh failed") {
+		t.Errorf("expected refresh error message, got %v", err)
+	}
+}
+
+func TestTokenRefresherNotCalledTwice(t *testing.T) {
+	// 401 → refresh → 401 again → error, no second refresh attempt.
+	var refreshCalls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			atomic.AddInt32(&refreshCalls, 1)
+			return "new-token", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	err = client.Do(req, nil)
+	if err == nil {
+		t.Fatal("expected error after two 401s")
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("expected TokenRefresher called once, got %d", refreshCalls)
+	}
+}
+
+func TestWithoutTokenRefresher401ReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		Retry:   RetryPolicy{MaxAttempts: 1},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	err = client.Do(req, nil)
+	if err == nil {
+		t.Fatal("expected error for 401 without refresher")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Errorf("expected 401 in error, got %v", err)
+	}
+}
+
 func TestNewRequestAbsoluteURL(t *testing.T) {
 	client, err := New(Options{BaseURL: "https://example.com"})
 	if err != nil {
