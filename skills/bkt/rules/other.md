@@ -11,13 +11,13 @@ Examples:
   bkt api /repositories --workspace my-team --param pagelen=50
   bkt api /rest/api/1.0/projects/ABC/repos --method POST --field name=demo --field scmId=git
 
-## Usage
+### Usage
 
 ```
 bkt api <path> [flags]
 ```
 
-### Flags
+#### Flags
 
 | Flag | Short | Description |
 |---|---|---|
@@ -27,7 +27,7 @@ bkt api <path> [flags]
 | `--method` | `-X` | HTTP method (default GET, or POST when a body is supplied) |
 | `--param` | `-P` | Append query parameter (key=value) |
 
-### Inherited Flags
+#### Inherited Flags
 
 | Flag | Short | Description |
 |---|---|---|
