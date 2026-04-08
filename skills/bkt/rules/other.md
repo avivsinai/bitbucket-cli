@@ -2,7 +2,7 @@
 
 # Other Commands
 
-# bkt api
+## bkt api
 
 Call Bitbucket REST APIs directly for endpoints that do not yet have first-class commands.
 

@@ -228,8 +228,12 @@ func writeGroupFile(w io.Writer, binName string, cmd *cobra.Command, emitHeader 
 		fmt.Fprintln(w)
 	}
 
-	// Title
-	fmt.Fprintf(w, "# %s\n\n", fullName)
+	// Title — use H2 for standalone commands inside other.md (emitHeader=false)
+	titlePrefix := "#"
+	if !emitHeader {
+		titlePrefix = "##"
+	}
+	fmt.Fprintf(w, "%s %s\n\n", titlePrefix, fullName)
 
 	// Description
 	desc := cmd.Long

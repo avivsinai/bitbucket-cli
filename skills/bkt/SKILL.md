@@ -26,6 +26,7 @@ If not installed:
 | macOS/Linux | `brew install avivsinai/tap/bitbucket-cli` |
 | Windows | `scoop bucket add avivsinai https://github.com/avivsinai/scoop-bucket && scoop install bitbucket-cli` |
 | Go | `go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest` |
+| Binary | Download from [GitHub Releases](https://github.com/avivsinai/bitbucket-cli/releases) |
 
 **2. Check authentication** — most commands require an active session:
 
@@ -39,7 +40,7 @@ If not authenticated, log in:
 # Data Center (PAT-based)
 bkt auth login https://bitbucket.example.com --username alice --token <PAT>
 
-# Bitbucket Cloud (browser-based OAuth)
+# Bitbucket Cloud (API token; --web opens Atlassian's token creation page)
 bkt auth login https://bitbucket.org --kind cloud --web
 ```
 
