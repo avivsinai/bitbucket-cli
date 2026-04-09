@@ -1,0 +1,65 @@
+# Headless / CI authentication
+
+Use `BKT_TOKEN` + `BKT_HOST` to run `bkt` in containers and CI pipelines without a prior `bkt auth login` or `bkt context create` step.
+
+## Quick start
+
+```bash
+# Data Center — token-only bearer auth (default when no username is set)
+export BKT_HOST=https://bitbucket.example.com
+export BKT_TOKEN=my-personal-access-token
+export BKT_PROJECT=MYPROJ   # optional default project
+export BKT_REPO=my-service  # optional default repo
+bkt pr list
+
+# Bitbucket Cloud — basic auth; username is required
+export BKT_HOST=https://bitbucket.org
+export BKT_TOKEN=my-api-token
+export BKT_USERNAME=me@example.com
+export BKT_WORKSPACE=my-workspace
+export BKT_REPO=my-repo
+bkt pr list
+```
+
+## Auth method rules
+
+| Scenario | Resolved auth method |
+|---|---|
+| DC, no `BKT_USERNAME`, no `BKT_AUTH_METHOD` | `bearer` (default) |
+| DC, `BKT_USERNAME` set, no `BKT_AUTH_METHOD` | `basic` |
+| DC, `BKT_AUTH_METHOD=bearer` | `bearer` |
+| DC, `BKT_AUTH_METHOD=basic` + no `BKT_USERNAME` | **error** — set `BKT_USERNAME` |
+| Cloud | always `basic`; `BKT_USERNAME` is required |
+
+## Environment variables
+
+| Variable | Description |
+|---|---|
+| `BKT_TOKEN` | Authentication token. Bypasses keyring. |
+| `BKT_HOST` | Bitbucket server URL. Required with `BKT_TOKEN` for config-free use. |
+| `BKT_USERNAME` | Username for basic auth. Required for Cloud; optional for DC. |
+| `BKT_AUTH_METHOD` | Auth method: `basic` or `bearer`. DC defaults to `bearer` when no username is set. |
+| `BKT_PROJECT` | Default Data Center project key. |
+| `BKT_WORKSPACE` | Default Bitbucket Cloud workspace. |
+| `BKT_REPO` | Default repository slug. |
+| `BKT_CONFIG_DIR` | Config directory override. |
+| `BKT_ALLOW_INSECURE_STORE` | Allow file-based credential storage. |
+| `BKT_KEYRING_TIMEOUT` | Keyring operation timeout (e.g. `2m`). |
+
+## Saved-host behaviour
+
+When `BKT_HOST` matches a host already in `~/.config/bkt/config.yml`, the saved entry is used as the base (preserving fields like `username` and `auth_method`). `BKT_TOKEN` always overrides the stored token. `BKT_USERNAME` and `BKT_AUTH_METHOD`, when set, override the saved values.
+
+## Bitbucket Pipelines example
+
+```yaml
+# bitbucket-pipelines.yml
+pipelines:
+  default:
+    - step:
+        script:
+          - bkt pr list --mine
+        variables:
+          BKT_HOST: https://bitbucket.example.com
+          BKT_TOKEN: $MY_PAT_SECRET
+```
