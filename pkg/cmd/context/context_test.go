@@ -28,7 +28,7 @@ func runCLI(t *testing.T, cfg *config.Config, args ...string) (string, string, e
 	factory := &cmdutil.Factory{
 		AppVersion:     "test",
 		ExecutableName: "bkt",
-		IOStreams:       ios,
+		IOStreams:      ios,
 		Config: func() (*config.Config, error) {
 			return cfg, nil
 		},
@@ -53,15 +53,15 @@ func runCLI(t *testing.T, cfg *config.Config, args ...string) (string, string, e
 
 func TestContextCreateBootstrap(t *testing.T) {
 	tests := []struct {
-		name          string
-		args          []string
-		envToken      string
-		cfg           *config.Config
-		wantErr       string
-		wantStdout    string
-		wantStderr    string
-		wantHostKind  string
-		wantHostKey   string
+		name         string
+		args         []string
+		envToken     string
+		cfg          *config.Config
+		wantErr      string
+		wantStdout   string
+		wantStderr   string
+		wantHostKind string
+		wantHostKey  string
 	}{
 		{
 			name:     "bootstrap dc with BKT_TOKEN",
