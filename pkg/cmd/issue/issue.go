@@ -22,6 +22,21 @@ func NewCmdIssue(f *cmdutil.Factory) *cobra.Command {
 
 Note: The issue tracker is only available for Bitbucket Cloud. Bitbucket Data Center
 uses Jira for issue tracking.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ios, err := f.Streams()
+			if err != nil {
+				return nil // swallow — subcommand will handle
+			}
+			override := cmdutil.FlagValue(cmd, "context")
+			_, _, host, err := cmdutil.ResolveContext(f, cmd, override)
+			if err != nil {
+				return nil // swallow — subcommand prints its own error
+			}
+			if host.Kind == "cloud" {
+				fmt.Fprintln(ios.ErrOut, "WARNING: Bitbucket Cloud is removing native Issues on August 20, 2026. Migrate to Jira for issue tracking.")
+			}
+			return nil
+		},
 	}
 
 	cmd.AddCommand(newListCmd(f))
