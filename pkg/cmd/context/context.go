@@ -8,7 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/secret"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 )
 
 // NewCmdContext returns the context management command tree.
@@ -44,6 +46,8 @@ type createOptions struct {
 	Workspace string
 	Repo      string
 	SetActive bool
+	Kind      string
+	BaseURL   string
 }
 
 func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
@@ -74,6 +78,8 @@ without requiring flags.`,
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Default Bitbucket workspace (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Default repository slug")
 	cmd.Flags().BoolVar(&opts.SetActive, "set-active", false, "Set the new context as active")
+	cmd.Flags().StringVar(&opts.Kind, "kind", "", `Host kind: "dc" or "cloud" (required when bootstrapping via BKT_TOKEN)`)
+	cmd.Flags().StringVar(&opts.BaseURL, "base-url", "", "Host base URL (defaults to https://<host>)")
 
 	return cmd
 }
@@ -106,7 +112,13 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *create
 		}
 		host, ok = cfg.Hosts[hostKey]
 		if !ok {
-			return fmt.Errorf("host %q not found; run `%s auth login` first", opts.Host, f.ExecutableName)
+			if secret.TokenFromEnv() == "" {
+				return fmt.Errorf("host %q not found; run `%s auth login` first", opts.Host, f.ExecutableName)
+			}
+			host, hostKey, err = bootstrapHost(ios, cfg, hostKey, opts)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -151,6 +163,37 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, name string, opts *create
 		}
 	}
 	return nil
+}
+
+// bootstrapHost creates a minimal host entry when BKT_TOKEN is set and the
+// host doesn't exist yet. This avoids the deadlock where `auth login` refuses
+// to run when BKT_TOKEN is set.
+func bootstrapHost(ios *iostreams.IOStreams, cfg *config.Config, hostKey string, opts *createOptions) (*config.Host, string, error) {
+	kind := strings.ToLower(strings.TrimSpace(opts.Kind))
+	if kind != "dc" && kind != "cloud" {
+		return nil, "", fmt.Errorf("--kind is required when bootstrapping a new host via BKT_TOKEN (use \"dc\" or \"cloud\")")
+	}
+
+	baseURL := strings.TrimSpace(opts.BaseURL)
+	if baseURL != "" {
+		var err error
+		baseURL, err = cmdutil.NormalizeBaseURL(baseURL)
+		if err != nil {
+			return nil, "", fmt.Errorf("normalize base URL: %w", err)
+		}
+		hostKey, err = cmdutil.HostKeyFromURL(baseURL)
+		if err != nil {
+			return nil, "", err
+		}
+	} else {
+		baseURL = "https://" + hostKey
+	}
+
+	host := &config.Host{Kind: kind, BaseURL: baseURL}
+	cfg.SetHost(hostKey, host)
+
+	fmt.Fprintf(ios.ErrOut, "Bootstrapped host %q (%s) from BKT_TOKEN\n", hostKey, kind)
+	return host, hostKey, nil
 }
 
 func newUseCmd(f *cmdutil.Factory) *cobra.Command {
