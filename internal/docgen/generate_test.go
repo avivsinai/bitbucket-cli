@@ -210,6 +210,40 @@ func TestGenerateStandaloneFile(t *testing.T) {
 	}
 }
 
+func TestStandaloneHeadingDepth(t *testing.T) {
+	root := newTestTree()
+	api, _, _ := root.Find([]string{"api"})
+
+	// emitHeader=false simulates standalone inside other.md
+	var buf strings.Builder
+	writeGroupFile(&buf, "bkt", api, false)
+	got := buf.String()
+
+	// Title should be H2, not H1
+	if strings.Contains(got, "\n# bkt api") {
+		t.Error("standalone should use H2 title, not H1")
+	}
+	if !strings.Contains(got, "## bkt api") {
+		t.Error("missing H2 title for standalone command")
+	}
+
+	// Usage should be H3
+	if !strings.Contains(got, "### Usage") {
+		t.Error("standalone Usage should be H3")
+	}
+	if strings.Contains(got, "\n## Usage") {
+		t.Error("standalone Usage should not be H2")
+	}
+
+	// Flags should be H4
+	if !strings.Contains(got, "#### Flags") {
+		t.Error("standalone Flags should be H4")
+	}
+	if !strings.Contains(got, "#### Inherited Flags") {
+		t.Error("standalone Inherited Flags should be H4")
+	}
+}
+
 func TestHiddenCommandsExcluded(t *testing.T) {
 	root := newTestTree()
 	groups := collectGroups(root)
