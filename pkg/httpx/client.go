@@ -35,6 +35,11 @@ type Client struct {
 
 	retry RetryPolicy
 
+	// tokenRefresher is called on 401 Unauthorized responses. It should return
+	// a new access token. The client retries the original request once with the
+	// updated credentials.
+	tokenRefresher func(ctx context.Context) (string, error)
+
 	debug bool
 }
 
@@ -50,6 +55,12 @@ type Options struct {
 	EnableCache bool
 	Retry       RetryPolicy
 	Debug       bool
+
+	// TokenRefresher is an optional callback invoked on 401 Unauthorized
+	// responses. It should return a new access token. The client updates its
+	// credentials and retries the request once. If the retry also returns 401
+	// the error is returned to the caller without a second refresh attempt.
+	TokenRefresher func(ctx context.Context) (string, error)
 }
 
 // RetryPolicy defines exponential backoff characteristics for retries.
@@ -132,6 +143,7 @@ func New(opts Options) (*Client, error) {
 		policy.MaxBackoff = 2 * time.Second
 	}
 	client.retry = policy
+	client.tokenRefresher = opts.TokenRefresher
 
 	return client, nil
 }
@@ -241,6 +253,7 @@ func (c *Client) Do(req *http.Request, v any) error {
 	}
 
 	attempts := 0
+	tokenRefreshed := false
 	for {
 		attemptReq, err := cloneRequest(req)
 		if err != nil {
@@ -315,6 +328,24 @@ func (c *Client) Do(req *http.Request, v any) error {
 				}
 				return decodeError(resp)
 			}
+			continue
+		}
+
+		if resp.StatusCode == http.StatusUnauthorized && c.tokenRefresher != nil && !tokenRefreshed {
+			_ = resp.Body.Close()
+			newToken, refreshErr := c.tokenRefresher(req.Context())
+			if refreshErr != nil {
+				return fmt.Errorf("refresh token: %w", refreshErr)
+			}
+			// c.password and c.authMethod are updated without a mutex. Client is
+			// not safe for concurrent use during token refresh; CLI commands are
+			// single-threaded so this is acceptable.
+			c.password = newToken
+			// OAuth access tokens are always sent as Bearer regardless of the
+			// auth method the client was originally constructed with.
+			c.authMethod = "bearer"
+			c.applyAuth(req) // update auth header on original request for next clone
+			tokenRefreshed = true
 			continue
 		}
 
