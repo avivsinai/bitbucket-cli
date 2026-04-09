@@ -303,6 +303,7 @@ func TestHostFromEnvDCHost(t *testing.T) {
 
 func TestHostFromEnvCloudAutoDetect(t *testing.T) {
 	t.Setenv(secret.EnvToken, "cloud-token")
+	t.Setenv(secret.EnvUsername, "test@example.com")
 
 	// BKT_HOST=https://bitbucket.org is canonicalised to the API origin the
 	// same way bkt auth login does, so the Cloud client is routed correctly.
@@ -349,6 +350,7 @@ func TestHostFromEnvDCHostWithBitbucketOrgInName(t *testing.T) {
 
 func TestHostFromEnvCloudBareAPIHost(t *testing.T) {
 	t.Setenv(secret.EnvToken, "cloud-token")
+	t.Setenv(secret.EnvUsername, "test@example.com")
 
 	// api.bitbucket.org without the /2.0 path must be canonicalised so that
 	// NewCloudClient routes to the correct API base URL.
@@ -372,6 +374,7 @@ func TestHostFromEnvCloudBareAPIHost(t *testing.T) {
 
 func TestHostFromEnvCloudAPIURLPassthrough(t *testing.T) {
 	t.Setenv(secret.EnvToken, "cloud-token")
+	t.Setenv(secret.EnvUsername, "test@example.com")
 
 	// BKT_HOST=https://api.bitbucket.org/2.0 must also be classified as Cloud.
 	key, host, err := hostFromEnv("https://api.bitbucket.org/2.0")
@@ -454,6 +457,51 @@ func TestHostFromEnvHostWithoutScheme(t *testing.T) {
 	}
 	if host.BaseURL != "https://bitbucket.example.com" {
 		t.Errorf("baseURL = %q, want https://bitbucket.example.com", host.BaseURL)
+	}
+}
+
+func TestHostFromEnvDCDefaultsToBearer(t *testing.T) {
+	// DC without BKT_USERNAME and without BKT_AUTH_METHOD must default to bearer
+	// so that PAT-only headless flows work without extra configuration.
+	t.Setenv(secret.EnvToken, "pat-token")
+	t.Setenv(secret.EnvUsername, "")
+	t.Setenv(secret.EnvAuthMethod, "")
+
+	_, host, err := hostFromEnv("https://bitbucket.example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if host.AuthMethod != "bearer" {
+		t.Errorf("authMethod = %q, want bearer", host.AuthMethod)
+	}
+}
+
+func TestHostFromEnvDCBasicWithoutUsernameErrors(t *testing.T) {
+	// Explicitly requesting basic auth without a username must fail early.
+	t.Setenv(secret.EnvToken, "pat-token")
+	t.Setenv(secret.EnvUsername, "")
+	t.Setenv(secret.EnvAuthMethod, "basic")
+
+	_, _, err := hostFromEnv("https://bitbucket.example.com")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "BKT_USERNAME") {
+		t.Errorf("expected BKT_USERNAME mention in error, got: %v", err)
+	}
+}
+
+func TestHostFromEnvCloudRequiresUsername(t *testing.T) {
+	// Cloud always requires a username; omitting BKT_USERNAME must return an error.
+	t.Setenv(secret.EnvToken, "cloud-token")
+	t.Setenv(secret.EnvUsername, "")
+
+	_, _, err := hostFromEnv("https://bitbucket.org")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "BKT_USERNAME") {
+		t.Errorf("expected BKT_USERNAME mention in error, got: %v", err)
 	}
 }
 
@@ -667,6 +715,74 @@ func TestResolveContextPrefersSavedHostWhenEnvMatches(t *testing.T) {
 	// BKT_TOKEN is still applied via loadHostToken.
 	if host.Token != "env-token" {
 		t.Errorf("Token = %q, want env-token", host.Token)
+	}
+}
+
+func TestResolveContextEnvOverridesSavedHostAuthFields(t *testing.T) {
+	// When BKT_USERNAME or BKT_AUTH_METHOD are set, they must override the
+	// values stored in the config so headless runs use the requested credentials.
+	t.Setenv(secret.EnvToken, "env-token")
+	t.Setenv(secret.EnvHost, "https://bitbucket.example.com")
+	t.Setenv(secret.EnvUsername, "bob")
+	t.Setenv(secret.EnvAuthMethod, "basic")
+
+	f := newTestFactory(&config.Config{
+		Contexts: map[string]*config.Context{},
+		Hosts: map[string]*config.Host{
+			"bitbucket.example.com": {
+				Kind:       "dc",
+				BaseURL:    "https://bitbucket.example.com",
+				Username:   "alice",
+				AuthMethod: "bearer",
+			},
+		},
+	})
+
+	_, _, host, err := ResolveContext(f, nil, "")
+	if err != nil {
+		t.Fatalf("ResolveContext returned error: %v", err)
+	}
+	if host.Username != "bob" {
+		t.Errorf("Username = %q, want bob", host.Username)
+	}
+	if host.AuthMethod != "basic" {
+		t.Errorf("AuthMethod = %q, want basic", host.AuthMethod)
+	}
+}
+
+func TestResolveHostEnvOverridesSavedHostAuthFields(t *testing.T) {
+	// BKT_USERNAME and BKT_AUTH_METHOD must override saved host fields in all
+	// ResolveHost paths that reuse a saved config entry.
+	t.Setenv(secret.EnvToken, "env-token")
+	t.Setenv(secret.EnvHost, "https://bitbucket.example.com")
+	t.Setenv(secret.EnvUsername, "ci-user")
+	t.Setenv(secret.EnvAuthMethod, "bearer")
+
+	f := newTestFactory(&config.Config{
+		Hosts: map[string]*config.Host{
+			"bitbucket.example.com": {
+				Kind:       "dc",
+				BaseURL:    "https://bitbucket.example.com",
+				Username:   "dev-user",
+				AuthMethod: "basic",
+			},
+			"other.example.com": {
+				Kind:    "dc",
+				BaseURL: "https://other.example.com",
+				Token:   "other-token",
+			},
+		},
+	})
+
+	_, host, err := ResolveHost(f, "", "")
+	if err != nil {
+		t.Fatalf("ResolveHost returned error: %v", err)
+	}
+	if host.Username != "ci-user" {
+		t.Errorf("Username = %q, want ci-user", host.Username)
+	}
+	if host.AuthMethod != "bearer" {
+		t.Errorf("AuthMethod = %q, want bearer", host.AuthMethod)
 	}
 }
 

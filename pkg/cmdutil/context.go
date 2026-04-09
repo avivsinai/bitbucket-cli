@@ -43,6 +43,14 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
 					return "", nil, nil, err
 				}
+				// Overlay env-supplied auth fields so headless runs are not
+				// silently bound to stale stored credentials.
+				if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
+					saved.Username = u
+				}
+				if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
+					saved.AuthMethod = m
+				}
 				envHost = saved
 			}
 			ctx := contextFromEnv()
@@ -166,6 +174,12 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
 					return "", nil, err
 				}
+				if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
+					saved.Username = u
+				}
+				if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
+					saved.AuthMethod = m
+				}
 				return envKey, saved, nil
 			}
 			return envKey, envHost, nil
@@ -186,6 +200,12 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 			if saved, ok := cfg.Hosts[envKey]; ok {
 				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
 					return "", nil, err
+				}
+				if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
+					saved.Username = u
+				}
+				if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
+					saved.AuthMethod = m
 				}
 				return envKey, saved, nil
 			}
@@ -299,11 +319,32 @@ func hostFromEnv(rawURL string) (string, *config.Host, error) {
 		kind = "cloud"
 	}
 
+	username := strings.TrimSpace(os.Getenv(secret.EnvUsername))
+	authMethod := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod))
+
+	if isCloud {
+		// Cloud only supports basic auth; a username (Atlassian account email)
+		// is always required.
+		if username == "" {
+			return "", nil, fmt.Errorf("BKT_USERNAME is required for Bitbucket Cloud; set it to your Atlassian account email")
+		}
+		authMethod = "basic"
+	} else {
+		// DC: default to bearer when no username is available so that PAT-only
+		// headless flows work without requiring BKT_AUTH_METHOD=bearer.
+		if authMethod == "" && username == "" {
+			authMethod = "bearer"
+		}
+		if authMethod == "basic" && username == "" {
+			return "", nil, fmt.Errorf("BKT_AUTH_METHOD=basic requires BKT_USERNAME; set BKT_USERNAME or use BKT_AUTH_METHOD=bearer for token-only auth")
+		}
+	}
+
 	return key, &config.Host{
 		Kind:       kind,
 		BaseURL:    baseURL,
-		Username:   strings.TrimSpace(os.Getenv(secret.EnvUsername)),
-		AuthMethod: strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)),
+		Username:   username,
+		AuthMethod: authMethod,
 		Token:      token,
 	}, nil
 }
