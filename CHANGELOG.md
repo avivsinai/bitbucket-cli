@@ -5,6 +5,10 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Deprecation warning on all `bkt issue` subcommands for Bitbucket Cloud contexts, ahead of the August 20, 2026 Issues/Wikis sunset (#139).
+- Generated per-command skill rule files and rewritten `SKILL.md` via `cmd/docgen` pipeline (#133).
+- Unit tests for `bkt pr comments` covering Data Center and Cloud code paths, state filtering, and empty results (#140).
 
 ## [0.19.0] - 2026-04-07
 ### Added
