@@ -150,14 +150,13 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 					if _, err := fmt.Fprintf(ios.Out, "%sComplete: %s\n", indent, complete); err != nil {
 						return err
 					}
-				} else {
-					resolved := "no"
-					if c.ThreadResolved {
-						resolved = "yes"
-					}
-					if _, err := fmt.Fprintf(ios.Out, "%sResolved: %s\n", indent, resolved); err != nil {
-						return err
-					}
+				}
+				resolved := "no"
+				if c.ThreadResolved {
+					resolved = "yes"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "%sResolved: %s\n", indent, resolved); err != nil {
+					return err
 				}
 				if _, err := fmt.Fprintf(ios.Out, "\n%s%s\n\n", indent, c.Text); err != nil {
 					return err

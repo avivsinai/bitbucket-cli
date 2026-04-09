@@ -246,3 +246,72 @@ func TestCommentsEmpty(t *testing.T) {
 		}
 	})
 }
+
+func TestDCPRCommentsDetailsTask(t *testing.T) {
+	tests := []struct {
+		name           string
+		state          string
+		threadResolved bool
+		wantComplete   string
+		wantResolved   string
+	}{
+		{
+			name:           "open unresolved task",
+			state:          "OPEN",
+			threadResolved: false,
+			wantComplete:   "Complete: no",
+			wantResolved:   "Resolved: no",
+		},
+		{
+			name:           "resolved complete task",
+			state:          "RESOLVED",
+			threadResolved: true,
+			wantComplete:   "Complete: yes",
+			wantResolved:   "Resolved: yes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !strings.Contains(r.URL.Path, "/activities") {
+					http.NotFound(w, r)
+					return
+				}
+				resp := map[string]any{
+					"isLastPage": true,
+					"values": []map[string]any{
+						{
+							"action": "COMMENTED",
+							"comment": map[string]any{
+								"id":             1,
+								"text":           "fix this",
+								"severity":       "BLOCKER",
+								"state":          tt.state,
+								"threadResolved": tt.threadResolved,
+								"author": map[string]any{
+									"name": "alice",
+								},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(resp)
+			}))
+			t.Cleanup(srv.Close)
+
+			cfg := dcConfig(srv.URL)
+			stdout, _, err := runCLI(t, cfg, "pr", "comments", "1", "--details")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(stdout, tt.wantComplete) {
+				t.Errorf("stdout missing %q\ngot: %s", tt.wantComplete, stdout)
+			}
+			if !strings.Contains(stdout, tt.wantResolved) {
+				t.Errorf("stdout missing %q\ngot: %s", tt.wantResolved, stdout)
+			}
+		})
+	}
+}
