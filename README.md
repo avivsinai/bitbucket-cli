@@ -43,7 +43,7 @@ Download pre-built binaries for your platform from the [releases page](https://g
 
 ### Bitbucket Pipelines
 
-Add `bkt` to any pipeline step. Set `BKT_TOKEN` as a secured [repository variable](https://support.atlassian.com/bitbucket-cloud/docs/variables-and-secrets/).
+`bkt` supports fully config-free headless use via environment variables. Set `BKT_TOKEN` and `BKT_HOST` as secured [repository variables](https://support.atlassian.com/bitbucket-cloud/docs/variables-and-secrets/) — no prior `bkt auth login` or `bkt context create` step required.
 
 ```yaml
 pipelines:
@@ -51,9 +51,50 @@ pipelines:
     - step:
         name: Open PR
         script:
-          - export BKT_VERSION="0.16.4"  # pin to a specific release
+          - export BKT_VERSION="0.19.0"  # pin to a specific release
           - curl -sL "https://github.com/avivsinai/bitbucket-cli/releases/download/v${BKT_VERSION}/bkt_${BKT_VERSION}_linux_x86_64.tar.gz" | tar xz -C /tmp && install /tmp/bkt /usr/local/bin/
           - bkt pr create --title "Auto PR" --source "$BITBUCKET_BRANCH"
+```
+
+### Environment Variables
+
+All `bkt` behaviour can be configured via environment variables, which is especially useful in containers and CI/CD pipelines.
+
+| Variable | Description |
+|---|---|
+| `BKT_TOKEN` | Authentication token. Bypasses keyring storage entirely. |
+| `BKT_HOST` | Bitbucket server base URL (e.g. `https://bitbucket.example.com`). Required alongside `BKT_TOKEN` for config-free use. `bitbucket.org` is auto-detected as Cloud. |
+| `BKT_USERNAME` | Username for basic authentication in headless mode. |
+| `BKT_AUTH_METHOD` | Authentication method: `basic` or `bearer`. DC defaults to `bearer` when `BKT_USERNAME` is absent; Cloud always uses `basic`. |
+| `BKT_PROJECT` | Default Data Center project key (headless mode). |
+| `BKT_WORKSPACE` | Default Bitbucket Cloud workspace (headless mode). |
+| `BKT_REPO` | Default repository slug (headless mode). |
+| `BKT_CONFIG_DIR` | Override the config file directory (default: `$XDG_CONFIG_HOME/bkt`). |
+| `BKT_HTTP_DEBUG` | Set to `1` to log HTTP request URLs and response status codes. |
+| `BKT_ALLOW_INSECURE_STORE` | Set to `1` to use encrypted file fallback when no OS keychain is available. |
+
+**Minimal headless example (Data Center):**
+
+```bash
+export BKT_HOST=https://bitbucket.example.com
+export BKT_TOKEN=my-personal-access-token
+export BKT_PROJECT=MYPROJ
+export BKT_REPO=my-service
+
+bkt pr list
+bkt pr create --title "Automated PR" --source feature/my-branch
+```
+
+**Minimal headless example (Bitbucket Cloud):**
+
+```bash
+export BKT_HOST=https://bitbucket.org
+export BKT_TOKEN=my-api-token
+export BKT_USERNAME=me@example.com
+export BKT_WORKSPACE=my-workspace
+export BKT_REPO=my-repo
+
+bkt pr list
 ```
 
 ### From Source
