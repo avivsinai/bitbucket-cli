@@ -2383,7 +2383,7 @@ func TestEditCommandArgumentParsing(t *testing.T) {
 		{
 			name:          "no flags",
 			args:          []string{"123"},
-			errorContains: "at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required",
+			errorContains: "at least one of --title, --body, --description, --reviewer, --remove-reviewer, or --with-default-reviewers is required",
 		},
 		{
 			name:          "both body and description",
@@ -3106,6 +3106,16 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 			errorContains: "",
 		},
 		{
+			name:          "with-default-reviewers only is valid",
+			args:          []string{"123", "--with-default-reviewers"},
+			errorContains: "",
+		},
+		{
+			name:          "with-default-reviewers false alone is invalid",
+			args:          []string{"123", "--with-default-reviewers=false"},
+			errorContains: "at least one of --title, --body, --description, --reviewer, --remove-reviewer, or --with-default-reviewers is required",
+		},
+		{
 			name:          "overlap errors",
 			args:          []string{"123", "--reviewer", "alice", "--remove-reviewer", "alice"},
 			errorContains: `reviewer "alice" cannot be in both --reviewer and --remove-reviewer`,
@@ -3113,7 +3123,7 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 		{
 			name:          "no flags at all",
 			args:          []string{"123"},
-			errorContains: "at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required",
+			errorContains: "at least one of --title, --body, --description, --reviewer, --remove-reviewer, or --with-default-reviewers is required",
 		},
 	}
 
@@ -3128,6 +3138,10 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 						ID: 123, Title: "Title", Version: 1,
 						FromRef: bbdc.Ref{ID: "refs/heads/feature", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
 						ToRef:   bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+					}
+					if strings.Contains(r.URL.Path, "/default-reviewers/") {
+						_ = json.NewEncoder(w).Encode([]map[string]any{})
+						return
 					}
 					_ = json.NewEncoder(w).Encode(pr)
 				}))
@@ -3182,8 +3196,10 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 func TestRunEditDataCenterReviewers(t *testing.T) {
 	tests := []struct {
 		name            string
+		withDefaults    bool
 		reviewers       []string
 		removeReviewers []string
+		defaultUsers    []map[string]any
 		prResponse      bbdc.PullRequest
 		putBodyCheck    func(t *testing.T, body map[string]any)
 		stderrContains  string
@@ -3246,6 +3262,29 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 			},
 			stderrContains: "already on this pull request",
 		},
+		{
+			name:         "add default reviewers",
+			withDefaults: true,
+			defaultUsers: []map[string]any{
+				{"name": "bob"},
+				{"name": "charlie"},
+			},
+			prResponse: bbdc.PullRequest{
+				ID: 1, Title: "PR", Version: 1,
+				Reviewers: []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "alice"}}},
+				FromRef:   bbdc.Ref{ID: "refs/heads/feature/auth", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:     bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type in PUT body")
+				}
+				if len(reviewers) != 3 {
+					t.Fatalf("expected 3 reviewers, got %d", len(reviewers))
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -3254,6 +3293,22 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "GET" && strings.Contains(r.URL.Path, "/default-reviewers/") {
+					if got := r.URL.Query().Get("sourceRefId"); got != "refs/heads/feature/auth" {
+						t.Fatalf("sourceRefId = %q, want refs/heads/feature/auth", got)
+					}
+					if got := r.URL.Query().Get("targetRefId"); got != "refs/heads/main" {
+						t.Fatalf("targetRefId = %q, want refs/heads/main", got)
+					}
+					_ = json.NewEncoder(w).Encode([]map[string]any{
+						{
+							"reviewers": []map[string]any{
+								{"users": tt.defaultUsers},
+							},
+						},
+					})
+					return
+				}
 				if r.Method == "GET" {
 					_ = json.NewEncoder(w).Encode(tt.prResponse)
 					return
@@ -3293,6 +3348,9 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 			cmd.SilenceUsage = true
 
 			args := []string{"1"}
+			if tt.withDefaults {
+				args = append(args, "--with-default-reviewers")
+			}
 			for _, r := range tt.reviewers {
 				args = append(args, "--reviewer", r)
 			}
@@ -3322,14 +3380,17 @@ func TestRunEditCloudReviewers(t *testing.T) {
 	const (
 		aliceUUID = "{550e8400-e29b-41d4-a716-446655440000}"
 		bobUUID   = "{660e8400-e29b-41d4-a716-446655440000}"
+		carolUUID = "{770e8400-e29b-41d4-a716-446655440000}"
 	)
 	tests := []struct {
-		name            string
-		reviewers       []string
-		removeReviewers []string
-		prResponse      bbcloud.PullRequest
-		putBodyCheck    func(t *testing.T, body map[string]any)
-		stderrContains  string
+		name             string
+		withDefaults     bool
+		reviewers        []string
+		removeReviewers  []string
+		defaultReviewers []map[string]any
+		prResponse       bbcloud.PullRequest
+		putBodyCheck     func(t *testing.T, body map[string]any)
+		stderrContains   string
 	}{
 		{
 			name:      "add reviewer by username",
@@ -3388,6 +3449,45 @@ func TestRunEditCloudReviewers(t *testing.T) {
 			},
 			stderrContains: "already on this pull request",
 		},
+		{
+			name:         "add default reviewers excludes author",
+			withDefaults: true,
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": aliceUUID}},
+				{"user": map[string]any{"username": "carol", "uuid": carolUUID}},
+			},
+			prResponse: bbcloud.PullRequest{
+				ID:    1,
+				Title: "PR",
+				Author: struct {
+					DisplayName string "json:\"display_name\""
+					Username    string "json:\"username\""
+					UUID        string "json:\"uuid\""
+				}{
+					DisplayName: "Alice",
+					Username:    "alice",
+					UUID:        aliceUUID,
+				},
+				Reviewers: []bbcloud.User{{UUID: bobUUID, Username: "bob"}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type")
+				}
+				if len(reviewers) != 2 {
+					t.Fatalf("expected 2 reviewers, got %d", len(reviewers))
+				}
+				r0 := reviewers[0].(map[string]any)
+				if r0["uuid"] != bobUUID {
+					t.Fatalf("expected first reviewer to preserve bob by uuid, got %v", r0)
+				}
+				r1 := reviewers[1].(map[string]any)
+				if r1["uuid"] != carolUUID {
+					t.Fatalf("expected second reviewer to add carol by uuid, got %v", r1)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -3396,6 +3496,10 @@ func TestRunEditCloudReviewers(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if strings.Contains(r.URL.Path, "effective-default-reviewers") {
+					_ = json.NewEncoder(w).Encode(map[string]any{"values": tt.defaultReviewers})
+					return
+				}
 				if r.Method == "GET" {
 					_ = json.NewEncoder(w).Encode(tt.prResponse)
 					return
@@ -3433,6 +3537,9 @@ func TestRunEditCloudReviewers(t *testing.T) {
 			cmd.SilenceUsage = true
 
 			args := []string{"1"}
+			if tt.withDefaults {
+				args = append(args, "--with-default-reviewers")
+			}
 			for _, r := range tt.reviewers {
 				args = append(args, "--reviewer", r)
 			}
@@ -3455,6 +3562,122 @@ func TestRunEditCloudReviewers(t *testing.T) {
 				t.Errorf("expected stderr containing %q, got %q", tt.stderrContains, stderr.String())
 			}
 		})
+	}
+}
+
+func TestRunEditDataCenterWithDefaultReviewersFalseDoesNotFetchDefaults(t *testing.T) {
+	defaultsCalled := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/default-reviewers/") {
+			defaultsCalled = true
+			t.Fatalf("default reviewers endpoint should not be called when --with-default-reviewers=false")
+		}
+		if r.Method == "GET" {
+			_ = json.NewEncoder(w).Encode(bbdc.PullRequest{
+				ID: 1, Title: "PR", Version: 1,
+				Reviewers: []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "alice"}}},
+				FromRef:   bbdc.Ref{ID: "refs/heads/feature/auth", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:     bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			})
+			return
+		}
+		if r.Method == "PUT" {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			reviewers := body["reviewers"].([]any)
+			if len(reviewers) != 1 {
+				t.Fatalf("expected reviewers to stay unchanged, got %v", reviewers)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "Updated", "version": 2})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newEditCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--title", "Updated", "--with-default-reviewers=false"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defaultsCalled {
+		t.Fatal("expected default reviewers endpoint not to be called")
+	}
+}
+
+func TestRunEditCloudWithDefaultReviewersFalseDoesNotFetchDefaults(t *testing.T) {
+	defaultsCalled := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "effective-default-reviewers") {
+			defaultsCalled = true
+			t.Fatalf("effective default reviewers endpoint should not be called when --with-default-reviewers=false")
+		}
+		if r.Method == "PUT" {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if _, ok := body["reviewers"]; ok {
+				t.Fatalf("expected reviewers field to be omitted, got %v", body["reviewers"])
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "Updated"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {Kind: "cloud", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newEditCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--title", "Updated", "--with-default-reviewers=false"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defaultsCalled {
+		t.Fatal("expected effective default reviewers endpoint not to be called")
 	}
 }
 

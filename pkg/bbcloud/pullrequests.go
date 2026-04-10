@@ -37,6 +37,7 @@ type PullRequest struct {
 	Author    struct {
 		DisplayName string `json:"display_name"`
 		Username    string `json:"username"`
+		UUID        string `json:"uuid"`
 	} `json:"author"`
 	Source struct {
 		Branch struct {
