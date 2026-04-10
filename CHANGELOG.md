@@ -5,12 +5,15 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.21.0] - 2026-04-10
 ### Added
 - OAuth 2.0 infrastructure for Cloud login in the new `pkg/oauth` package, plus a `TokenRefresher` hook on `httpx.Client` for transparent 401-driven token refresh. Phase 1 only; login-command wiring is not included yet (#137).
 - Unit test coverage for `bkt branch` and `bkt branch protect` subcommands (#143).
 - Unit test coverage for `bkt context` subcommands (#143).
 - Unit test coverage for `bkt project list` (#144).
 - Unit test coverage for `bkt webhook` subcommands (#145).
+
 
 ## [0.20.0] - 2026-04-09
 ### Added
