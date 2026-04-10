@@ -1458,12 +1458,10 @@ func getCloudDefaultReviewers(ctx context.Context, client *bbcloud.Client, works
 }
 
 func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
-	ios, err := f.Streams()
-	if err != nil {
-		return err
-	}
+	ios, _ := f.Streams()
 
 	override := cmdutil.FlagValue(cmd, "context")
+	var err error
 	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, override)
 	if err != nil {
 		return err
