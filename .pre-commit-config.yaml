@@ -12,6 +12,16 @@ repos:
       - id: gitleaks
         args: ['--config=.gitleaks.toml']
 
+  # Generated skill rules freshness check
+  - repo: local
+    hooks:
+      - id: check-generated-skill
+        name: Check generated skill rules are up-to-date
+        entry: ./scripts/check-generated-skill.sh
+        language: script
+        pass_filenames: false
+        files: ^(pkg/cmd/|cmd/docgen/|internal/docgen/|skills/bkt/)
+
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
