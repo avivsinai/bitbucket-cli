@@ -1376,21 +1376,17 @@ func mergeCloudPRReviewers(current, defaults []bbcloud.User) []bbcloud.User {
 	result := make([]bbcloud.User, 0, len(current)+len(defaults))
 
 	addUser := func(user bbcloud.User) {
-		uuidKey := ""
-		if user.UUID != "" {
-			uuidKey = bbcloud.NormalizeUUID(user.UUID)
-		}
-		if (user.Username != "" && seen[user.Username]) || (uuidKey != "" && seen[uuidKey]) {
+		keys := cloudUserKeys(user)
+		if len(keys) == 0 {
 			return
 		}
-		if user.Username == "" && uuidKey == "" {
-			return
+		for _, key := range keys {
+			if seen[key] {
+				return
+			}
 		}
-		if user.Username != "" {
-			seen[user.Username] = true
-		}
-		if uuidKey != "" {
-			seen[uuidKey] = true
+		for _, key := range keys {
+			seen[key] = true
 		}
 		result = append(result, user)
 	}
@@ -1406,8 +1402,26 @@ func mergeCloudPRReviewers(current, defaults []bbcloud.User) []bbcloud.User {
 }
 
 func cloudReviewerIDs(reviewers []bbcloud.User) []string {
+	seen := make(map[string]bool, len(reviewers))
 	ids := make([]string, 0, len(reviewers))
 	for _, reviewer := range reviewers {
+		keys := cloudUserKeys(reviewer)
+		if len(keys) == 0 {
+			continue
+		}
+		duplicate := false
+		for _, key := range keys {
+			if seen[key] {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+		for _, key := range keys {
+			seen[key] = true
+		}
 		if reviewer.UUID != "" {
 			ids = append(ids, reviewer.UUID)
 			continue
@@ -1427,15 +1441,35 @@ func getDCDefaultReviewers(ctx context.Context, client *bbdc.Client, projectKey,
 	return defaultUsers, nil
 }
 
+func cloudUserKeys(user bbcloud.User) []string {
+	keys := make([]string, 0, 3)
+	if user.UUID != "" {
+		keys = append(keys, "uuid:"+bbcloud.NormalizeUUID(user.UUID))
+	}
+	if user.AccountID != "" {
+		keys = append(keys, "account_id:"+user.AccountID)
+	}
+	if user.Username != "" {
+		keys = append(keys, "username:"+user.Username)
+	}
+	return keys
+}
+
 func sameCloudUser(a, b bbcloud.User) bool {
-	switch {
-	case a.UUID != "" && b.UUID != "":
-		return bbcloud.NormalizeUUID(a.UUID) == bbcloud.NormalizeUUID(b.UUID)
-	case a.Username != "" && b.Username != "":
-		return a.Username == b.Username
-	default:
+	keys := cloudUserKeys(a)
+	if len(keys) == 0 {
 		return false
 	}
+	seen := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		seen[key] = true
+	}
+	for _, key := range cloudUserKeys(b) {
+		if seen[key] {
+			return true
+		}
+	}
+	return false
 }
 
 func filterCloudUsers(users []bbcloud.User, excluded bbcloud.User) []bbcloud.User {
@@ -1565,8 +1599,9 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 			currentReviewers := pr.Reviewers
 			if opts.WithDefaultReviewers {
 				defaultUsers, err := getCloudDefaultReviewers(ctx, client, workspace, repoSlug, bbcloud.User{
-					UUID:     pr.Author.UUID,
-					Username: pr.Author.Username,
+					UUID:      pr.Author.UUID,
+					Username:  pr.Author.Username,
+					AccountID: pr.Author.AccountID,
 				})
 				if err != nil {
 					return err

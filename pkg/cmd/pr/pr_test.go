@@ -3463,6 +3463,7 @@ func TestRunEditCloudReviewers(t *testing.T) {
 					DisplayName string "json:\"display_name\""
 					Username    string "json:\"username\""
 					UUID        string "json:\"uuid\""
+					AccountID   string "json:\"account_id\""
 				}{
 					DisplayName: "Alice",
 					Username:    "alice",
@@ -3485,6 +3486,49 @@ func TestRunEditCloudReviewers(t *testing.T) {
 				r1 := reviewers[1].(map[string]any)
 				if r1["uuid"] != carolUUID {
 					t.Fatalf("expected second reviewer to add carol by uuid, got %v", r1)
+				}
+			},
+		},
+		{
+			name:         "add default reviewers dedups and excludes author across account id",
+			withDefaults: true,
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "account_id": "acc-alice"}},
+				{"user": map[string]any{"username": "bob", "account_id": "acc-bob"}},
+				{"user": map[string]any{"username": "carol", "account_id": "acc-carol"}},
+			},
+			prResponse: bbcloud.PullRequest{
+				ID:    1,
+				Title: "PR",
+				Author: struct {
+					DisplayName string "json:\"display_name\""
+					Username    string "json:\"username\""
+					UUID        string "json:\"uuid\""
+					AccountID   string "json:\"account_id\""
+				}{
+					DisplayName: "Alice",
+					UUID:        aliceUUID,
+					AccountID:   "acc-alice",
+				},
+				Reviewers: []bbcloud.User{
+					{UUID: bobUUID, AccountID: "acc-bob"},
+				},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type")
+				}
+				if len(reviewers) != 2 {
+					t.Fatalf("expected 2 reviewers after dedup/exclusion, got %d", len(reviewers))
+				}
+				r0 := reviewers[0].(map[string]any)
+				if r0["uuid"] != bobUUID {
+					t.Fatalf("expected existing bob reviewer preserved by uuid, got %v", r0)
+				}
+				r1 := reviewers[1].(map[string]any)
+				if r1["username"] != "carol" {
+					t.Fatalf("expected only carol to be added, got %v", r1)
 				}
 			},
 		},
@@ -3900,6 +3944,7 @@ func TestRunEditCloudErrors(t *testing.T) {
 						DisplayName string `json:"display_name"`
 						Username    string `json:"username"`
 						UUID        string `json:"uuid"`
+						AccountID   string `json:"account_id"`
 					}{Username: "alice", UUID: aliceUUID},
 				})
 			},
@@ -4795,11 +4840,50 @@ func TestMergeCloudPRReviewers(t *testing.T) {
 	}
 }
 
+func TestMergeCloudPRReviewersDedupsAcrossAccountID(t *testing.T) {
+	got := mergeCloudPRReviewers(
+		[]bbcloud.User{
+			{UUID: "{00000000-0000-0000-0000-000000000001}", AccountID: "acc-alice"},
+		},
+		[]bbcloud.User{
+			{Username: "alice", AccountID: "acc-alice"},
+			{Username: "bob", AccountID: "acc-bob"},
+		},
+	)
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 reviewers, got %v", got)
+	}
+	if got[0].UUID != "{00000000-0000-0000-0000-000000000001}" {
+		t.Fatalf("expected existing reviewer preserved, got %v", got[0])
+	}
+	if got[1].Username != "bob" {
+		t.Fatalf("expected bob added, got %v", got[1])
+	}
+}
+
 func TestCloudReviewerIDs(t *testing.T) {
 	got := cloudReviewerIDs([]bbcloud.User{
 		{UUID: "{00000000-0000-0000-0000-000000000001}"},
 		{Username: "bob"},
 		{},
+	})
+	want := []string{"{00000000-0000-0000-0000-000000000001}", "bob"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestCloudReviewerIDsDedupAcrossAccountID(t *testing.T) {
+	got := cloudReviewerIDs([]bbcloud.User{
+		{UUID: "{00000000-0000-0000-0000-000000000001}", AccountID: "acc-alice"},
+		{Username: "alice", AccountID: "acc-alice"},
+		{Username: "bob", AccountID: "acc-bob"},
 	})
 	want := []string{"{00000000-0000-0000-0000-000000000001}", "bob"}
 	if len(got) != len(want) {
@@ -4849,6 +4933,12 @@ func TestSameCloudUser(t *testing.T) {
 			name: "same username",
 			a:    bbcloud.User{Username: "alice"},
 			b:    bbcloud.User{Username: "alice"},
+			want: true,
+		},
+		{
+			name: "same account id bridges mixed identifiers",
+			a:    bbcloud.User{UUID: "{00000000-0000-0000-0000-000000000001}", AccountID: "acc-alice"},
+			b:    bbcloud.User{Username: "alice", AccountID: "acc-alice"},
 			want: true,
 		},
 		{
