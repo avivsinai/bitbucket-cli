@@ -1285,9 +1285,10 @@ type editOptions struct {
 func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &editOptions{}
 	cmd := &cobra.Command{
-		Use:   "edit <id>",
-		Short: "Edit a pull request",
-		Long:  "Edit a pull request's title, description, and/or reviewers.",
+		Use:     "edit <id>",
+		Aliases: []string{"update"},
+		Short:   "Edit a pull request",
+		Long:    "Edit a pull request's title, description, and/or reviewers.",
 		Example: `  # Update pull request title
   bkt pr edit 123 --title "New feature: user authentication"
 

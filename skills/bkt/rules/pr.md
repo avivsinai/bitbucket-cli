@@ -603,6 +603,8 @@ bkt pr diff <id> [flags]
 
 Edit a pull request's title, description, and/or reviewers.
 
+**Alias:** `update`
+
 ### Usage
 
 ```
@@ -1364,4 +1366,3 @@ bkt pr view <id> [flags]
   # View a pull request in a different repository
   bkt pr view 10 --repo my-other-repo
 ```
-
