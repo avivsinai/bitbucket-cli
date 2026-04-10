@@ -300,9 +300,9 @@ func TestHostFromEnv(t *testing.T) {
 		wantHost *hostAssert
 	}{
 		{
-			name:    "DC host synthesis",
-			rawURL:  "https://bitbucket.example.com",
-			token:   "test-token",
+			name:     "DC host synthesis",
+			rawURL:   "https://bitbucket.example.com",
+			token:    "test-token",
 			wantHost: &hostAssert{key: "bitbucket.example.com", kind: "dc", baseURL: "https://bitbucket.example.com", authMethod: "bearer", token: "test-token"},
 		},
 		{
@@ -313,9 +313,9 @@ func TestHostFromEnv(t *testing.T) {
 			wantHost: &hostAssert{key: "api.bitbucket.org", kind: "cloud", baseURL: "https://api.bitbucket.org/2.0", authMethod: "basic"},
 		},
 		{
-			name:    "DC host with bitbucket.org in name not rewritten",
-			rawURL:  "https://bitbucket.org.example.com",
-			token:   "test-token",
+			name:     "DC host with bitbucket.org in name not rewritten",
+			rawURL:   "https://bitbucket.org.example.com",
+			token:    "test-token",
 			wantHost: &hostAssert{key: "bitbucket.org.example.com", kind: "dc", baseURL: "https://bitbucket.org.example.com"},
 		},
 		{
@@ -359,15 +359,15 @@ func TestHostFromEnv(t *testing.T) {
 			wantHost: &hostAssert{username: "admin"},
 		},
 		{
-			name:    "bare hostname gets https scheme",
-			rawURL:  "bitbucket.example.com",
-			token:   "test-token",
+			name:     "bare hostname gets https scheme",
+			rawURL:   "bitbucket.example.com",
+			token:    "test-token",
 			wantHost: &hostAssert{key: "bitbucket.example.com", baseURL: "https://bitbucket.example.com"},
 		},
 		{
-			name:    "DC defaults to bearer when no username",
-			rawURL:  "https://bitbucket.example.com",
-			token:   "pat-token",
+			name:     "DC defaults to bearer when no username",
+			rawURL:   "https://bitbucket.example.com",
+			token:    "pat-token",
 			wantHost: &hostAssert{authMethod: "bearer"},
 		},
 		{
