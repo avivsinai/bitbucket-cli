@@ -40,18 +40,11 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 			// key — it preserves persisted fields (username, auth_method, etc.)
 			// that the synthesized host would silently drop.
 			if saved, ok := cfg.Hosts[envKey]; ok {
-				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
+				h, err := mergeEnvHost(f.ExecutableName, envKey, *saved)
+				if err != nil {
 					return "", nil, nil, err
 				}
-				// Overlay env-supplied auth fields so headless runs are not
-				// silently bound to stale stored credentials.
-				if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
-					saved.Username = u
-				}
-				if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
-					saved.AuthMethod = m
-				}
-				envHost = saved
+				envHost = h
 			}
 			ctx := contextFromEnv()
 			ctx.Host = envKey
@@ -171,16 +164,11 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 		}
 		if envHost != nil {
 			if saved, ok := cfg.Hosts[envKey]; ok {
-				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
+				h, err := mergeEnvHost(f.ExecutableName, envKey, *saved)
+				if err != nil {
 					return "", nil, err
 				}
-				if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
-					saved.Username = u
-				}
-				if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
-					saved.AuthMethod = m
-				}
-				return envKey, saved, nil
+				return envKey, h, nil
 			}
 			return envKey, envHost, nil
 		}
@@ -198,16 +186,11 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 		}
 		if envHost != nil {
 			if saved, ok := cfg.Hosts[envKey]; ok {
-				if err := loadHostToken(f.ExecutableName, envKey, saved); err != nil {
+				h, err := mergeEnvHost(f.ExecutableName, envKey, *saved)
+				if err != nil {
 					return "", nil, err
 				}
-				if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
-					saved.Username = u
-				}
-				if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
-					saved.AuthMethod = m
-				}
-				return envKey, saved, nil
+				return envKey, h, nil
 			}
 			return envKey, envHost, nil
 		}
@@ -229,6 +212,23 @@ func FlagValue(cmd *cobra.Command, name string) string {
 		return ""
 	}
 	return flag.Value.String()
+}
+
+// mergeEnvHost returns a copy of base with BKT_TOKEN, BKT_USERNAME, and
+// BKT_AUTH_METHOD applied. The caller's map entry is never mutated because
+// base is passed by value; the returned pointer is a fresh allocation.
+func mergeEnvHost(executable, key string, base config.Host) (*config.Host, error) {
+	h := base
+	if err := loadHostToken(executable, key, &h); err != nil {
+		return nil, err
+	}
+	if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
+		h.Username = u
+	}
+	if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
+		h.AuthMethod = m
+	}
+	return &h, nil
 }
 
 func loadHostToken(executable, hostKey string, host *config.Host) error {

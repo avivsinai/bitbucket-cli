@@ -65,7 +65,7 @@ All `bkt` behaviour can be configured via environment variables, which is especi
 | `BKT_TOKEN` | Authentication token. Bypasses keyring storage entirely. |
 | `BKT_HOST` | Bitbucket server base URL (e.g. `https://bitbucket.example.com`). Required alongside `BKT_TOKEN` for config-free use. `bitbucket.org` is auto-detected as Cloud. |
 | `BKT_USERNAME` | Username for basic authentication in headless mode. |
-| `BKT_AUTH_METHOD` | Authentication method: `basic` (default) or `bearer`. |
+| `BKT_AUTH_METHOD` | Authentication method: `basic` or `bearer`. DC defaults to `bearer` when `BKT_USERNAME` is absent; Cloud always uses `basic`. |
 | `BKT_PROJECT` | Default Data Center project key (headless mode). |
 | `BKT_WORKSPACE` | Default Bitbucket Cloud workspace (headless mode). |
 | `BKT_REPO` | Default repository slug (headless mode). |
