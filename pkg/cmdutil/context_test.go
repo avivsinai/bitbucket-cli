@@ -277,231 +277,163 @@ func runGit(t *testing.T, dir string, args ...string) {
 
 // --- hostFromEnv tests ---
 
-func TestHostFromEnvDCHost(t *testing.T) {
-	t.Setenv(secret.EnvToken, "test-token")
+func TestHostFromEnv(t *testing.T) {
+	type hostAssert struct {
+		key        string
+		kind       string
+		baseURL    string
+		username   string
+		authMethod string
+		token      string
+	}
+	tests := []struct {
+		name       string
+		rawURL     string
+		token      string
+		username   string
+		authMethod string
+		// wantNil: expect ("", nil, nil) — no host synthesised
+		wantNil bool
+		// wantErr: expect an error whose message contains this string
+		wantErr string
+		// wantHost: fields to assert when a host is returned
+		wantHost *hostAssert
+	}{
+		{
+			name:    "DC host synthesis",
+			rawURL:  "https://bitbucket.example.com",
+			token:   "test-token",
+			wantHost: &hostAssert{key: "bitbucket.example.com", kind: "dc", baseURL: "https://bitbucket.example.com", authMethod: "bearer", token: "test-token"},
+		},
+		{
+			name:     "Cloud auto-detect from bitbucket.org",
+			rawURL:   "https://bitbucket.org",
+			token:    "cloud-token",
+			username: "test@example.com",
+			wantHost: &hostAssert{key: "api.bitbucket.org", kind: "cloud", baseURL: "https://api.bitbucket.org/2.0", authMethod: "basic"},
+		},
+		{
+			name:    "DC host with bitbucket.org in name not rewritten",
+			rawURL:  "https://bitbucket.org.example.com",
+			token:   "test-token",
+			wantHost: &hostAssert{key: "bitbucket.org.example.com", kind: "dc", baseURL: "https://bitbucket.org.example.com"},
+		},
+		{
+			name:     "Cloud bare api.bitbucket.org canonicalised",
+			rawURL:   "api.bitbucket.org",
+			token:    "cloud-token",
+			username: "test@example.com",
+			wantHost: &hostAssert{key: "api.bitbucket.org", kind: "cloud", baseURL: "https://api.bitbucket.org/2.0"},
+		},
+		{
+			name:     "Cloud https://api.bitbucket.org/2.0 passthrough",
+			rawURL:   "https://api.bitbucket.org/2.0",
+			token:    "cloud-token",
+			username: "test@example.com",
+			wantHost: &hostAssert{key: "api.bitbucket.org", kind: "cloud"},
+		},
+		{
+			name:    "no token returns nil",
+			rawURL:  "https://bitbucket.example.com",
+			token:   "",
+			wantNil: true,
+		},
+		{
+			name:    "no URL returns nil",
+			rawURL:  "",
+			token:   "test-token",
+			wantNil: true,
+		},
+		{
+			name:       "explicit bearer auth method honoured",
+			rawURL:     "https://bitbucket.example.com",
+			token:      "bearer-token",
+			authMethod: "bearer",
+			wantHost:   &hostAssert{authMethod: "bearer"},
+		},
+		{
+			name:     "username is mapped",
+			rawURL:   "https://bitbucket.example.com",
+			token:    "test-token",
+			username: "admin",
+			wantHost: &hostAssert{username: "admin"},
+		},
+		{
+			name:    "bare hostname gets https scheme",
+			rawURL:  "bitbucket.example.com",
+			token:   "test-token",
+			wantHost: &hostAssert{key: "bitbucket.example.com", baseURL: "https://bitbucket.example.com"},
+		},
+		{
+			name:    "DC defaults to bearer when no username",
+			rawURL:  "https://bitbucket.example.com",
+			token:   "pat-token",
+			wantHost: &hostAssert{authMethod: "bearer"},
+		},
+		{
+			name:       "DC basic without username is an error",
+			rawURL:     "https://bitbucket.example.com",
+			token:      "pat-token",
+			authMethod: "basic",
+			wantErr:    "BKT_USERNAME",
+		},
+		{
+			name:    "Cloud without username is an error",
+			rawURL:  "https://bitbucket.org",
+			token:   "cloud-token",
+			wantErr: "BKT_USERNAME",
+		},
+	}
 
-	key, host, err := hostFromEnv("https://bitbucket.example.com")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host == nil {
-		t.Fatal("expected host, got nil")
-	}
-	if key != "bitbucket.example.com" {
-		t.Errorf("key = %q, want bitbucket.example.com", key)
-	}
-	if host.Kind != "dc" {
-		t.Errorf("kind = %q, want dc", host.Kind)
-	}
-	if host.BaseURL != "https://bitbucket.example.com" {
-		t.Errorf("baseURL = %q, want https://bitbucket.example.com", host.BaseURL)
-	}
-	if host.Token != "test-token" {
-		t.Errorf("token = %q, want test-token", host.Token)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(secret.EnvToken, tt.token)
+			t.Setenv(secret.EnvUsername, tt.username)
+			t.Setenv(secret.EnvAuthMethod, tt.authMethod)
 
-func TestHostFromEnvCloudAutoDetect(t *testing.T) {
-	t.Setenv(secret.EnvToken, "cloud-token")
-	t.Setenv(secret.EnvUsername, "test@example.com")
+			key, host, err := hostFromEnv(tt.rawURL)
 
-	// BKT_HOST=https://bitbucket.org is canonicalised to the API origin the
-	// same way bkt auth login does, so the Cloud client is routed correctly.
-	key, host, err := hostFromEnv("https://bitbucket.org")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host == nil {
-		t.Fatal("expected host, got nil")
-	}
-	if key != "api.bitbucket.org" {
-		t.Errorf("key = %q, want api.bitbucket.org", key)
-	}
-	if host.Kind != "cloud" {
-		t.Errorf("kind = %q, want cloud", host.Kind)
-	}
-	if host.BaseURL != "https://api.bitbucket.org/2.0" {
-		t.Errorf("baseURL = %q, want https://api.bitbucket.org/2.0", host.BaseURL)
-	}
-}
-
-func TestHostFromEnvDCHostWithBitbucketOrgInName(t *testing.T) {
-	t.Setenv(secret.EnvToken, "test-token")
-
-	// A DC host whose name contains "bitbucket.org" must NOT be rewritten to
-	// the Cloud API origin, and must not be classified as Cloud.
-	key, host, err := hostFromEnv("https://bitbucket.org.example.com")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host == nil {
-		t.Fatal("expected host, got nil")
-	}
-	if key != "bitbucket.org.example.com" {
-		t.Errorf("key = %q, want bitbucket.org.example.com", key)
-	}
-	if host.Kind != "dc" {
-		t.Errorf("kind = %q, want dc", host.Kind)
-	}
-	if host.BaseURL != "https://bitbucket.org.example.com" {
-		t.Errorf("baseURL = %q, want https://bitbucket.org.example.com", host.BaseURL)
-	}
-}
-
-func TestHostFromEnvCloudBareAPIHost(t *testing.T) {
-	t.Setenv(secret.EnvToken, "cloud-token")
-	t.Setenv(secret.EnvUsername, "test@example.com")
-
-	// api.bitbucket.org without the /2.0 path must be canonicalised so that
-	// NewCloudClient routes to the correct API base URL.
-	key, host, err := hostFromEnv("api.bitbucket.org")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host == nil {
-		t.Fatal("expected host, got nil")
-	}
-	if key != "api.bitbucket.org" {
-		t.Errorf("key = %q, want api.bitbucket.org", key)
-	}
-	if host.Kind != "cloud" {
-		t.Errorf("kind = %q, want cloud", host.Kind)
-	}
-	if host.BaseURL != "https://api.bitbucket.org/2.0" {
-		t.Errorf("baseURL = %q, want https://api.bitbucket.org/2.0", host.BaseURL)
-	}
-}
-
-func TestHostFromEnvCloudAPIURLPassthrough(t *testing.T) {
-	t.Setenv(secret.EnvToken, "cloud-token")
-	t.Setenv(secret.EnvUsername, "test@example.com")
-
-	// BKT_HOST=https://api.bitbucket.org/2.0 must also be classified as Cloud.
-	key, host, err := hostFromEnv("https://api.bitbucket.org/2.0")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host == nil {
-		t.Fatal("expected host, got nil")
-	}
-	if key != "api.bitbucket.org" {
-		t.Errorf("key = %q, want api.bitbucket.org", key)
-	}
-	if host.Kind != "cloud" {
-		t.Errorf("kind = %q, want cloud", host.Kind)
-	}
-}
-
-func TestHostFromEnvNoToken(t *testing.T) {
-	t.Setenv(secret.EnvToken, "")
-
-	key, host, err := hostFromEnv("https://bitbucket.example.com")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if key != "" || host != nil {
-		t.Errorf("expected (empty, nil), got (%q, %v)", key, host)
-	}
-}
-
-func TestHostFromEnvNoURL(t *testing.T) {
-	t.Setenv(secret.EnvToken, "test-token")
-
-	key, host, err := hostFromEnv("")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if key != "" || host != nil {
-		t.Errorf("expected (empty, nil), got (%q, %v)", key, host)
-	}
-}
-
-func TestHostFromEnvAuthMethodBearer(t *testing.T) {
-	t.Setenv(secret.EnvToken, "bearer-token")
-	t.Setenv(secret.EnvAuthMethod, "bearer")
-
-	_, host, err := hostFromEnv("https://bitbucket.example.com")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host.AuthMethod != "bearer" {
-		t.Errorf("authMethod = %q, want bearer", host.AuthMethod)
-	}
-}
-
-func TestHostFromEnvUsername(t *testing.T) {
-	t.Setenv(secret.EnvToken, "test-token")
-	t.Setenv(secret.EnvUsername, "admin")
-
-	_, host, err := hostFromEnv("https://bitbucket.example.com")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host.Username != "admin" {
-		t.Errorf("username = %q, want admin", host.Username)
-	}
-}
-
-func TestHostFromEnvHostWithoutScheme(t *testing.T) {
-	t.Setenv(secret.EnvToken, "test-token")
-
-	key, host, err := hostFromEnv("bitbucket.example.com")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host == nil {
-		t.Fatal("expected host, got nil")
-	}
-	if key != "bitbucket.example.com" {
-		t.Errorf("key = %q, want bitbucket.example.com", key)
-	}
-	if host.BaseURL != "https://bitbucket.example.com" {
-		t.Errorf("baseURL = %q, want https://bitbucket.example.com", host.BaseURL)
-	}
-}
-
-func TestHostFromEnvDCDefaultsToBearer(t *testing.T) {
-	// DC without BKT_USERNAME and without BKT_AUTH_METHOD must default to bearer
-	// so that PAT-only headless flows work without extra configuration.
-	t.Setenv(secret.EnvToken, "pat-token")
-	t.Setenv(secret.EnvUsername, "")
-	t.Setenv(secret.EnvAuthMethod, "")
-
-	_, host, err := hostFromEnv("https://bitbucket.example.com")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if host.AuthMethod != "bearer" {
-		t.Errorf("authMethod = %q, want bearer", host.AuthMethod)
-	}
-}
-
-func TestHostFromEnvDCBasicWithoutUsernameErrors(t *testing.T) {
-	// Explicitly requesting basic auth without a username must fail early.
-	t.Setenv(secret.EnvToken, "pat-token")
-	t.Setenv(secret.EnvUsername, "")
-	t.Setenv(secret.EnvAuthMethod, "basic")
-
-	_, _, err := hostFromEnv("https://bitbucket.example.com")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "BKT_USERNAME") {
-		t.Errorf("expected BKT_USERNAME mention in error, got: %v", err)
-	}
-}
-
-func TestHostFromEnvCloudRequiresUsername(t *testing.T) {
-	// Cloud always requires a username; omitting BKT_USERNAME must return an error.
-	t.Setenv(secret.EnvToken, "cloud-token")
-	t.Setenv(secret.EnvUsername, "")
-
-	_, _, err := hostFromEnv("https://bitbucket.org")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "BKT_USERNAME") {
-		t.Errorf("expected BKT_USERNAME mention in error, got: %v", err)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error = %v, want to contain %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantNil {
+				if key != "" || host != nil {
+					t.Errorf("expected (empty, nil), got (%q, %v)", key, host)
+				}
+				return
+			}
+			if host == nil {
+				t.Fatal("expected host, got nil")
+			}
+			a := tt.wantHost
+			if a.key != "" && key != a.key {
+				t.Errorf("key = %q, want %q", key, a.key)
+			}
+			if a.kind != "" && host.Kind != a.kind {
+				t.Errorf("kind = %q, want %q", host.Kind, a.kind)
+			}
+			if a.baseURL != "" && host.BaseURL != a.baseURL {
+				t.Errorf("baseURL = %q, want %q", host.BaseURL, a.baseURL)
+			}
+			if a.username != "" && host.Username != a.username {
+				t.Errorf("username = %q, want %q", host.Username, a.username)
+			}
+			if a.authMethod != "" && host.AuthMethod != a.authMethod {
+				t.Errorf("authMethod = %q, want %q", host.AuthMethod, a.authMethod)
+			}
+			if a.token != "" && host.Token != a.token {
+				t.Errorf("token = %q, want %q", host.Token, a.token)
+			}
+		})
 	}
 }
 
@@ -586,8 +518,9 @@ func TestResolveHostEnvFallbackHostOverrideNotFound(t *testing.T) {
 }
 
 func TestResolveHostEnvFallbackNotTriggeredWithoutToken(t *testing.T) {
+	// Neither BKT_HOST nor BKT_TOKEN — generic "no hosts configured" error.
 	t.Setenv(secret.EnvToken, "")
-	t.Setenv(secret.EnvHost, "https://bitbucket.example.com")
+	t.Setenv(secret.EnvHost, "")
 
 	f := newTestFactory(&config.Config{
 		Hosts: map[string]*config.Host{},
@@ -599,6 +532,24 @@ func TestResolveHostEnvFallbackNotTriggeredWithoutToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no hosts configured") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveHostHostSetButNoToken(t *testing.T) {
+	// BKT_HOST set but BKT_TOKEN absent — actionable hint error.
+	t.Setenv(secret.EnvHost, "https://bitbucket.example.com")
+	t.Setenv(secret.EnvToken, "")
+
+	f := newTestFactory(&config.Config{
+		Hosts: map[string]*config.Host{},
+	})
+
+	_, _, err := ResolveHost(f, "", "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "BKT_TOKEN") {
+		t.Errorf("expected BKT_TOKEN mention in error, got: %v", err)
 	}
 }
 
@@ -787,8 +738,9 @@ func TestResolveHostEnvOverridesSavedHostAuthFields(t *testing.T) {
 }
 
 func TestResolveContextEnvFallbackNotTriggeredWithoutToken(t *testing.T) {
+	// Neither BKT_HOST nor BKT_TOKEN — generic "no active context" error.
 	t.Setenv(secret.EnvToken, "")
-	t.Setenv(secret.EnvHost, "https://bitbucket.example.com")
+	t.Setenv(secret.EnvHost, "")
 
 	f := newTestFactory(&config.Config{
 		Contexts: map[string]*config.Context{},
@@ -801,6 +753,25 @@ func TestResolveContextEnvFallbackNotTriggeredWithoutToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no active context") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveContextHostSetButNoToken(t *testing.T) {
+	// BKT_HOST set but BKT_TOKEN absent — actionable hint error.
+	t.Setenv(secret.EnvHost, "https://bitbucket.example.com")
+	t.Setenv(secret.EnvToken, "")
+
+	f := newTestFactory(&config.Config{
+		Contexts: map[string]*config.Context{},
+		Hosts:    map[string]*config.Host{},
+	})
+
+	_, _, _, err := ResolveContext(f, nil, "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "BKT_TOKEN") {
+		t.Errorf("expected BKT_TOKEN mention in error, got: %v", err)
 	}
 }
 

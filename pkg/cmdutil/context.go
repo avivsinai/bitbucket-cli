@@ -54,6 +54,9 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 		if secret.TokenFromEnv() != "" {
 			return "", nil, nil, errTokenSetButNoHost
 		}
+		if os.Getenv(secret.EnvHost) != "" {
+			return "", nil, nil, errHostSetButNoToken
+		}
 		return "", nil, nil, fmt.Errorf("no active context; run `%s context use <name>`", f.ExecutableName)
 	}
 
@@ -154,6 +157,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 		if secret.TokenFromEnv() != "" {
 			return "", nil, errTokenSetButNoHost
 		}
+		if os.Getenv(secret.EnvHost) != "" {
+			return "", nil, errHostSetButNoToken
+		}
 		return "", nil, fmt.Errorf("no hosts configured; run `%s auth login` first", f.ExecutableName)
 	case 1:
 		// BKT_HOST may target a different server than the single saved host;
@@ -193,6 +199,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 				return envKey, h, nil
 			}
 			return envKey, envHost, nil
+		}
+		if os.Getenv(secret.EnvHost) != "" {
+			return "", nil, errHostSetButNoToken
 		}
 		var keys []string
 		for key := range cfg.Hosts {
@@ -278,6 +287,9 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 
 // errTokenSetButNoHost is returned when BKT_TOKEN is set but BKT_HOST is not.
 var errTokenSetButNoHost = errors.New("BKT_TOKEN is set but BKT_HOST is not; set BKT_HOST to the Bitbucket server URL")
+
+// errHostSetButNoToken is returned when BKT_HOST is set but BKT_TOKEN is not.
+var errHostSetButNoToken = errors.New("BKT_HOST is set but BKT_TOKEN is not; did you forget to set BKT_TOKEN?")
 
 // hostFromEnv synthesises an ephemeral *config.Host from environment variables.
 // rawURL may be a full URL or bare hostname; it is normalised internally.
