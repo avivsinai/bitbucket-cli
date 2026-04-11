@@ -611,6 +611,138 @@ func TestListRepositoryCloudIncludesCreationTimestamp(t *testing.T) {
 	}
 }
 
+// failingWriter returns an error on every Write. It exercises the error-return
+// branches after the per-PR Fprintf calls in the list rendering paths.
+type failingWriter struct{}
+
+func (failingWriter) Write(_ []byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func TestListWriteErrorPropagation(t *testing.T) {
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	dcPRs := []bbdc.PullRequest{{
+		ID:    1,
+		Title: "DC PR",
+		State: "OPEN",
+		FromRef: bbdc.Ref{
+			DisplayID:  "feature",
+			Repository: bbdc.Repository{Slug: "repo1", Project: &bbdc.Project{Key: "PROJ"}},
+		},
+		ToRef: bbdc.Ref{
+			DisplayID:  "main",
+			Repository: bbdc.Repository{Slug: "repo1", Project: &bbdc.Project{Key: "PROJ"}},
+		},
+	}}
+	dcHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := struct {
+			Values     []bbdc.PullRequest `json:"values"`
+			IsLastPage bool               `json:"isLastPage"`
+		}{Values: dcPRs, IsLastPage: true}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	cloudPRs := []bbcloud.PullRequest{{
+		ID:    1,
+		Title: "Cloud PR",
+		State: "OPEN",
+	}}
+	cloudPRs[0].Source.Branch.Name = "feature"
+	cloudPRs[0].Destination.Branch.Name = "main"
+	cloudPRs[0].Destination.Repository.Slug = "repo1"
+	cloudHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/user" {
+			_ = json.NewEncoder(w).Encode(bbcloud.User{UUID: "{1}", Username: "testuser", Display: "Test"})
+			return
+		}
+		resp := struct {
+			Values []bbcloud.PullRequest `json:"values"`
+			Next   string                `json:"next"`
+		}{Values: cloudPRs}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	cases := []struct {
+		name        string
+		handler     http.HandlerFunc
+		kind        string
+		workspace   string
+		projectKey  string
+		defaultRepo string
+		args        []string
+	}{
+		{"repository DC", dcHandler, "dc", "", "PROJ", "repo1", nil},
+		{"repository Cloud", cloudHandler, "cloud", "workspace", "", "repo1", nil},
+		{"dashboard DC", dcHandler, "dc", "", "PROJ", "", []string{"--mine"}},
+		{"workspace Cloud", cloudHandler, "cloud", "workspace", "", "", []string{"--mine"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(tc.handler)
+			defer server.Close()
+
+			cfg := &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {
+						Host:        "h",
+						Workspace:   tc.workspace,
+						ProjectKey:  tc.projectKey,
+						DefaultRepo: tc.defaultRepo,
+					},
+				},
+				Hosts: map[string]*config.Host{
+					"h": {
+						Kind:     tc.kind,
+						BaseURL:  server.URL,
+						Username: "testuser",
+						Token:    "test-token",
+					},
+				},
+			}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams: &iostreams.IOStreams{
+					Out:    failingWriter{},
+					ErrOut: &strings.Builder{},
+				},
+				Config: func() (*config.Config, error) { return cfg, nil },
+			}
+
+			cmd := newListCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			if len(tc.args) > 0 {
+				cmd.SetArgs(tc.args)
+			}
+
+			execErr := cmd.Execute()
+			if execErr == nil {
+				t.Fatal("expected error from failing writer, got nil")
+			}
+			if !strings.Contains(execErr.Error(), "write failed") {
+				t.Fatalf("expected error to contain %q, got %v", "write failed", execErr)
+			}
+		})
+	}
+}
+
 func TestStateIcon(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
