@@ -29,8 +29,9 @@ import (
 
 const (
 	// Standard timeouts for API calls.
-	timeoutRead  = 15 * time.Second
-	timeoutWrite = 10 * time.Second
+	timeoutRead      = 15 * time.Second
+	timeoutWrite     = 10 * time.Second
+	prListTimeLayout = "2006-01-02 15:04"
 )
 
 // Sentinel errors for checks command
@@ -202,7 +203,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 			for _, pr := range prs {
 				author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
-				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				created := formatPRListUnixMilli(pr.CreatedDate)
+				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, pr.Title, created); err != nil {
 					return err
 				}
 				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.FromRef.DisplayID, pr.ToRef.DisplayID, author); err != nil {
@@ -267,7 +269,8 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 
 			for _, pr := range prs {
 				author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
-				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+				created := formatPRListRFC3339(pr.CreatedOn)
+				if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, pr.Title, created); err != nil {
 					return err
 				}
 				if _, err := fmt.Fprintf(ios.Out, "    %s -> %s\tby %s\n", pr.Source.Branch.Name, pr.Destination.Branch.Name, author); err != nil {
@@ -313,6 +316,7 @@ func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.I
 
 		for _, pr := range prs {
 			author := cmdutil.FirstNonEmpty(pr.Author.User.FullName, pr.Author.User.Name)
+			created := formatPRListUnixMilli(pr.CreatedDate)
 			// Use ToRef.Repository (destination) to show where the PR merges into,
 			// which is more useful for fork-based PRs than the source repo
 			repoInfo := ""
@@ -322,7 +326,7 @@ func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.I
 					repoInfo = pr.ToRef.Repository.Project.Key + "/" + repoInfo
 				}
 			}
-			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, pr.Title, created); err != nil {
 				return err
 			}
 			if repoInfo != "" {
@@ -389,13 +393,14 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 
 		for _, pr := range prs {
 			author := cmdutil.FirstNonEmpty(pr.Author.DisplayName, pr.Author.Username)
+			created := formatPRListRFC3339(pr.CreatedOn)
 			// Use Destination.Repository.Slug (where PR merges into) as primary source,
 			// fall back to URL parsing for backwards compatibility
 			repoInfo := pr.Destination.Repository.Slug
 			if repoInfo == "" {
 				repoInfo = extractRepoFromCloudPRLink(pr.Links.HTML.Href)
 			}
-			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\n", pr.ID, pr.State, pr.Title); err != nil {
+			if _, err := fmt.Fprintf(ios.Out, "#%d\t%-8s\t%s\t%s\n", pr.ID, pr.State, pr.Title, created); err != nil {
 				return err
 			}
 			if repoInfo != "" {
@@ -410,6 +415,27 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 		}
 		return nil
 	})
+}
+
+func formatPRListUnixMilli(unixMilli int64) string {
+	if unixMilli == 0 {
+		return ""
+	}
+
+	return time.UnixMilli(unixMilli).Local().Format(prListTimeLayout)
+}
+
+func formatPRListRFC3339(value string) string {
+	if value == "" {
+		return ""
+	}
+
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return ""
+	}
+
+	return parsed.Local().Format(prListTimeLayout)
 }
 
 // extractRepoFromCloudPRLink extracts the repository slug from a Bitbucket Cloud PR URL.

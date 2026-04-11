@@ -6,6 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Pull request JSON output now includes creation and update timestamps for Cloud and Data Center listings.
+
+### Changed
+- `bkt pr list` now appends a local creation timestamp column (`YYYY-MM-DD HH:MM`) to text output for Cloud and Data Center listings.
+
 ## [0.21.0] - 2026-04-10
 ### Added
 - OAuth 2.0 infrastructure for Cloud login in the new `pkg/oauth` package, plus a `TokenRefresher` hook on `httpx.Client` for transparent 401-driven token refresh. Phase 1 only; login-command wiring is not included yet (#137).
@@ -58,7 +64,6 @@ All notable changes to this project will be documented here. The format follows
 - Added missing `timeout-minutes` and `concurrency` blocks to all workflows.
 - Standalone publish-skill workflow now accepts `workflow_dispatch` with an explicit `tag` input.
 - Bitbucket Pipelines Go image updated from 1.24 to 1.25 to match `go.mod`.
-
 
 ## [0.16.4] - 2026-04-02
 ### Fixed
