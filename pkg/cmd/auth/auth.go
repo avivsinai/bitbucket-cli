@@ -20,6 +20,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
+	"github.com/avivsinai/bitbucket-cli/pkg/oauth"
 )
 
 // CloudTokenURL is the URL where users create Bitbucket Cloud API tokens.
@@ -62,6 +63,7 @@ type loginOptions struct {
 	AllowInsecureStore bool
 	AllowHTTP          bool
 	Web                bool
+	WebToken           bool
 }
 
 func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
@@ -77,25 +79,32 @@ credentials in the OS keychain.
 
 For Data Center (--kind dc, the default), you authenticate with a Personal
 Access Token (PAT). The token needs Repository Read/Write and Project Read
-permissions. Use --web to open the PAT management page in your browser.
+permissions. Use --web-token to open the PAT management page in your browser.
 
-For Bitbucket Cloud (--kind cloud), you authenticate with an Atlassian API
-token. The token must be created with Bitbucket scopes (Account Read,
-Repositories Read/Write, Pull Requests Read/Write). Use --web to open the
-Atlassian token management page.
+For Bitbucket Cloud (--kind cloud), the recommended method is --web, which
+uses OAuth 2.0 to authenticate in the browser. The CLI receives a short-lived
+access token that is automatically refreshed. Alternatively, use --web-token
+to create an Atlassian API token manually.
+
+OAuth credentials are embedded at build time via ldflags. For source installs
+(go install), set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET environment
+variables before running --web.
 
 Credentials are verified against the remote host before being stored. If no
 OS keychain is available, pass --allow-insecure-store to use encrypted file
 fallback. In non-interactive environments, provide --username and --token
 on the command line or via stdin.`,
-		Example: `  # Interactive login to a Data Center instance
+		Example: `  # Login to Bitbucket Cloud via OAuth (recommended)
+  bkt auth login https://bitbucket.org --kind cloud --web
+
+  # Login to Bitbucket Cloud with an API token
+  bkt auth login https://bitbucket.org --kind cloud --web-token
+
+  # Interactive login to a Data Center instance
   bkt auth login https://bitbucket.example.com
 
-  # Login to Bitbucket Cloud interactively
-  bkt auth login https://bitbucket.org --kind cloud
-
   # Open browser to create a PAT, then prompt for credentials
-  bkt auth login https://bitbucket.example.com --web
+  bkt auth login https://bitbucket.example.com --web-token
 
   # Non-interactive login with flags (CI pipelines)
   bkt auth login https://bitbucket.example.com --username admin --token "$PAT"`,
@@ -114,7 +123,8 @@ on the command line or via stdin.`,
 	cmd.Flags().StringVar(&opts.AuthMethod, "auth-method", "basic", "Authentication method: basic (username+token) or bearer (token-only)")
 	cmd.Flags().BoolVar(&opts.AllowInsecureStore, "allow-insecure-store", false, "Allow encrypted fallback secret storage when no OS keychain is available")
 	cmd.Flags().BoolVar(&opts.AllowHTTP, "allow-http", false, "Allow http:// URLs for login even though credentials will be sent in plaintext")
-	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Open browser to create token, then prompt for credentials")
+	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Authenticate via OAuth in the browser (Cloud only)")
+	cmd.Flags().BoolVar(&opts.WebToken, "web-token", false, "Open browser to create an API token, then prompt for credentials")
 
 	return cmd
 }
@@ -171,8 +181,15 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 	if authMethod != "basic" && authMethod != "bearer" {
 		return fmt.Errorf("unsupported auth method %q; use \"basic\" or \"bearer\"", authMethod)
 	}
-	if kind == "cloud" && authMethod != "basic" {
+	if kind == "cloud" && authMethod != "basic" && !opts.Web {
 		return fmt.Errorf("--auth-method is only supported for Data Center hosts")
+	}
+
+	if opts.Web && opts.WebToken {
+		return fmt.Errorf("--web and --web-token are mutually exclusive")
+	}
+	if opts.Web && kind == "dc" {
+		return fmt.Errorf("--web OAuth login is only supported for Bitbucket Cloud; use --web-token to open the PAT page")
 	}
 
 	cfg, err := f.ResolveConfig()
@@ -189,7 +206,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			return err
 		}
 
-		if opts.Web && isTerminal(ios.In) {
+		if opts.WebToken && isTerminal(ios.In) {
 			tokenURL := strings.TrimSuffix(baseURL, "/") + "/plugins/servlet/access-tokens/manage"
 			if _, err := fmt.Fprintf(ios.Out, "Opening %s to create a Personal Access Token...\n", tokenURL); err != nil {
 				return err
@@ -288,59 +305,6 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			return err
 		}
 	case "cloud":
-		if opts.Web && isTerminal(ios.In) {
-			tokenURL := CloudTokenURL
-			if _, err := fmt.Fprintln(ios.Out, "Opening Atlassian to create a Bitbucket API token..."); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(ios.Out, "\nIMPORTANT: Click \"Create API token with scopes\" and select \"Bitbucket\" as the application."); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(ios.Out, "\nRequired scopes:"); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(ios.Out, "  - Account: Read / read:user:bitbucket (required for login)"); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(ios.Out, "  - Repositories: Read, Write"); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(ios.Out, "  - Pull requests: Read, Write"); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintln(ios.Out, "  - Issues: Read, Write (if using issue commands)"); err != nil {
-				return err
-			}
-			if err := f.BrowserOpener().Open(tokenURL); err != nil {
-				if _, ferr := fmt.Fprintf(ios.Out, "\nFailed to open browser: %v\nPlease open %s manually.\n", err, tokenURL); ferr != nil {
-					return ferr
-				}
-			}
-			if _, err := fmt.Fprintln(ios.Out, ""); err != nil {
-				return err
-			}
-		}
-
-		if opts.Username == "" {
-			if !isTerminal(ios.In) {
-				return fmt.Errorf("username is required when not running in a TTY")
-			}
-			opts.Username, err = promptString(reader, ios.Out, CloudEmailPrompt)
-			if err != nil {
-				return err
-			}
-		}
-
-		if opts.Token == "" {
-			if !isTerminal(ios.In) {
-				return fmt.Errorf("token is required when not running in a TTY")
-			}
-			opts.Token, err = promptSecret(ios, CloudTokenPrompt)
-			if err != nil {
-				return err
-			}
-		}
-
 		apiURL := baseURL
 		if strings.Contains(baseURL, "bitbucket.org") && !strings.Contains(baseURL, "api.bitbucket.org") {
 			apiURL = "https://api.bitbucket.org/2.0"
@@ -351,46 +315,155 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			return err
 		}
 
-		client, err := bbcloud.New(bbcloud.Options{
-			BaseURL:     apiURL,
-			Username:    opts.Username,
-			Token:       opts.Token,
-			EnableCache: true,
-			Retry: httpx.RetryPolicy{
-				MaxAttempts:    4,
-				InitialBackoff: 200 * time.Millisecond,
-				MaxBackoff:     2 * time.Second,
-			},
-		})
-		if err != nil {
-			return err
-		}
+		if opts.Web {
+			// OAuth 2.0 browser-based flow.
+			if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
+				return fmt.Errorf("OAuth credentials were not embedded in this build; rebuild with BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET or use --web-token for API token login")
+			}
+			if _, err := fmt.Fprintln(ios.Out, "Authenticating with Bitbucket Cloud via OAuth..."); err != nil {
+				return err
+			}
 
-		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-		defer cancel()
+			ctx, cancel := context.WithTimeout(cmd.Context(), 120*time.Second)
+			defer cancel()
 
-		user, err := client.CurrentUser(ctx)
-		if err != nil {
-			return fmt.Errorf("verify credentials: %w", err)
-		}
+			result, flowErr := oauth.RunFlow(ctx, oauth.FlowOptions{
+				ClientID:     oauth.CloudClientID(),
+				ClientSecret: oauth.CloudClientSecret(),
+				AuthorizeURL: oauth.CloudAuthorizeURL,
+				TokenURL:     oauth.CloudTokenURL,
+				Scopes:       oauth.CloudScopes(),
+				Out:          ios.Out,
+				OpenBrowser:  f.BrowserOpener().Open,
+			})
+			if flowErr != nil {
+				return fmt.Errorf("OAuth login: %w", flowErr)
+			}
 
-		if err := storeHostToken(hostKey, opts.Token, opts.AllowInsecureStore); err != nil {
-			return fmt.Errorf("store token: %w", err)
-		}
+			tokenBlob, marshalErr := result.Token.Marshal()
+			if marshalErr != nil {
+				return fmt.Errorf("encode token: %w", marshalErr)
+			}
 
-		cfg.SetHost(hostKey, &config.Host{
-			Kind:               "cloud",
-			BaseURL:            apiURL,
-			Username:           opts.Username,
-			AllowInsecureStore: opts.AllowInsecureStore,
-		})
+			if err := storeHostToken(hostKey, tokenBlob, opts.AllowInsecureStore); err != nil {
+				return fmt.Errorf("store token: %w", err)
+			}
 
-		if err := cfg.Save(); err != nil {
-			return err
-		}
+			cfg.SetHost(hostKey, &config.Host{
+				Kind:               "cloud",
+				BaseURL:            apiURL,
+				Username:           result.Username,
+				AuthMethod:         "oauth",
+				AllowInsecureStore: opts.AllowInsecureStore,
+			})
 
-		if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to Bitbucket Cloud as %s (%s)\n", user.Display, user.Username); err != nil {
-			return err
+			if err := cfg.Save(); err != nil {
+				return err
+			}
+
+			displayLabel := result.Username
+			if result.DisplayName != "" {
+				displayLabel = fmt.Sprintf("%s (%s)", result.DisplayName, result.Username)
+			}
+			if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to Bitbucket Cloud as %s via OAuth\n", displayLabel); err != nil {
+				return err
+			}
+		} else {
+			// API token flow (existing behavior).
+			if opts.WebToken && isTerminal(ios.In) {
+				tokenURL := CloudTokenURL
+				if _, err := fmt.Fprintln(ios.Out, "Opening Atlassian to create a Bitbucket API token..."); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(ios.Out, "\nIMPORTANT: Click \"Create API token with scopes\" and select \"Bitbucket\" as the application."); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(ios.Out, "\nRequired scopes:"); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(ios.Out, "  - Account: Read / read:user:bitbucket (required for login)"); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(ios.Out, "  - Repositories: Read, Write"); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(ios.Out, "  - Pull requests: Read, Write"); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(ios.Out, "  - Issues: Read, Write (if using issue commands)"); err != nil {
+					return err
+				}
+				if err := f.BrowserOpener().Open(tokenURL); err != nil {
+					if _, ferr := fmt.Fprintf(ios.Out, "\nFailed to open browser: %v\nPlease open %s manually.\n", err, tokenURL); ferr != nil {
+						return ferr
+					}
+				}
+				if _, err := fmt.Fprintln(ios.Out, ""); err != nil {
+					return err
+				}
+			}
+
+			if opts.Username == "" {
+				if !isTerminal(ios.In) {
+					return fmt.Errorf("username is required when not running in a TTY")
+				}
+				opts.Username, err = promptString(reader, ios.Out, CloudEmailPrompt)
+				if err != nil {
+					return err
+				}
+			}
+
+			if opts.Token == "" {
+				if !isTerminal(ios.In) {
+					return fmt.Errorf("token is required when not running in a TTY")
+				}
+				opts.Token, err = promptSecret(ios, CloudTokenPrompt)
+				if err != nil {
+					return err
+				}
+			}
+
+			client, err := bbcloud.New(bbcloud.Options{
+				BaseURL:     apiURL,
+				Username:    opts.Username,
+				Token:       opts.Token,
+				EnableCache: true,
+				Retry: httpx.RetryPolicy{
+					MaxAttempts:    4,
+					InitialBackoff: 200 * time.Millisecond,
+					MaxBackoff:     2 * time.Second,
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+			defer cancel()
+
+			user, err := client.CurrentUser(ctx)
+			if err != nil {
+				return fmt.Errorf("verify credentials: %w", err)
+			}
+
+			if err := storeHostToken(hostKey, opts.Token, opts.AllowInsecureStore); err != nil {
+				return fmt.Errorf("store token: %w", err)
+			}
+
+			cfg.SetHost(hostKey, &config.Host{
+				Kind:               "cloud",
+				BaseURL:            apiURL,
+				Username:           opts.Username,
+				AllowInsecureStore: opts.AllowInsecureStore,
+			})
+
+			if err := cfg.Save(); err != nil {
+				return err
+			}
+
+			if _, err := fmt.Fprintf(ios.Out, "✓ Logged in to Bitbucket Cloud as %s (%s)\n", user.Display, user.Username); err != nil {
+				return err
+			}
 		}
 	default:
 		return fmt.Errorf("unsupported deployment kind %q", opts.Kind)
@@ -442,6 +515,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 		Username    string `json:"username,omitempty"`
 		AuthMethod  string `json:"auth_method"`
 		TokenSource string `json:"token_source"`
+		Expires     string `json:"expires,omitempty"`
 	}
 
 	type contextSummary struct {
@@ -468,14 +542,18 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 		if am == "" {
 			am = "basic"
 		}
-		hosts = append(hosts, hostSummary{
+		hs := hostSummary{
 			Key:         key,
 			Kind:        h.Kind,
 			BaseURL:     h.BaseURL,
 			Username:    h.Username,
 			AuthMethod:  am,
 			TokenSource: tokenSource,
-		})
+		}
+		if am == "oauth" && tokenSource != secret.EnvToken {
+			hs.Expires = oauthExpiryLabel(key, h)
+		}
+		hosts = append(hosts, hs)
 	}
 
 	var contextNames []string
@@ -532,6 +610,11 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 			}
 			if _, err := fmt.Fprintf(ios.Out, "    token source: %s\n", h.TokenSource); err != nil {
 				return err
+			}
+			if h.Expires != "" {
+				if _, err := fmt.Fprintf(ios.Out, "    expires: %s\n", h.Expires); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -750,4 +833,33 @@ func resolvedTokenSource() string {
 		return secret.EnvToken
 	}
 	return "keyring"
+}
+
+// oauthExpiryLabel reads the OAuth JSON blob from the keyring and returns a
+// human-readable expiry string. Returns "" on any error (best-effort).
+func oauthExpiryLabel(hostKey string, host *config.Host) string {
+	opts := []secret.Option{}
+	if host.AllowInsecureStore {
+		opts = append(opts, secret.WithAllowFileFallback(true))
+	}
+	store, err := secret.Open(opts...)
+	if err != nil {
+		return ""
+	}
+	raw, err := store.Get(secret.TokenKey(hostKey))
+	if err != nil {
+		return ""
+	}
+	if !oauth.IsTokenBlob(raw) {
+		return ""
+	}
+	tok, err := oauth.Unmarshal(raw)
+	if err != nil {
+		return ""
+	}
+	if tok.IsExpired() {
+		return "expired"
+	}
+	remaining := time.Until(tok.ExpiresAt).Truncate(time.Minute)
+	return fmt.Sprintf("%s (in %s)", tok.ExpiresAt.Format(time.RFC3339), remaining)
 }

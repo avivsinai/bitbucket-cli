@@ -14,6 +14,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/internal/remote"
 	"github.com/avivsinai/bitbucket-cli/internal/secret"
+	"github.com/avivsinai/bitbucket-cli/pkg/oauth"
 )
 
 // ResolveContext fetches the context and host configuration given an optional
@@ -249,6 +250,17 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 	// host needs a different token, use the keyring instead.
 	if envToken := secret.TokenFromEnv(); envToken != "" {
 		host.Token = envToken
+		// Apply BKT_USERNAME and BKT_AUTH_METHOD so that OAuth-saved hosts
+		// (where Username is a Bitbucket ID, not an email) work correctly
+		// when overridden with a Cloud API token.
+		if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
+			host.Username = u
+		} else if host.AuthMethod == "oauth" && host.Kind == "cloud" {
+			return fmt.Errorf("BKT_USERNAME is required when overriding an OAuth-authenticated Cloud host with BKT_TOKEN; set BKT_USERNAME to your Atlassian account email")
+		}
+		if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
+			host.AuthMethod = m
+		}
 		return nil
 	}
 
@@ -279,6 +291,18 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 			return fmt.Errorf("credentials for host %q not found; run `%s auth login %s`", hostKey, executable, target)
 		}
 		return err
+	}
+
+	if oauth.IsTokenBlob(token) {
+		tok, parseErr := oauth.Unmarshal(token)
+		if parseErr != nil {
+			return fmt.Errorf("parse OAuth token for host %q: %w", hostKey, parseErr)
+		}
+		host.Token = tok.AccessToken
+		if host.AuthMethod == "" {
+			host.AuthMethod = "oauth"
+		}
+		return nil
 	}
 
 	host.Token = token
