@@ -2942,7 +2942,7 @@ func TestEditDCReviewers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var errBuf strings.Builder
-			got := editDCReviewers(&errBuf, tt.current, tt.add, tt.remove)
+			got := editDCReviewers(&errBuf, tt.current, tt.add, tt.remove, nil)
 
 			var gotNames []string
 			for _, r := range got {
@@ -3051,11 +3051,44 @@ func TestEditCloudReviewers(t *testing.T) {
 			remove:  []string{aliceUUID},
 			wantErr: aliceUUID,
 		},
+		{
+			name:    "remove reviewer by account id",
+			current: []bbcloud.User{{AccountID: "acc-alice"}, {UUID: bobUUID, Username: "bob"}},
+			remove:  []string{"acc-alice"},
+			want:    []string{bobUUID},
+		},
+		{
+			name:    "add reviewer when account-id-only user already present warns",
+			current: []bbcloud.User{{AccountID: "acc-alice"}},
+			add:     []string{"acc-alice"},
+			want:    []string{"acc-alice"},
+			wantWarning: `warning: reviewer "acc-alice" is already on this pull request`,
+		},
+		{
+			name:        "remove account-id-only user not present warns",
+			current:     []bbcloud.User{{AccountID: "acc-alice"}},
+			remove:      []string{"acc-bob"},
+			want:        []string{"acc-alice"},
+			wantWarning: `warning: reviewer "acc-bob" is not on this pull request`,
+		},
+		{
+			name:    "keep account-id-only reviewer serializes account id",
+			current: []bbcloud.User{{AccountID: "acc-alice"}, {UUID: bobUUID, Username: "bob"}},
+			add:     []string{"charlie"},
+			want:    []string{"acc-alice", bobUUID, "charlie"},
+		},
+		{
+			name:    "cross-identity overlap by account id errors",
+			current: []bbcloud.User{{UUID: aliceUUID, AccountID: "acc-alice"}},
+			add:     []string{"acc-alice"},
+			remove:  []string{aliceUUID},
+			wantErr: "cannot be in both flags",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var errBuf strings.Builder
-			got, err := editCloudReviewers(&errBuf, tt.current, tt.add, tt.remove)
+			got, err := editCloudReviewers(&errBuf, tt.current, tt.add, tt.remove, nil)
 
 			if tt.wantErr != "" {
 				if err == nil {
@@ -3086,6 +3119,61 @@ func TestEditCloudReviewers(t *testing.T) {
 				t.Errorf("expected no warnings, got %q", errBuf.String())
 			}
 		})
+	}
+}
+
+func TestEditCloudReviewersSuppressesDefaultOverlapWarning(t *testing.T) {
+	const bobUUID = "{660e8400-e29b-41d4-a716-446655440000}"
+
+	// current includes bob (from defaults merge), preExisting is empty
+	// → adding bob should NOT warn
+	var errBuf strings.Builder
+	got, err := editCloudReviewers(&errBuf, []bbcloud.User{{UUID: bobUUID, Username: "bob"}}, []string{"bob"}, nil, []bbcloud.User{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.String() != "" {
+		t.Errorf("expected no warning for default-only overlap, got %q", errBuf.String())
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 reviewer, got %v", got)
+	}
+}
+
+func TestEditCloudReviewersWarnsForPreExistingOverlap(t *testing.T) {
+	const bobUUID = "{660e8400-e29b-41d4-a716-446655440000}"
+
+	// bob is in preExisting → adding bob should still warn
+	var errBuf strings.Builder
+	preExisting := []bbcloud.User{{UUID: bobUUID, Username: "bob"}}
+	_, err := editCloudReviewers(&errBuf, preExisting, []string{"bob"}, nil, preExisting)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), "already on this pull request") {
+		t.Errorf("expected warning for pre-existing overlap, got %q", errBuf.String())
+	}
+}
+
+func TestEditDCReviewersSuppressesDefaultOverlapWarning(t *testing.T) {
+	// current includes bob (from defaults merge), preExisting is empty
+	var errBuf strings.Builder
+	current := []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "bob"}}}
+	got := editDCReviewers(&errBuf, current, []string{"bob"}, nil, []bbdc.PullRequestReviewer{})
+	if errBuf.String() != "" {
+		t.Errorf("expected no warning for default-only overlap, got %q", errBuf.String())
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 reviewer, got %v", got)
+	}
+}
+
+func TestEditDCReviewersWarnsForPreExistingOverlap(t *testing.T) {
+	var errBuf strings.Builder
+	preExisting := []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "bob"}}}
+	_ = editDCReviewers(&errBuf, preExisting, []string{"bob"}, nil, preExisting)
+	if !strings.Contains(errBuf.String(), "already on this pull request") {
+		t.Errorf("expected warning for pre-existing overlap, got %q", errBuf.String())
 	}
 }
 
@@ -3282,6 +3370,14 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 				}
 				if len(reviewers) != 3 {
 					t.Fatalf("expected 3 reviewers, got %d", len(reviewers))
+				}
+				wantNames := []string{"alice", "bob", "charlie"}
+				for i, want := range wantNames {
+					r := reviewers[i].(map[string]any)
+					user := r["user"].(map[string]any)
+					if user["name"] != want {
+						t.Errorf("reviewer[%d] name = %q, want %q", i, user["name"], want)
+					}
 				}
 			},
 		},
@@ -3532,6 +3628,37 @@ func TestRunEditCloudReviewers(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:         "author with no identity falls back to current user",
+			withDefaults: true,
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "bob", "uuid": bobUUID}},
+			},
+			prResponse: bbcloud.PullRequest{
+				ID:    1,
+				Title: "PR",
+				Author: struct {
+					DisplayName string "json:\"display_name\""
+					Username    string "json:\"username\""
+					UUID        string "json:\"uuid\""
+					AccountID   string "json:\"account_id\""
+				}{
+					DisplayName: "Bob",
+				},
+				Reviewers: []bbcloud.User{},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type")
+				}
+				// bob is the current user fallback, should be excluded
+				if len(reviewers) != 0 {
+					t.Fatalf("expected 0 reviewers (bob excluded via current user fallback), got %d: %v", len(reviewers), reviewers)
+				}
+			},
+			stderrContains: "no usable identity",
+		},
 	}
 
 	for _, tt := range tests {
@@ -3540,6 +3667,14 @@ func TestRunEditCloudReviewers(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/user" && r.Method == "GET" {
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"uuid":       bobUUID,
+						"username":   "bob",
+						"account_id": "acc-bob",
+					})
+					return
+				}
 				if strings.Contains(r.URL.Path, "effective-default-reviewers") {
 					_ = json.NewEncoder(w).Encode(map[string]any{"values": tt.defaultReviewers})
 					return
@@ -4748,16 +4883,16 @@ func TestMergeReviewers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mergeReviewers(tt.explicit, tt.defaults, nameFunc)
+			got := mergeCreateReviewers(tt.explicit, tt.defaults, nameFunc)
 			if len(got) == 0 && len(tt.want) == 0 {
 				return
 			}
 			if len(got) != len(tt.want) {
-				t.Fatalf("mergeReviewers() = %v, want %v", got, tt.want)
+				t.Fatalf("mergeCreateReviewers() = %v, want %v", got, tt.want)
 			}
 			for i, v := range got {
 				if v != tt.want[i] {
-					t.Errorf("mergeReviewers()[%d] = %q, want %q", i, v, tt.want[i])
+					t.Errorf("mergeCreateReviewers()[%d] = %q, want %q", i, v, tt.want[i])
 				}
 			}
 		})
@@ -4787,7 +4922,7 @@ func TestResolveGitBaseRefError(t *testing.T) {
 }
 
 func TestMergeDCPRReviewers(t *testing.T) {
-	got := mergeDCPRReviewers(
+	got := mergeDCEditReviewers(
 		[]bbdc.PullRequestReviewer{
 			{User: bbdc.User{Name: "alice"}},
 			{User: bbdc.User{Name: ""}},
@@ -4816,7 +4951,7 @@ func TestMergeDCPRReviewers(t *testing.T) {
 }
 
 func TestMergeCloudPRReviewers(t *testing.T) {
-	got := mergeCloudPRReviewers(
+	got := mergeCloudEditReviewers(
 		[]bbcloud.User{
 			{Username: "alice", UUID: "{00000000-0000-0000-0000-000000000001}"},
 			{},
@@ -4841,7 +4976,7 @@ func TestMergeCloudPRReviewers(t *testing.T) {
 }
 
 func TestMergeCloudPRReviewersDedupsAcrossAccountID(t *testing.T) {
-	got := mergeCloudPRReviewers(
+	got := mergeCloudEditReviewers(
 		[]bbcloud.User{
 			{UUID: "{00000000-0000-0000-0000-000000000001}", AccountID: "acc-alice"},
 		},
@@ -4866,9 +5001,10 @@ func TestCloudReviewerIDs(t *testing.T) {
 	got := cloudReviewerIDs([]bbcloud.User{
 		{UUID: "{00000000-0000-0000-0000-000000000001}"},
 		{Username: "bob"},
+		{AccountID: "acc-charlie"},
 		{},
 	})
-	want := []string{"{00000000-0000-0000-0000-000000000001}", "bob"}
+	want := []string{"{00000000-0000-0000-0000-000000000001}", "bob", "acc-charlie"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
