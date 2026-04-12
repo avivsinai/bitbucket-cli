@@ -145,6 +145,16 @@ func LooksLikeUUID(s string) bool {
 	return uuidPattern.MatchString(strings.TrimSpace(s))
 }
 
+// accountIDPattern matches Atlassian Account IDs: a numeric prefix, a colon,
+// then a UUID (e.g. "557058:12345678-1234-1234-1234-123456789abc").
+var accountIDPattern = regexp.MustCompile(`^\d+:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// LooksLikeAccountID returns true if s matches the Atlassian Account ID
+// format (numeric prefix + colon + UUID).
+func LooksLikeAccountID(s string) bool {
+	return accountIDPattern.MatchString(strings.TrimSpace(s))
+}
+
 // PipelinePage encapsulates paginated pipeline results.
 type PipelinePage struct {
 	Values []Pipeline `json:"values"`
