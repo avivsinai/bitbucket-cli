@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-04-12
 ### Added
 - `bkt auth login --web` browser-based OAuth 2.0 login for Bitbucket Cloud, with keyring-stored short-lived access tokens and automatic refresh on expiry (#152).
 - `BKT_HOST` + `BKT_TOKEN` env-var-driven headless authentication for CI and containers, so commands can run without a prior `bkt auth login` or `bkt context create` (#138).
@@ -13,6 +14,7 @@ All notable changes to this project will be documented here. The format follows
 
 ### Changed
 - `bkt pr list` now appends a local creation timestamp column (`YYYY-MM-DD HH:MM`) to text output for Cloud and Data Center listings.
+
 
 ## [0.21.0] - 2026-04-10
 ### Added
