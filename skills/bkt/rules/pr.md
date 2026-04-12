@@ -622,6 +622,7 @@ bkt pr edit <id> [flags]
 | `--repo` |  | Repository slug override. |
 | `--reviewer` |  | Reviewer username or {UUID} to add (repeatable) |
 | `--title` | `-t` | Set the new title. |
+| `--with-default-reviewers` |  | Add repository default reviewers |
 | `--workspace` |  | Bitbucket workspace override (Cloud). |
 
 ### Inherited Flags
@@ -651,6 +652,9 @@ bkt pr edit <id> [flags]
 
   # Remove a reviewer
   bkt pr edit 123 --remove-reviewer alice
+
+  # Add repository default reviewers
+  bkt pr edit 123 --with-default-reviewers
 
   # Add and remove reviewers in one call
   bkt pr edit 123 --reviewer charlie --remove-reviewer alice

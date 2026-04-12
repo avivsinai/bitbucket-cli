@@ -683,10 +683,10 @@ type createOptions struct {
 	Draft                bool
 }
 
-// mergeReviewers combines explicit reviewer names with default reviewer users,
-// deduplicating across both lists. The nameFunc extracts a username string
-// from each default user value.
-func mergeReviewers[T any](explicit []string, defaults []T, nameFunc func(T) string) []string {
+// mergeCreateReviewers combines explicit reviewer names with default reviewer
+// users during PR creation, deduplicating across both lists. The nameFunc
+// extracts a username string from each default user value.
+func mergeCreateReviewers[T any](explicit []string, defaults []T, nameFunc func(T) string) []string {
 	seen := make(map[string]bool, len(explicit)+len(defaults))
 	var merged []string
 	for _, r := range explicit {
@@ -705,11 +705,12 @@ func mergeReviewers[T any](explicit []string, defaults []T, nameFunc func(T) str
 	return merged
 }
 
-// mergeCloudReviewers combines explicit reviewer strings with default reviewer
-// users for Bitbucket Cloud, deduplicating across username and UUID formats.
+// mergeCloudCreateReviewers combines explicit reviewer strings with default
+// reviewer users for Bitbucket Cloud during PR creation, deduplicating across
+// username and UUID formats.
 // A default reviewer is skipped if any explicit entry matches by username or
 // by normalized UUID. Defaults without a username are identified by UUID.
-func mergeCloudReviewers(explicit []string, defaults []bbcloud.User) []string {
+func mergeCloudCreateReviewers(explicit []string, defaults []bbcloud.User) []string {
 	seen := make(map[string]bool, len(explicit)+len(defaults))
 	var merged []string
 
@@ -778,7 +779,7 @@ func reviewerOverlap(add, remove []string) string {
 // editDCReviewers computes the new reviewer list for a DC pull request by
 // adding and removing reviewers from the current list. Warnings for
 // already-present additions or missing removals are written to w.
-func editDCReviewers(w io.Writer, current []bbdc.PullRequestReviewer, add, remove []string) []bbdc.PullRequestReviewer {
+func editDCReviewers(w io.Writer, current []bbdc.PullRequestReviewer, add, remove []string, preExisting []bbdc.PullRequestReviewer) []bbdc.PullRequestReviewer {
 	removeSet := make(map[string]bool, len(remove))
 	for _, name := range remove {
 		removeSet[name] = true
@@ -802,10 +803,19 @@ func editDCReviewers(w io.Writer, current []bbdc.PullRequestReviewer, add, remov
 		}
 	}
 
+	// Build set of pre-existing reviewer names to suppress warnings for
+	// reviewers that were only added via default-reviewer merge.
+	preExistingNames := make(map[string]bool, len(preExisting))
+	for _, r := range preExisting {
+		preExistingNames[r.User.Name] = true
+	}
+
 	added := make(map[string]bool)
 	for _, name := range add {
 		if currentNames[name] || added[name] {
-			fmt.Fprintf(w, "warning: reviewer %q is already on this pull request\n", name)
+			if preExisting == nil || preExistingNames[name] || added[name] {
+				fmt.Fprintf(w, "warning: reviewer %q is already on this pull request\n", name)
+			}
 		} else {
 			added[name] = true
 			result = append(result, bbdc.PullRequestReviewer{User: bbdc.User{Name: name}})
@@ -821,7 +831,7 @@ func matchesCloudUser(u bbcloud.User, input string) bool {
 	if bbcloud.LooksLikeUUID(input) {
 		return u.UUID == bbcloud.NormalizeUUID(input)
 	}
-	return u.Username == input
+	return u.Username == input || u.AccountID == input
 }
 
 // editCloudReviewers computes the new reviewer list for a Cloud pull request.
@@ -831,7 +841,7 @@ func matchesCloudUser(u bbcloud.User, input string) bool {
 //
 // Returns an error if the same identity appears in both add and remove via
 // different identifier formats (e.g. username in add, UUID in remove).
-func editCloudReviewers(w io.Writer, current []bbcloud.User, add, remove []string) ([]string, error) {
+func editCloudReviewers(w io.Writer, current []bbcloud.User, add, remove []string, preExisting []bbcloud.User) ([]string, error) {
 	// Cross-identity overlap check: resolve add and remove against current
 	// reviewers to detect the same person referenced by different formats.
 	for _, a := range add {
@@ -875,10 +885,13 @@ func editCloudReviewers(w io.Writer, current []bbcloud.User, add, remove []strin
 			}
 		}
 		if !removed {
-			if u.UUID != "" {
+			switch {
+			case u.UUID != "":
 				result = append(result, u.UUID)
-			} else if u.Username != "" {
+			case u.Username != "":
 				result = append(result, u.Username)
+			case u.AccountID != "":
+				result = append(result, u.AccountID)
 			}
 		}
 	}
@@ -895,7 +908,18 @@ func editCloudReviewers(w io.Writer, current []bbcloud.User, add, remove []strin
 			}
 		}
 		if alreadyOnPR || added[key] {
-			fmt.Fprintf(w, "warning: reviewer %q is already on this pull request\n", r)
+			// Suppress warning when the overlap is only with freshly-merged
+			// default reviewers, not with pre-existing PR reviewers.
+			wasPreExisting := false
+			for _, u := range preExisting {
+				if matchesCloudUser(u, r) {
+					wasPreExisting = true
+					break
+				}
+			}
+			if preExisting == nil || wasPreExisting || added[key] {
+				fmt.Fprintf(w, "warning: reviewer %q is already on this pull request\n", r)
+			}
 		} else {
 			added[key] = true
 			result = append(result, r)
@@ -996,11 +1020,11 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 
 		reviewers := opts.Reviewers
 		if opts.WithDefaultReviewers {
-			defaultUsers, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, opts.Source, opts.Target)
+			defaultUsers, err := getDCDefaultReviewers(ctx, client, projectKey, repoSlug, opts.Source, opts.Target)
 			if err != nil {
-				return fmt.Errorf("fetching default reviewers: %w", err)
+				return err
 			}
-			reviewers = mergeReviewers(reviewers, defaultUsers, func(u bbdc.User) string { return u.Name })
+			reviewers = mergeCreateReviewers(reviewers, defaultUsers, func(u bbdc.User) string { return u.Name })
 		}
 
 		pr, err := client.CreatePullRequest(ctx, projectKey, repoSlug, bbdc.CreatePROptions{
@@ -1051,20 +1075,11 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 			if err != nil {
 				return fmt.Errorf("resolving current user: %w", err)
 			}
-			defaultUsers, err := client.GetEffectiveDefaultReviewers(ctx, workspace, repoSlug)
+			defaultUsers, err := getCloudDefaultReviewers(ctx, client, workspace, repoSlug, *me)
 			if err != nil {
-				return fmt.Errorf("fetching default reviewers: %w", err)
+				return err
 			}
-			// Filter out the current user — Bitbucket Cloud rejects PRs where
-			// the author is listed as a reviewer. Compare by UUID because
-			// host.Username may be an email and User.Username can be empty.
-			var filtered []bbcloud.User
-			for _, u := range defaultUsers {
-				if u.UUID != me.UUID {
-					filtered = append(filtered, u)
-				}
-			}
-			reviewers = mergeCloudReviewers(reviewers, filtered)
+			reviewers = mergeCloudCreateReviewers(reviewers, defaultUsers)
 		}
 
 		pr, err := client.CreatePullRequest(ctx, workspace, repoSlug, bbcloud.CreatePullRequestInput{
@@ -1271,15 +1286,16 @@ func resolveGitBaseRef(ctx context.Context, targetBranch, remoteName string) (st
 }
 
 type editOptions struct {
-	Project         string
-	Workspace       string
-	Repo            string
-	ID              int
-	Title           string
-	Description     string
-	Body            string
-	Reviewers       []string
-	RemoveReviewers []string
+	Project              string
+	Workspace            string
+	Repo                 string
+	ID                   int
+	Title                string
+	Description          string
+	Body                 string
+	Reviewers            []string
+	RemoveReviewers      []string
+	WithDefaultReviewers bool
 }
 
 func newEditCmd(f *cmdutil.Factory) *cobra.Command {
@@ -1303,6 +1319,9 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 
   # Remove a reviewer
   bkt pr edit 123 --remove-reviewer alice
+
+  # Add repository default reviewers
+  bkt pr edit 123 --with-default-reviewers
 
   # Add and remove reviewers in one call
   bkt pr edit 123 --reviewer charlie --remove-reviewer alice`,
@@ -1331,9 +1350,9 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 
 			// Require at least one field to update
 			hasFieldChange := cmd.Flags().Changed("title") || cmd.Flags().Changed("description") || cmd.Flags().Changed("body")
-			hasReviewerChange := cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer")
+			hasReviewerChange := cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer") || opts.WithDefaultReviewers
 			if !hasFieldChange && !hasReviewerChange {
-				return fmt.Errorf("at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required")
+				return fmt.Errorf("at least one of --title, --body, --description, --reviewer, --remove-reviewer, or --with-default-reviewers is required")
 			}
 
 			return runEdit(cmd, f, opts)
@@ -1348,8 +1367,157 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Set the new body (alias for --description).")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} to add (repeatable)")
 	cmd.Flags().StringSliceVar(&opts.RemoveReviewers, "remove-reviewer", nil, "Reviewer username or {UUID} to remove (repeatable)")
+	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers")
 
 	return cmd
+}
+
+func mergeDCEditReviewers(current []bbdc.PullRequestReviewer, defaults []bbdc.User) []bbdc.PullRequestReviewer {
+	seen := make(map[string]bool, len(current)+len(defaults))
+	result := make([]bbdc.PullRequestReviewer, 0, len(current)+len(defaults))
+
+	for _, reviewer := range current {
+		name := reviewer.User.Name
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		result = append(result, reviewer)
+	}
+
+	for _, user := range defaults {
+		if user.Name == "" || seen[user.Name] {
+			continue
+		}
+		seen[user.Name] = true
+		result = append(result, bbdc.PullRequestReviewer{User: user})
+	}
+
+	return result
+}
+
+func mergeCloudEditReviewers(current, defaults []bbcloud.User) []bbcloud.User {
+	seen := make(map[string]bool, len(current)+len(defaults))
+	result := make([]bbcloud.User, 0, len(current)+len(defaults))
+
+	addUser := func(user bbcloud.User) {
+		keys := cloudUserKeys(user)
+		if len(keys) == 0 {
+			return
+		}
+		for _, key := range keys {
+			if seen[key] {
+				return
+			}
+		}
+		for _, key := range keys {
+			seen[key] = true
+		}
+		result = append(result, user)
+	}
+
+	for _, user := range current {
+		addUser(user)
+	}
+	for _, user := range defaults {
+		addUser(user)
+	}
+
+	return result
+}
+
+func cloudReviewerIDs(reviewers []bbcloud.User) []string {
+	seen := make(map[string]bool, len(reviewers))
+	ids := make([]string, 0, len(reviewers))
+	for _, reviewer := range reviewers {
+		keys := cloudUserKeys(reviewer)
+		if len(keys) == 0 {
+			continue
+		}
+		duplicate := false
+		for _, key := range keys {
+			if seen[key] {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+		for _, key := range keys {
+			seen[key] = true
+		}
+		if reviewer.UUID != "" {
+			ids = append(ids, reviewer.UUID)
+			continue
+		}
+		if reviewer.Username != "" {
+			ids = append(ids, reviewer.Username)
+			continue
+		}
+		if reviewer.AccountID != "" {
+			ids = append(ids, reviewer.AccountID)
+		}
+	}
+	return ids
+}
+
+func getDCDefaultReviewers(ctx context.Context, client *bbdc.Client, projectKey, repoSlug, sourceRef, targetRef string) ([]bbdc.User, error) {
+	defaultUsers, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, sourceRef, targetRef)
+	if err != nil {
+		return nil, fmt.Errorf("fetching default reviewers: %w", err)
+	}
+	return defaultUsers, nil
+}
+
+func cloudUserKeys(user bbcloud.User) []string {
+	keys := make([]string, 0, 3)
+	if user.UUID != "" {
+		keys = append(keys, "uuid:"+bbcloud.NormalizeUUID(user.UUID))
+	}
+	if user.AccountID != "" {
+		keys = append(keys, "account_id:"+user.AccountID)
+	}
+	if user.Username != "" {
+		keys = append(keys, "username:"+user.Username)
+	}
+	return keys
+}
+
+func sameCloudUser(a, b bbcloud.User) bool {
+	keys := cloudUserKeys(a)
+	if len(keys) == 0 {
+		return false
+	}
+	seen := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		seen[key] = true
+	}
+	for _, key := range cloudUserKeys(b) {
+		if seen[key] {
+			return true
+		}
+	}
+	return false
+}
+
+func filterCloudUsers(users []bbcloud.User, excluded bbcloud.User) []bbcloud.User {
+	filtered := make([]bbcloud.User, 0, len(users))
+	for _, user := range users {
+		if sameCloudUser(user, excluded) {
+			continue
+		}
+		filtered = append(filtered, user)
+	}
+	return filtered
+}
+
+func getCloudDefaultReviewers(ctx context.Context, client *bbcloud.Client, workspace, repoSlug string, excluded bbcloud.User) ([]bbcloud.User, error) {
+	defaultUsers, err := client.GetEffectiveDefaultReviewers(ctx, workspace, repoSlug)
+	if err != nil {
+		return nil, fmt.Errorf("fetching default reviewers: %w", err)
+	}
+	return filterCloudUsers(defaultUsers, excluded), nil
 }
 
 func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
@@ -1397,8 +1565,17 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 		}
 
 		newReviewers := pr.Reviewers
+		var preExistingDC []bbdc.PullRequestReviewer
+		if opts.WithDefaultReviewers {
+			preExistingDC = newReviewers
+			defaultUsers, err := getDCDefaultReviewers(ctx, client, projectKey, repoSlug, pr.FromRef.ID, pr.ToRef.ID)
+			if err != nil {
+				return err
+			}
+			newReviewers = mergeDCEditReviewers(newReviewers, defaultUsers)
+		}
 		if cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer") {
-			newReviewers = editDCReviewers(ios.ErrOut, pr.Reviewers, opts.Reviewers, opts.RemoveReviewers)
+			newReviewers = editDCReviewers(ios.ErrOut, newReviewers, opts.Reviewers, opts.RemoveReviewers, preExistingDC)
 		}
 
 		updatedPR, err := client.UpdatePullRequest(ctx, projectKey, repoSlug, opts.ID, pr.Version, bbdc.UpdatePROptions{
@@ -1446,16 +1623,45 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 		if cmd.Flags().Changed("description") || cmd.Flags().Changed("body") {
 			input.Description = &opts.Description
 		}
-		if cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer") {
+		if cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer") || opts.WithDefaultReviewers {
 			pr, err := client.GetPullRequest(ctx, workspace, repoSlug, opts.ID)
 			if err != nil {
 				return err
 			}
-			reviewers, err := editCloudReviewers(ios.ErrOut, pr.Reviewers, opts.Reviewers, opts.RemoveReviewers)
-			if err != nil {
-				return err
+
+			currentReviewers := pr.Reviewers
+			var preExistingCloud []bbcloud.User
+			if opts.WithDefaultReviewers {
+				preExistingCloud = currentReviewers
+				excluded := bbcloud.User{
+					UUID:      pr.Author.UUID,
+					Username:  pr.Author.Username,
+					AccountID: pr.Author.AccountID,
+				}
+				if len(cloudUserKeys(excluded)) == 0 {
+					fmt.Fprintf(ios.ErrOut, "warning: PR author has no usable identity; falling back to authenticated user for exclusion\n")
+					me, meErr := client.CurrentUser(ctx)
+					if meErr != nil {
+						return fmt.Errorf("PR author has no identity and cannot determine current user: %w", meErr)
+					}
+					excluded = *me
+				}
+				defaultUsers, err := getCloudDefaultReviewers(ctx, client, workspace, repoSlug, excluded)
+				if err != nil {
+					return err
+				}
+				currentReviewers = mergeCloudEditReviewers(currentReviewers, defaultUsers)
 			}
-			input.Reviewers = reviewers
+
+			if cmd.Flags().Changed("reviewer") || cmd.Flags().Changed("remove-reviewer") {
+				reviewers, err := editCloudReviewers(ios.ErrOut, currentReviewers, opts.Reviewers, opts.RemoveReviewers, preExistingCloud)
+				if err != nil {
+					return err
+				}
+				input.Reviewers = reviewers
+			} else {
+				input.Reviewers = cloudReviewerIDs(currentReviewers)
+			}
 		}
 
 		updatedPR, err := client.UpdatePullRequest(ctx, workspace, repoSlug, opts.ID, input)

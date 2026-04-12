@@ -2383,7 +2383,7 @@ func TestEditCommandArgumentParsing(t *testing.T) {
 		{
 			name:          "no flags",
 			args:          []string{"123"},
-			errorContains: "at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required",
+			errorContains: "at least one of --title, --body, --description, --reviewer, --remove-reviewer, or --with-default-reviewers is required",
 		},
 		{
 			name:          "both body and description",
@@ -2942,7 +2942,7 @@ func TestEditDCReviewers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var errBuf strings.Builder
-			got := editDCReviewers(&errBuf, tt.current, tt.add, tt.remove)
+			got := editDCReviewers(&errBuf, tt.current, tt.add, tt.remove, nil)
 
 			var gotNames []string
 			for _, r := range got {
@@ -3051,11 +3051,50 @@ func TestEditCloudReviewers(t *testing.T) {
 			remove:  []string{aliceUUID},
 			wantErr: aliceUUID,
 		},
+		{
+			name:    "remove reviewer by account id",
+			current: []bbcloud.User{{AccountID: "acc-alice"}, {UUID: bobUUID, Username: "bob"}},
+			remove:  []string{"acc-alice"},
+			want:    []string{bobUUID},
+		},
+		{
+			name:        "add reviewer when account-id-only user already present warns",
+			current:     []bbcloud.User{{AccountID: "acc-alice"}},
+			add:         []string{"acc-alice"},
+			want:        []string{"acc-alice"},
+			wantWarning: `warning: reviewer "acc-alice" is already on this pull request`,
+		},
+		{
+			name:        "remove account-id-only user not present warns",
+			current:     []bbcloud.User{{AccountID: "acc-alice"}},
+			remove:      []string{"acc-bob"},
+			want:        []string{"acc-alice"},
+			wantWarning: `warning: reviewer "acc-bob" is not on this pull request`,
+		},
+		{
+			name:    "keep account-id-only reviewer serializes account id",
+			current: []bbcloud.User{{AccountID: "acc-alice"}, {UUID: bobUUID, Username: "bob"}},
+			add:     []string{"charlie"},
+			want:    []string{"acc-alice", bobUUID, "charlie"},
+		},
+		{
+			name:    "cross-identity overlap by account id errors",
+			current: []bbcloud.User{{UUID: aliceUUID, AccountID: "acc-alice"}},
+			add:     []string{"acc-alice"},
+			remove:  []string{aliceUUID},
+			wantErr: "cannot be in both flags",
+		},
+		{
+			name:    "keep username-only reviewer serializes username",
+			current: []bbcloud.User{{Username: "alice"}, {UUID: bobUUID, Username: "bob"}},
+			add:     []string{"charlie"},
+			want:    []string{"alice", bobUUID, "charlie"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var errBuf strings.Builder
-			got, err := editCloudReviewers(&errBuf, tt.current, tt.add, tt.remove)
+			got, err := editCloudReviewers(&errBuf, tt.current, tt.add, tt.remove, nil)
 
 			if tt.wantErr != "" {
 				if err == nil {
@@ -3089,6 +3128,61 @@ func TestEditCloudReviewers(t *testing.T) {
 	}
 }
 
+func TestEditCloudReviewersSuppressesDefaultOverlapWarning(t *testing.T) {
+	const bobUUID = "{660e8400-e29b-41d4-a716-446655440000}"
+
+	// current includes bob (from defaults merge), preExisting is empty
+	// → adding bob should NOT warn
+	var errBuf strings.Builder
+	got, err := editCloudReviewers(&errBuf, []bbcloud.User{{UUID: bobUUID, Username: "bob"}}, []string{"bob"}, nil, []bbcloud.User{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.String() != "" {
+		t.Errorf("expected no warning for default-only overlap, got %q", errBuf.String())
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 reviewer, got %v", got)
+	}
+}
+
+func TestEditCloudReviewersWarnsForPreExistingOverlap(t *testing.T) {
+	const bobUUID = "{660e8400-e29b-41d4-a716-446655440000}"
+
+	// bob is in preExisting → adding bob should still warn
+	var errBuf strings.Builder
+	preExisting := []bbcloud.User{{UUID: bobUUID, Username: "bob"}}
+	_, err := editCloudReviewers(&errBuf, preExisting, []string{"bob"}, nil, preExisting)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), "already on this pull request") {
+		t.Errorf("expected warning for pre-existing overlap, got %q", errBuf.String())
+	}
+}
+
+func TestEditDCReviewersSuppressesDefaultOverlapWarning(t *testing.T) {
+	// current includes bob (from defaults merge), preExisting is empty
+	var errBuf strings.Builder
+	current := []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "bob"}}}
+	got := editDCReviewers(&errBuf, current, []string{"bob"}, nil, []bbdc.PullRequestReviewer{})
+	if errBuf.String() != "" {
+		t.Errorf("expected no warning for default-only overlap, got %q", errBuf.String())
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 reviewer, got %v", got)
+	}
+}
+
+func TestEditDCReviewersWarnsForPreExistingOverlap(t *testing.T) {
+	var errBuf strings.Builder
+	preExisting := []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "bob"}}}
+	_ = editDCReviewers(&errBuf, preExisting, []string{"bob"}, nil, preExisting)
+	if !strings.Contains(errBuf.String(), "already on this pull request") {
+		t.Errorf("expected warning for pre-existing overlap, got %q", errBuf.String())
+	}
+}
+
 func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -3106,6 +3200,16 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 			errorContains: "",
 		},
 		{
+			name:          "with-default-reviewers only is valid",
+			args:          []string{"123", "--with-default-reviewers"},
+			errorContains: "",
+		},
+		{
+			name:          "with-default-reviewers false alone is invalid",
+			args:          []string{"123", "--with-default-reviewers=false"},
+			errorContains: "at least one of --title, --body, --description, --reviewer, --remove-reviewer, or --with-default-reviewers is required",
+		},
+		{
 			name:          "overlap errors",
 			args:          []string{"123", "--reviewer", "alice", "--remove-reviewer", "alice"},
 			errorContains: `reviewer "alice" cannot be in both --reviewer and --remove-reviewer`,
@@ -3113,7 +3217,7 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 		{
 			name:          "no flags at all",
 			args:          []string{"123"},
-			errorContains: "at least one of --title, --body, --description, --reviewer, or --remove-reviewer is required",
+			errorContains: "at least one of --title, --body, --description, --reviewer, --remove-reviewer, or --with-default-reviewers is required",
 		},
 	}
 
@@ -3128,6 +3232,10 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 						ID: 123, Title: "Title", Version: 1,
 						FromRef: bbdc.Ref{ID: "refs/heads/feature", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
 						ToRef:   bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+					}
+					if strings.Contains(r.URL.Path, "/default-reviewers/") {
+						_ = json.NewEncoder(w).Encode([]map[string]any{})
+						return
 					}
 					_ = json.NewEncoder(w).Encode(pr)
 				}))
@@ -3182,8 +3290,10 @@ func TestEditCommandReviewerArgumentParsing(t *testing.T) {
 func TestRunEditDataCenterReviewers(t *testing.T) {
 	tests := []struct {
 		name            string
+		withDefaults    bool
 		reviewers       []string
 		removeReviewers []string
+		defaultUsers    []map[string]any
 		prResponse      bbdc.PullRequest
 		putBodyCheck    func(t *testing.T, body map[string]any)
 		stderrContains  string
@@ -3246,6 +3356,37 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 			},
 			stderrContains: "already on this pull request",
 		},
+		{
+			name:         "add default reviewers",
+			withDefaults: true,
+			defaultUsers: []map[string]any{
+				{"name": "bob"},
+				{"name": "charlie"},
+			},
+			prResponse: bbdc.PullRequest{
+				ID: 1, Title: "PR", Version: 1,
+				Reviewers: []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "alice"}}},
+				FromRef:   bbdc.Ref{ID: "refs/heads/feature/auth", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:     bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type in PUT body")
+				}
+				if len(reviewers) != 3 {
+					t.Fatalf("expected 3 reviewers, got %d", len(reviewers))
+				}
+				wantNames := []string{"alice", "bob", "charlie"}
+				for i, want := range wantNames {
+					r := reviewers[i].(map[string]any)
+					user := r["user"].(map[string]any)
+					if user["name"] != want {
+						t.Errorf("reviewer[%d] name = %q, want %q", i, user["name"], want)
+					}
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -3254,6 +3395,22 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "GET" && strings.Contains(r.URL.Path, "/default-reviewers/") {
+					if got := r.URL.Query().Get("sourceRefId"); got != "refs/heads/feature/auth" {
+						t.Fatalf("sourceRefId = %q, want refs/heads/feature/auth", got)
+					}
+					if got := r.URL.Query().Get("targetRefId"); got != "refs/heads/main" {
+						t.Fatalf("targetRefId = %q, want refs/heads/main", got)
+					}
+					_ = json.NewEncoder(w).Encode([]map[string]any{
+						{
+							"reviewers": []map[string]any{
+								{"users": tt.defaultUsers},
+							},
+						},
+					})
+					return
+				}
 				if r.Method == "GET" {
 					_ = json.NewEncoder(w).Encode(tt.prResponse)
 					return
@@ -3293,6 +3450,9 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 			cmd.SilenceUsage = true
 
 			args := []string{"1"}
+			if tt.withDefaults {
+				args = append(args, "--with-default-reviewers")
+			}
 			for _, r := range tt.reviewers {
 				args = append(args, "--reviewer", r)
 			}
@@ -3322,14 +3482,17 @@ func TestRunEditCloudReviewers(t *testing.T) {
 	const (
 		aliceUUID = "{550e8400-e29b-41d4-a716-446655440000}"
 		bobUUID   = "{660e8400-e29b-41d4-a716-446655440000}"
+		carolUUID = "{770e8400-e29b-41d4-a716-446655440000}"
 	)
 	tests := []struct {
-		name            string
-		reviewers       []string
-		removeReviewers []string
-		prResponse      bbcloud.PullRequest
-		putBodyCheck    func(t *testing.T, body map[string]any)
-		stderrContains  string
+		name             string
+		withDefaults     bool
+		reviewers        []string
+		removeReviewers  []string
+		defaultReviewers []map[string]any
+		prResponse       bbcloud.PullRequest
+		putBodyCheck     func(t *testing.T, body map[string]any)
+		stderrContains   string
 	}{
 		{
 			name:      "add reviewer by username",
@@ -3388,6 +3551,120 @@ func TestRunEditCloudReviewers(t *testing.T) {
 			},
 			stderrContains: "already on this pull request",
 		},
+		{
+			name:         "add default reviewers excludes author",
+			withDefaults: true,
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "uuid": aliceUUID}},
+				{"user": map[string]any{"username": "carol", "uuid": carolUUID}},
+			},
+			prResponse: bbcloud.PullRequest{
+				ID:    1,
+				Title: "PR",
+				Author: struct {
+					DisplayName string "json:\"display_name\""
+					Username    string "json:\"username\""
+					UUID        string "json:\"uuid\""
+					AccountID   string "json:\"account_id\""
+				}{
+					DisplayName: "Alice",
+					Username:    "alice",
+					UUID:        aliceUUID,
+				},
+				Reviewers: []bbcloud.User{{UUID: bobUUID, Username: "bob"}},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type")
+				}
+				if len(reviewers) != 2 {
+					t.Fatalf("expected 2 reviewers, got %d", len(reviewers))
+				}
+				r0 := reviewers[0].(map[string]any)
+				if r0["uuid"] != bobUUID {
+					t.Fatalf("expected first reviewer to preserve bob by uuid, got %v", r0)
+				}
+				r1 := reviewers[1].(map[string]any)
+				if r1["uuid"] != carolUUID {
+					t.Fatalf("expected second reviewer to add carol by uuid, got %v", r1)
+				}
+			},
+		},
+		{
+			name:         "add default reviewers dedups and excludes author across account id",
+			withDefaults: true,
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "alice", "account_id": "acc-alice"}},
+				{"user": map[string]any{"username": "bob", "account_id": "acc-bob"}},
+				{"user": map[string]any{"username": "carol", "account_id": "acc-carol"}},
+			},
+			prResponse: bbcloud.PullRequest{
+				ID:    1,
+				Title: "PR",
+				Author: struct {
+					DisplayName string "json:\"display_name\""
+					Username    string "json:\"username\""
+					UUID        string "json:\"uuid\""
+					AccountID   string "json:\"account_id\""
+				}{
+					DisplayName: "Alice",
+					UUID:        aliceUUID,
+					AccountID:   "acc-alice",
+				},
+				Reviewers: []bbcloud.User{
+					{UUID: bobUUID, AccountID: "acc-bob"},
+				},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type")
+				}
+				if len(reviewers) != 2 {
+					t.Fatalf("expected 2 reviewers after dedup/exclusion, got %d", len(reviewers))
+				}
+				r0 := reviewers[0].(map[string]any)
+				if r0["uuid"] != bobUUID {
+					t.Fatalf("expected existing bob reviewer preserved by uuid, got %v", r0)
+				}
+				r1 := reviewers[1].(map[string]any)
+				if r1["username"] != "carol" {
+					t.Fatalf("expected only carol to be added, got %v", r1)
+				}
+			},
+		},
+		{
+			name:         "author with no identity falls back to current user",
+			withDefaults: true,
+			defaultReviewers: []map[string]any{
+				{"user": map[string]any{"username": "bob", "uuid": bobUUID}},
+			},
+			prResponse: bbcloud.PullRequest{
+				ID:    1,
+				Title: "PR",
+				Author: struct {
+					DisplayName string "json:\"display_name\""
+					Username    string "json:\"username\""
+					UUID        string "json:\"uuid\""
+					AccountID   string "json:\"account_id\""
+				}{
+					DisplayName: "Bob",
+				},
+				Reviewers: []bbcloud.User{},
+			},
+			putBodyCheck: func(t *testing.T, body map[string]any) {
+				reviewers, ok := body["reviewers"].([]any)
+				if !ok {
+					t.Fatalf("reviewers not found or wrong type")
+				}
+				// bob is the current user fallback, should be excluded
+				if len(reviewers) != 0 {
+					t.Fatalf("expected 0 reviewers (bob excluded via current user fallback), got %d: %v", len(reviewers), reviewers)
+				}
+			},
+			stderrContains: "no usable identity",
+		},
 	}
 
 	for _, tt := range tests {
@@ -3396,6 +3673,18 @@ func TestRunEditCloudReviewers(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/user" && r.Method == "GET" {
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"uuid":       bobUUID,
+						"username":   "bob",
+						"account_id": "acc-bob",
+					})
+					return
+				}
+				if strings.Contains(r.URL.Path, "effective-default-reviewers") {
+					_ = json.NewEncoder(w).Encode(map[string]any{"values": tt.defaultReviewers})
+					return
+				}
 				if r.Method == "GET" {
 					_ = json.NewEncoder(w).Encode(tt.prResponse)
 					return
@@ -3433,6 +3722,9 @@ func TestRunEditCloudReviewers(t *testing.T) {
 			cmd.SilenceUsage = true
 
 			args := []string{"1"}
+			if tt.withDefaults {
+				args = append(args, "--with-default-reviewers")
+			}
 			for _, r := range tt.reviewers {
 				args = append(args, "--reviewer", r)
 			}
@@ -3455,6 +3747,515 @@ func TestRunEditCloudReviewers(t *testing.T) {
 				t.Errorf("expected stderr containing %q, got %q", tt.stderrContains, stderr.String())
 			}
 		})
+	}
+}
+
+func TestRunEditDataCenterWithDefaultReviewersFalseDoesNotFetchDefaults(t *testing.T) {
+	defaultsCalled := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/default-reviewers/") {
+			defaultsCalled = true
+			t.Fatalf("default reviewers endpoint should not be called when --with-default-reviewers=false")
+		}
+		if r.Method == "GET" {
+			_ = json.NewEncoder(w).Encode(bbdc.PullRequest{
+				ID: 1, Title: "PR", Version: 1,
+				Reviewers: []bbdc.PullRequestReviewer{{User: bbdc.User{Name: "alice"}}},
+				FromRef:   bbdc.Ref{ID: "refs/heads/feature/auth", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				ToRef:     bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+			})
+			return
+		}
+		if r.Method == "PUT" {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			reviewers := body["reviewers"].([]any)
+			if len(reviewers) != 1 {
+				t.Fatalf("expected reviewers to stay unchanged, got %v", reviewers)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "Updated", "version": 2})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newEditCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--title", "Updated", "--with-default-reviewers=false"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defaultsCalled {
+		t.Fatal("expected default reviewers endpoint not to be called")
+	}
+}
+
+func TestRunEditCloudWithDefaultReviewersFalseDoesNotFetchDefaults(t *testing.T) {
+	defaultsCalled := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "effective-default-reviewers") {
+			defaultsCalled = true
+			t.Fatalf("effective default reviewers endpoint should not be called when --with-default-reviewers=false")
+		}
+		if r.Method == "PUT" {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if _, ok := body["reviewers"]; ok {
+				t.Fatalf("expected reviewers field to be omitted, got %v", body["reviewers"])
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "Updated"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {Kind: "cloud", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newEditCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--title", "Updated", "--with-default-reviewers=false"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defaultsCalled {
+		t.Fatal("expected effective default reviewers endpoint not to be called")
+	}
+}
+
+func TestRunEditDataCenterErrors(t *testing.T) {
+	tests := []struct {
+		name          string
+		cfg           *config.Config
+		args          []string
+		handler       http.HandlerFunc
+		errorContains string
+	}{
+		{
+			name: "missing project and repo",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: "https://bitbucket.example.com", Token: "test-token"},
+				},
+			},
+			args:          []string{"1", "--title", "Updated"},
+			errorContains: "context must supply project and repo",
+		},
+		{
+			name: "invalid dc client config",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: "", Token: "test-token"},
+				},
+			},
+			args:          []string{"1", "--title", "Updated"},
+			errorContains: "has no base URL configured",
+		},
+		{
+			name: "get pull request error",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--title", "Updated"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "boom", http.StatusInternalServerError)
+			},
+			errorContains: "500 Internal Server Error",
+		},
+		{
+			name: "default reviewers error",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--with-default-reviewers"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if strings.Contains(r.URL.Path, "/default-reviewers/") {
+					http.Error(w, "boom", http.StatusInternalServerError)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(bbdc.PullRequest{
+					ID: 1, Title: "PR", Version: 1,
+					FromRef: bbdc.Ref{ID: "refs/heads/feature/auth", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+					ToRef:   bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+				})
+			},
+			errorContains: "fetching default reviewers",
+		},
+		{
+			name: "update error",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"main": {Kind: "dc", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--title", "Updated"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "GET" {
+					_ = json.NewEncoder(w).Encode(bbdc.PullRequest{
+						ID: 1, Title: "PR", Version: 1,
+						FromRef: bbdc.Ref{ID: "refs/heads/feature/auth", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+						ToRef:   bbdc.Ref{ID: "refs/heads/main", Repository: bbdc.Repository{Slug: "repo", Project: &bbdc.Project{Key: "PROJ"}}},
+					})
+					return
+				}
+				http.Error(w, "boom", http.StatusInternalServerError)
+			},
+			errorContains: "500 Internal Server Error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.handler != nil {
+				server := httptest.NewServer(tt.handler)
+				defer server.Close()
+				tt.cfg.Hosts["main"].BaseURL = server.URL
+			}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return tt.cfg, nil },
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+			cmd.SetContext(context.Background())
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.errorContains)
+			}
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Fatalf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
+
+func TestRunEditCloudErrors(t *testing.T) {
+	const aliceUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+
+	tests := []struct {
+		name          string
+		cfg           *config.Config
+		args          []string
+		handler       http.HandlerFunc
+		errorContains string
+	}{
+		{
+			name: "missing workspace and repo",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "https://api.bitbucket.org/2.0", Token: "test-token"},
+				},
+			},
+			args:          []string{"1", "--title", "Updated"},
+			errorContains: "context must supply workspace and repo",
+		},
+		{
+			name: "invalid cloud client config",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "://bad", Token: "test-token"},
+				},
+			},
+			args:          []string{"1", "--title", "Updated"},
+			errorContains: "missing protocol scheme",
+		},
+		{
+			name: "get pull request error",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--reviewer", "bob"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "boom", http.StatusInternalServerError)
+			},
+			errorContains: "500 Internal Server Error",
+		},
+		{
+			name: "default reviewers error",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--with-default-reviewers"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if strings.Contains(r.URL.Path, "effective-default-reviewers") {
+					http.Error(w, "boom", http.StatusInternalServerError)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(bbcloud.PullRequest{
+					ID:    1,
+					Title: "PR",
+					Author: struct {
+						DisplayName string `json:"display_name"`
+						Username    string `json:"username"`
+						UUID        string `json:"uuid"`
+						AccountID   string `json:"account_id"`
+					}{Username: "alice", UUID: aliceUUID},
+				})
+			},
+			errorContains: "fetching default reviewers",
+		},
+		{
+			name: "edit reviewers error",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--reviewer", "alice", "--remove-reviewer", aliceUUID},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(bbcloud.PullRequest{
+					ID:    1,
+					Title: "PR",
+					Reviewers: []bbcloud.User{
+						{Username: "alice", UUID: aliceUUID},
+					},
+				})
+			},
+			errorContains: "cannot be in both flags",
+		},
+		{
+			name: "update error",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--title", "Updated"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "PUT" {
+					http.Error(w, "boom", http.StatusInternalServerError)
+					return
+				}
+				http.NotFound(w, r)
+			},
+			errorContains: "500 Internal Server Error",
+		},
+		{
+			name: "author no identity and current user fails",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--with-default-reviewers"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/user" {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(bbcloud.PullRequest{
+					ID:    1,
+					Title: "PR",
+					Author: struct {
+						DisplayName string `json:"display_name"`
+						Username    string `json:"username"`
+						UUID        string `json:"uuid"`
+						AccountID   string `json:"account_id"`
+					}{DisplayName: "Ghost"},
+				})
+			},
+			errorContains: "PR author has no identity and cannot determine current user",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.handler != nil {
+				server := httptest.NewServer(tt.handler)
+				defer server.Close()
+				tt.cfg.Hosts["cloud"].BaseURL = server.URL
+			}
+
+			f := &cmdutil.Factory{
+				AppVersion:     "test",
+				ExecutableName: "bkt",
+				IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+				Config:         func() (*config.Config, error) { return tt.cfg, nil },
+			}
+
+			cmd := newEditCmd(f)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tt.args)
+			cmd.SetContext(context.Background())
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.errorContains)
+			}
+			if !strings.Contains(err.Error(), tt.errorContains) {
+				t.Fatalf("expected error containing %q, got %q", tt.errorContains, err.Error())
+			}
+		})
+	}
+}
+
+func TestRunEditResolveContextError(t *testing.T) {
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config: func() (*config.Config, error) {
+			return nil, errors.New("config boom")
+		},
+	}
+
+	cmd := newEditCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--title", "Updated"})
+	cmd.SetContext(context.Background())
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "config boom") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunEditUnsupportedHostKind(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "unknown", BaseURL: "http://localhost", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newEditCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--title", "Updated"})
+	cmd.SetContext(context.Background())
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unsupported host kind")
+	}
+	if !strings.Contains(err.Error(), "unsupported host kind") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -4152,17 +4953,212 @@ func TestMergeReviewers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mergeReviewers(tt.explicit, tt.defaults, nameFunc)
+			got := mergeCreateReviewers(tt.explicit, tt.defaults, nameFunc)
 			if len(got) == 0 && len(tt.want) == 0 {
 				return
 			}
 			if len(got) != len(tt.want) {
-				t.Fatalf("mergeReviewers() = %v, want %v", got, tt.want)
+				t.Fatalf("mergeCreateReviewers() = %v, want %v", got, tt.want)
 			}
 			for i, v := range got {
 				if v != tt.want[i] {
-					t.Errorf("mergeReviewers()[%d] = %q, want %q", i, v, tt.want[i])
+					t.Errorf("mergeCreateReviewers()[%d] = %q, want %q", i, v, tt.want[i])
 				}
+			}
+		})
+	}
+}
+
+func TestResolveGitBaseRefError(t *testing.T) {
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	_, err = resolveGitBaseRef(context.Background(), "missing-branch", "origin")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), `could not resolve base branch "missing-branch"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMergeDCPRReviewers(t *testing.T) {
+	got := mergeDCEditReviewers(
+		[]bbdc.PullRequestReviewer{
+			{User: bbdc.User{Name: "alice"}},
+			{User: bbdc.User{Name: ""}},
+			{User: bbdc.User{Name: "alice"}},
+		},
+		[]bbdc.User{
+			{Name: "alice"},
+			{Name: "bob"},
+			{Name: ""},
+		},
+	)
+
+	var names []string
+	for _, reviewer := range got {
+		names = append(names, reviewer.User.Name)
+	}
+	want := []string{"alice", "bob"}
+	if len(names) != len(want) {
+		t.Fatalf("got %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("got %v, want %v", names, want)
+		}
+	}
+}
+
+func TestMergeCloudPRReviewers(t *testing.T) {
+	got := mergeCloudEditReviewers(
+		[]bbcloud.User{
+			{Username: "alice", UUID: "{00000000-0000-0000-0000-000000000001}"},
+			{},
+		},
+		[]bbcloud.User{
+			{Username: "alice", UUID: "{00000000-0000-0000-0000-000000000001}"},
+			{UUID: "{00000000-0000-0000-0000-000000000002}"},
+			{Username: "bob", UUID: "{00000000-0000-0000-0000-000000000002}"},
+			{},
+		},
+	)
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 reviewers, got %v", got)
+	}
+	if got[0].Username != "alice" {
+		t.Fatalf("expected alice first, got %v", got[0])
+	}
+	if got[1].UUID != "{00000000-0000-0000-0000-000000000002}" {
+		t.Fatalf("expected second reviewer UUID preserved, got %v", got[1])
+	}
+}
+
+func TestMergeCloudPRReviewersDedupsAcrossAccountID(t *testing.T) {
+	got := mergeCloudEditReviewers(
+		[]bbcloud.User{
+			{UUID: "{00000000-0000-0000-0000-000000000001}", AccountID: "acc-alice"},
+		},
+		[]bbcloud.User{
+			{Username: "alice", AccountID: "acc-alice"},
+			{Username: "bob", AccountID: "acc-bob"},
+		},
+	)
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 reviewers, got %v", got)
+	}
+	if got[0].UUID != "{00000000-0000-0000-0000-000000000001}" {
+		t.Fatalf("expected existing reviewer preserved, got %v", got[0])
+	}
+	if got[1].Username != "bob" {
+		t.Fatalf("expected bob added, got %v", got[1])
+	}
+}
+
+func TestCloudReviewerIDs(t *testing.T) {
+	got := cloudReviewerIDs([]bbcloud.User{
+		{UUID: "{00000000-0000-0000-0000-000000000001}"},
+		{Username: "bob"},
+		{AccountID: "acc-charlie"},
+		{},
+	})
+	want := []string{"{00000000-0000-0000-0000-000000000001}", "bob", "acc-charlie"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestCloudReviewerIDsDedupAcrossAccountID(t *testing.T) {
+	got := cloudReviewerIDs([]bbcloud.User{
+		{UUID: "{00000000-0000-0000-0000-000000000001}", AccountID: "acc-alice"},
+		{Username: "alice", AccountID: "acc-alice"},
+		{Username: "bob", AccountID: "acc-bob"},
+	})
+	want := []string{"{00000000-0000-0000-0000-000000000001}", "bob"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestGetDCDefaultReviewersError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client, err := bbdc.New(bbdc.Options{BaseURL: server.URL, Username: "u", Token: "t"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = getDCDefaultReviewers(context.Background(), client, "PROJ", "repo", "feature", "main")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "fetching default reviewers") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSameCloudUser(t *testing.T) {
+	tests := []struct {
+		name string
+		a    bbcloud.User
+		b    bbcloud.User
+		want bool
+	}{
+		{
+			name: "same uuid",
+			a:    bbcloud.User{UUID: "{00000000-0000-0000-0000-000000000001}"},
+			b:    bbcloud.User{UUID: "00000000-0000-0000-0000-000000000001"},
+			want: true,
+		},
+		{
+			name: "same username",
+			a:    bbcloud.User{Username: "alice"},
+			b:    bbcloud.User{Username: "alice"},
+			want: true,
+		},
+		{
+			name: "same account id bridges mixed identifiers",
+			a:    bbcloud.User{UUID: "{00000000-0000-0000-0000-000000000001}", AccountID: "acc-alice"},
+			b:    bbcloud.User{Username: "alice", AccountID: "acc-alice"},
+			want: true,
+		},
+		{
+			name: "no shared identity",
+			a:    bbcloud.User{},
+			b:    bbcloud.User{Username: "alice"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sameCloudUser(tt.a, tt.b); got != tt.want {
+				t.Fatalf("sameCloudUser() = %v, want %v", got, tt.want)
 			}
 		})
 	}

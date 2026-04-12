@@ -400,6 +400,33 @@ func TestLooksLikeUUID(t *testing.T) {
 	}
 }
 
+func TestLooksLikeAccountID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"557058:12345678-1234-1234-1234-123456789abc", true},
+		{" 557058:12345678-1234-1234-1234-123456789abc ", true}, // trimmed
+		{"712020:abcdef01-2345-6789-abcd-ef0123456789", true},
+		{"alice", false},
+		{"{550e8400-e29b-41d4-a716-446655440000}", false}, // UUID, not account ID
+		{"550e8400-e29b-41d4-a716-446655440000", false},   // bare UUID
+		{"bob_smith", false},
+		{"user.name", false},
+		{"", false},
+		{":", false},
+		{"abc:12345678-1234-1234-1234-123456789abc", false}, // non-numeric prefix
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := LooksLikeAccountID(tt.input)
+			if got != tt.want {
+				t.Errorf("LooksLikeAccountID(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func newTestClient(t *testing.T, handler http.Handler) *Client {
 	t.Helper()
 	server := httptest.NewServer(handler)

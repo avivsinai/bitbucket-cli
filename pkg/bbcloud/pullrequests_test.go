@@ -784,9 +784,19 @@ func TestCreatePullRequestReviewerAutoDetect(t *testing.T) {
 			wantFields: []string{"username"},
 		},
 		{
+			name:       "account_id",
+			reviewers:  []string{"557058:12345678-1234-1234-1234-123456789abc"},
+			wantFields: []string{"account_id"},
+		},
+		{
 			name:       "mixed",
 			reviewers:  []string{"{550e8400-e29b-41d4-a716-446655440000}", "bob"},
 			wantFields: []string{"uuid", "username"},
+		},
+		{
+			name:       "mixed all three",
+			reviewers:  []string{"{550e8400-e29b-41d4-a716-446655440000}", "bob", "557058:12345678-1234-1234-1234-123456789abc"},
+			wantFields: []string{"uuid", "username", "account_id"},
 		},
 	}
 
@@ -1147,7 +1157,7 @@ func TestUpdatePullRequestWithReviewers(t *testing.T) {
 	}))
 
 	_, err := client.UpdatePullRequest(context.Background(), "ws", "repo", 1, bbcloud.UpdatePullRequestInput{
-		Reviewers: []string{"alice", "{550e8400-e29b-41d4-a716-446655440000}"},
+		Reviewers: []string{"alice", "{550e8400-e29b-41d4-a716-446655440000}", "557058:12345678-1234-1234-1234-123456789abc"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1157,8 +1167,8 @@ func TestUpdatePullRequestWithReviewers(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected reviewers array, got %v", gotBody["reviewers"])
 	}
-	if len(reviewers) != 2 {
-		t.Fatalf("expected 2 reviewers, got %d", len(reviewers))
+	if len(reviewers) != 3 {
+		t.Fatalf("expected 3 reviewers, got %d", len(reviewers))
 	}
 
 	r0 := reviewers[0].(map[string]any)
@@ -1168,6 +1178,71 @@ func TestUpdatePullRequestWithReviewers(t *testing.T) {
 	r1 := reviewers[1].(map[string]any)
 	if r1["uuid"] != "{550e8400-e29b-41d4-a716-446655440000}" {
 		t.Errorf("expected second reviewer by uuid, got %v", r1)
+	}
+	r2 := reviewers[2].(map[string]any)
+	if r2["account_id"] != "557058:12345678-1234-1234-1234-123456789abc" {
+		t.Errorf("expected third reviewer by account_id, got %v", r2)
+	}
+}
+
+func TestUpdatePullRequestReviewerAutoDetect(t *testing.T) {
+	tests := []struct {
+		name       string
+		reviewers  []string
+		wantFields []string
+	}{
+		{
+			name:       "uuid",
+			reviewers:  []string{"{550e8400-e29b-41d4-a716-446655440000}"},
+			wantFields: []string{"uuid"},
+		},
+		{
+			name:       "username",
+			reviewers:  []string{"alice"},
+			wantFields: []string{"username"},
+		},
+		{
+			name:       "account_id",
+			reviewers:  []string{"557058:12345678-1234-1234-1234-123456789abc"},
+			wantFields: []string{"account_id"},
+		},
+		{
+			name:       "mixed all three",
+			reviewers:  []string{"alice", "{550e8400-e29b-41d4-a716-446655440000}", "557058:12345678-1234-1234-1234-123456789abc"},
+			wantFields: []string{"username", "uuid", "account_id"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "PR"})
+			}))
+
+			_, err := client.UpdatePullRequest(context.Background(), "ws", "repo", 1, bbcloud.UpdatePullRequestInput{
+				Reviewers: tt.reviewers,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			reviewers, ok := gotBody["reviewers"].([]any)
+			if !ok {
+				t.Fatal("reviewers missing from request body")
+			}
+			if len(reviewers) != len(tt.wantFields) {
+				t.Fatalf("expected %d reviewers, got %d", len(tt.wantFields), len(reviewers))
+			}
+			for i, field := range tt.wantFields {
+				rev := reviewers[i].(map[string]any)
+				if _, ok := rev[field]; !ok {
+					t.Errorf("reviewer[%d]: expected %q field, got keys %v", i, field, rev)
+				}
+			}
+		})
 	}
 }
 

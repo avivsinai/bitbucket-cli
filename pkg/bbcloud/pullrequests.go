@@ -37,6 +37,8 @@ type PullRequest struct {
 	Author    struct {
 		DisplayName string `json:"display_name"`
 		Username    string `json:"username"`
+		UUID        string `json:"uuid"`
+		AccountID   string `json:"account_id"`
 	} `json:"author"`
 	Source struct {
 		Branch struct {
@@ -239,11 +241,7 @@ func (c *Client) CreatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if len(input.Reviewers) > 0 {
 		var reviewers []map[string]string
 		for _, reviewer := range input.Reviewers {
-			if LooksLikeUUID(reviewer) {
-				reviewers = append(reviewers, map[string]string{"uuid": NormalizeUUID(reviewer)})
-			} else {
-				reviewers = append(reviewers, map[string]string{"username": reviewer})
-			}
+			reviewers = append(reviewers, reviewerIdentity(reviewer))
 		}
 		body["reviewers"] = reviewers
 	}
@@ -314,6 +312,17 @@ func (c *Client) GetEffectiveDefaultReviewers(ctx context.Context, workspace, re
 	return users, nil
 }
 
+// reviewerIdentity returns the correct API identity map for a reviewer string.
+func reviewerIdentity(reviewer string) map[string]string {
+	if LooksLikeUUID(reviewer) {
+		return map[string]string{"uuid": NormalizeUUID(reviewer)}
+	}
+	if LooksLikeAccountID(reviewer) {
+		return map[string]string{"account_id": reviewer}
+	}
+	return map[string]string{"username": reviewer}
+}
+
 // UpdatePullRequestInput configures PR updates. Use pointers to distinguish
 // between "not set" and "set to empty string" for clearing fields.
 type UpdatePullRequestInput struct {
@@ -344,11 +353,7 @@ func (c *Client) UpdatePullRequest(ctx context.Context, workspace, repoSlug stri
 	if input.Reviewers != nil {
 		reviewers := make([]map[string]string, 0, len(input.Reviewers))
 		for _, reviewer := range input.Reviewers {
-			if LooksLikeUUID(reviewer) {
-				reviewers = append(reviewers, map[string]string{"uuid": NormalizeUUID(reviewer)})
-			} else {
-				reviewers = append(reviewers, map[string]string{"username": reviewer})
-			}
+			reviewers = append(reviewers, reviewerIdentity(reviewer))
 		}
 		body["reviewers"] = reviewers
 	}
