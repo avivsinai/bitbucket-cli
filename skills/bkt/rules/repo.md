@@ -339,4 +339,3 @@ bkt repo view [repository] [flags]
   # View a Cloud repository in a specific workspace
   bkt repo view --workspace my-team --repo frontend-app
 ```
-

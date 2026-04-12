@@ -78,4 +78,3 @@ bkt project list [flags]
   # List projects in JSON format
   bkt project list --json
 ```
-

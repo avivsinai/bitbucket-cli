@@ -27,7 +27,7 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientID=$(BKT_OAUTH_CLIENT_ID) \
 	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientSecret=$(BKT_OAUTH_CLIENT_SECRET)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-local generate-skill
+.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills check-generated-skill release-local generate-skill
 
 build: $(BIN_DIR)/bkt
 
@@ -77,6 +77,9 @@ clean:
 
 generate-skill:
 	$(GO) run ./cmd/docgen -o skills/bkt/rules
+
+check-generated-skill:
+	@GO="$(GO)" ./scripts/check-generated-skill.sh
 
 release:
 	@test -n "$(RELEASE_VERSION)" || (echo "usage: make release RELEASE_VERSION=X.Y.Z [RELEASE_DATE=YYYY-MM-DD] [RELEASE_SKIP_VERIFY=1] [RELEASE_ALLOW_EMPTY=1] [RELEASE_NO_AUTO_MERGE=1]" && exit 1)

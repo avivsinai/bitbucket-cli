@@ -36,4 +36,3 @@ bkt api <path> [flags]
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
-

@@ -439,4 +439,3 @@ bkt branch set-default <branch> [flags]
   # Switch the default branch to develop
   bkt branch set-default develop
 ```
-

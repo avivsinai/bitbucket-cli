@@ -225,4 +225,3 @@ bkt webhook test <id> [flags]
   # Test a webhook in a specific repository
   bkt webhook test 7 --project MYPROJ --repo my-repo
 ```
-
