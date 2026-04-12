@@ -6,6 +6,15 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `bkt pr edit --with-default-reviewers` now works on Bitbucket Cloud and Data Center, merging effective default reviewers with explicit reviewer edits while preserving mixed Cloud reviewer identities (#150).
+
+### Changed
+- Added pre-commit and CI validation that generated skill rule files and the `SKILL.md` References section stay in sync with the Cobra command tree, with `GO` override support in the verification path (#148).
+
+### Fixed
+- `bkt pr update` is now an alias for `bkt pr edit`, matching `gh`-style command expectations and `--help` output (#149).
+
 ## [0.22.0] - 2026-04-12
 ### Added
 - `bkt auth login --web` browser-based OAuth 2.0 login for Bitbucket Cloud, with keyring-stored short-lived access tokens and automatic refresh on expiry (#152).
