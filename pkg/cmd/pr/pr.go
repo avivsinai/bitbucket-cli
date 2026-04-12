@@ -885,11 +885,12 @@ func editCloudReviewers(w io.Writer, current []bbcloud.User, add, remove []strin
 			}
 		}
 		if !removed {
-			if u.UUID != "" {
+			switch {
+			case u.UUID != "":
 				result = append(result, u.UUID)
-			} else if u.Username != "" {
+			case u.Username != "":
 				result = append(result, u.Username)
-			} else if u.AccountID != "" {
+			case u.AccountID != "":
 				result = append(result, u.AccountID)
 			}
 		}
@@ -910,12 +911,10 @@ func editCloudReviewers(w io.Writer, current []bbcloud.User, add, remove []strin
 			// Suppress warning when the overlap is only with freshly-merged
 			// default reviewers, not with pre-existing PR reviewers.
 			wasPreExisting := false
-			if preExisting != nil {
-				for _, u := range preExisting {
-					if matchesCloudUser(u, r) {
-						wasPreExisting = true
-						break
-					}
+			for _, u := range preExisting {
+				if matchesCloudUser(u, r) {
+					wasPreExisting = true
+					break
 				}
 			}
 			if preExisting == nil || wasPreExisting || added[key] {
