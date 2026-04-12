@@ -1288,7 +1288,7 @@ func newEditCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "edit <id>",
 		Aliases: []string{"update"},
 		Short:   "Edit a pull request",
-		Long:    "Edit a pull request's title, description, and/or reviewers.",
+		Long:    "Edit a pull request's title, description, and/or reviewers. Also available as 'pr update'.",
 		Example: `  # Update pull request title
   bkt pr edit 123 --title "New feature: user authentication"
 
