@@ -3084,6 +3084,12 @@ func TestEditCloudReviewers(t *testing.T) {
 			remove:  []string{aliceUUID},
 			wantErr: "cannot be in both flags",
 		},
+		{
+			name:    "keep username-only reviewer serializes username",
+			current: []bbcloud.User{{Username: "alice"}, {UUID: bobUUID, Username: "bob"}},
+			add:     []string{"charlie"},
+			want:    []string{"alice", bobUUID, "charlie"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -4130,6 +4136,37 @@ func TestRunEditCloudErrors(t *testing.T) {
 			},
 			errorContains: "500 Internal Server Error",
 		},
+		{
+			name: "author no identity and current user fails",
+			cfg: &config.Config{
+				ActiveContext: "default",
+				Contexts: map[string]*config.Context{
+					"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+				},
+				Hosts: map[string]*config.Host{
+					"cloud": {Kind: "cloud", BaseURL: "http://placeholder", Token: "test-token"},
+				},
+			},
+			args: []string{"1", "--with-default-reviewers"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/user" {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(bbcloud.PullRequest{
+					ID:    1,
+					Title: "PR",
+					Author: struct {
+						DisplayName string `json:"display_name"`
+						Username    string `json:"username"`
+						UUID        string `json:"uuid"`
+						AccountID   string `json:"account_id"`
+					}{DisplayName: "Ghost"},
+				})
+			},
+			errorContains: "PR author has no identity and cannot determine current user",
+		},
 	}
 
 	for _, tt := range tests {
@@ -4185,6 +4222,39 @@ func TestRunEditResolveContextError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if !strings.Contains(err.Error(), "config boom") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunEditUnsupportedHostKind(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "unknown", BaseURL: "http://localhost", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newEditCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--title", "Updated"})
+	cmd.SetContext(context.Background())
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unsupported host kind")
+	}
+	if !strings.Contains(err.Error(), "unsupported host kind") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
