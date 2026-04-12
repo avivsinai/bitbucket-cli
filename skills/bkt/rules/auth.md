@@ -30,12 +30,16 @@ credentials in the OS keychain.
 
 For Data Center (--kind dc, the default), you authenticate with a Personal
 Access Token (PAT). The token needs Repository Read/Write and Project Read
-permissions. Use --web to open the PAT management page in your browser.
+permissions. Use --web-token to open the PAT management page in your browser.
 
-For Bitbucket Cloud (--kind cloud), you authenticate with an Atlassian API
-token. The token must be created with Bitbucket scopes (Account Read,
-Repositories Read/Write, Pull Requests Read/Write). Use --web to open the
-Atlassian token management page.
+For Bitbucket Cloud (--kind cloud), the recommended method is --web, which
+uses OAuth 2.0 to authenticate in the browser. The CLI receives a short-lived
+access token that is automatically refreshed. Alternatively, use --web-token
+to create an Atlassian API token manually.
+
+OAuth credentials are embedded at build time via ldflags. For source installs
+(go install), set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET environment
+variables before running --web.
 
 Credentials are verified against the remote host before being stored. If no
 OS keychain is available, pass --allow-insecure-store to use encrypted file
@@ -58,7 +62,8 @@ bkt auth login [host] [flags]
 | `--kind` |  | Bitbucket deployment kind (dc or cloud) |
 | `--token` |  | Authentication token (DC: PAT, Cloud: API token). WARNING: visible in process list and shell history; prefer the interactive prompt |
 | `--username` |  | Username (DC: PAT owner, Cloud: Atlassian email for API tokens) |
-| `--web` | `-w` | Open browser to create token, then prompt for credentials |
+| `--web` | `-w` | Authenticate via OAuth in the browser (Cloud only) |
+| `--web-token` |  | Open browser to create an API token, then prompt for credentials |
 
 ### Inherited Flags
 
@@ -73,14 +78,17 @@ bkt auth login [host] [flags]
 ### Examples
 
 ```bash
-# Interactive login to a Data Center instance
+# Login to Bitbucket Cloud via OAuth (recommended)
+  bkt auth login https://bitbucket.org --kind cloud --web
+
+  # Login to Bitbucket Cloud with an API token
+  bkt auth login https://bitbucket.org --kind cloud --web-token
+
+  # Interactive login to a Data Center instance
   bkt auth login https://bitbucket.example.com
 
-  # Login to Bitbucket Cloud interactively
-  bkt auth login https://bitbucket.org --kind cloud
-
   # Open browser to create a PAT, then prompt for credentials
-  bkt auth login https://bitbucket.example.com --web
+  bkt auth login https://bitbucket.example.com --web-token
 
   # Non-interactive login with flags (CI pipelines)
   bkt auth login https://bitbucket.example.com --username admin --token "$PAT"
@@ -170,4 +178,3 @@ bkt auth status [flags]
   # Get status as JSON
   bkt auth status --output json
 ```
-

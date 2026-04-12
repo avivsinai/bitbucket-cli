@@ -18,10 +18,14 @@ VERSION ?= $(shell \
 )
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BKT_OAUTH_CLIENT_ID ?=
+BKT_OAUTH_CLIENT_SECRET ?=
 LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags=$(VERSION) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
-	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
+	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE) \
+	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientID=$(BKT_OAUTH_CLIENT_ID) \
+	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientSecret=$(BKT_OAUTH_CLIENT_SECRET)
 
 .PHONY: build fmt lint test tidy sbom release snapshot clean check-skills release-local generate-skill
 

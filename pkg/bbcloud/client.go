@@ -13,12 +13,14 @@ import (
 
 // Options configure the Bitbucket Cloud client.
 type Options struct {
-	BaseURL     string
-	Username    string
-	Token       string
-	Workspace   string
-	EnableCache bool
-	Retry       httpx.RetryPolicy
+	BaseURL        string
+	Username       string
+	Token          string
+	Workspace      string
+	AuthMethod     string // "basic" (default) or "bearer"
+	EnableCache    bool
+	Retry          httpx.RetryPolicy
+	TokenRefresher func(ctx context.Context) (string, error)
 }
 
 // Client wraps Bitbucket Cloud REST endpoints.
@@ -37,13 +39,19 @@ func New(opts Options) (*Client, error) {
 		opts.BaseURL = "https://api.bitbucket.org/2.0"
 	}
 
+	authMethod := opts.AuthMethod
+	if authMethod == "" && opts.TokenRefresher != nil {
+		authMethod = "bearer"
+	}
 	httpClient, err := httpx.New(httpx.Options{
-		BaseURL:     opts.BaseURL,
-		Username:    opts.Username,
-		Password:    opts.Token,
-		UserAgent:   "bkt-cli",
-		EnableCache: opts.EnableCache,
-		Retry:       opts.Retry,
+		BaseURL:        opts.BaseURL,
+		Username:       opts.Username,
+		Password:       opts.Token,
+		AuthMethod:     authMethod,
+		UserAgent:      "bkt-cli",
+		EnableCache:    opts.EnableCache,
+		Retry:          opts.Retry,
+		TokenRefresher: opts.TokenRefresher,
 	})
 	if err != nil {
 		return nil, err

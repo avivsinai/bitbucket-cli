@@ -48,11 +48,14 @@ If not authenticated, log in:
 # Data Center (PAT-based)
 bkt auth login https://bitbucket.example.com --username alice --token <PAT>
 
-# Bitbucket Cloud (API token; --web opens Atlassian's token creation page)
+# Bitbucket Cloud — OAuth (recommended; opens browser)
 bkt auth login https://bitbucket.org --kind cloud --web
+
+# Bitbucket Cloud — API token (--web-token opens Atlassian's token creation page)
+bkt auth login https://bitbucket.org --kind cloud --web-token
 ```
 
-**Cloud token requirements:** Create an "API token with scopes" (not a general API token). Select **Bitbucket** as the application. Required: **Account: Read** (`read:user:bitbucket`). Add repository, PR, and issue scopes as needed.
+For `go install` builds, set `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` env vars before running `--web`.
 
 **3. Set up a context** — contexts bind a host to a project/workspace and optional default repo, so you don't repeat flags on every command:
 

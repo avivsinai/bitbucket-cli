@@ -785,6 +785,111 @@ func TestPingPreservesVersionedBasePath(t *testing.T) {
 	}
 }
 
+func TestNewWithExplicitAuthMethod(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			t.Errorf("Authorization = %q, want Bearer prefix", auth)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{
+		BaseURL:    server.URL,
+		Token:      "my-token",
+		AuthMethod: "bearer",
+		Retry:      httpx.RetryPolicy{MaxAttempts: 1},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, _ := client.HTTP().NewRequest(context.Background(), "GET", "/test", nil)
+	_ = client.HTTP().Do(req, nil)
+}
+
+func TestNewWithTokenRefresherImpliesBearer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			t.Errorf("Authorization = %q, want Bearer prefix", auth)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		Token:   "oauth-token",
+		Retry:   httpx.RetryPolicy{MaxAttempts: 1},
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			return "refreshed", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, _ := client.HTTP().NewRequest(context.Background(), "GET", "/test", nil)
+	_ = client.HTTP().Do(req, nil)
+}
+
+func TestNewExplicitAuthMethodOverridesRefresherDefault(t *testing.T) {
+	// When AuthMethod is explicitly set, it should be used even if TokenRefresher is set.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			t.Errorf("Authorization = %q, want Bearer prefix", auth)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{
+		BaseURL:    server.URL,
+		Token:      "tok",
+		AuthMethod: "bearer",
+		Retry:      httpx.RetryPolicy{MaxAttempts: 1},
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			return "refreshed", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, _ := client.HTTP().NewRequest(context.Background(), "GET", "/test", nil)
+	_ = client.HTTP().Do(req, nil)
+}
+
+func TestNewWithoutAuthMethodDefaultsToBasic(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok {
+			t.Error("expected basic auth")
+		}
+		if user != "user@example.com" || pass != "app-password" {
+			t.Errorf("basic auth = (%q, %q)", user, pass)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := New(Options{
+		BaseURL:  server.URL,
+		Username: "user@example.com",
+		Token:    "app-password",
+		Retry:    httpx.RetryPolicy{MaxAttempts: 1},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, _ := client.HTTP().NewRequest(context.Background(), "GET", "/test", nil)
+	_ = client.HTTP().Do(req, nil)
+}
+
 func TestListPipelinesRequiresParams(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	_, err := client.ListPipelines(context.Background(), "", "repo", 0)
