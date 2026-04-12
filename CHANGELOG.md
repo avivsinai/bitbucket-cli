@@ -7,6 +7,8 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `bkt auth login --web` browser-based OAuth 2.0 login for Bitbucket Cloud, with keyring-stored short-lived access tokens and automatic refresh on expiry (#152).
+- `BKT_HOST` + `BKT_TOKEN` env-var-driven headless authentication for CI and containers, so commands can run without a prior `bkt auth login` or `bkt context create` (#138).
 - Pull request JSON output now includes creation and update timestamps for Cloud and Data Center listings.
 
 ### Changed
