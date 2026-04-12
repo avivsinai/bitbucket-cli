@@ -3058,10 +3058,10 @@ func TestEditCloudReviewers(t *testing.T) {
 			want:    []string{bobUUID},
 		},
 		{
-			name:    "add reviewer when account-id-only user already present warns",
-			current: []bbcloud.User{{AccountID: "acc-alice"}},
-			add:     []string{"acc-alice"},
-			want:    []string{"acc-alice"},
+			name:        "add reviewer when account-id-only user already present warns",
+			current:     []bbcloud.User{{AccountID: "acc-alice"}},
+			add:         []string{"acc-alice"},
+			want:        []string{"acc-alice"},
 			wantWarning: `warning: reviewer "acc-alice" is already on this pull request`,
 		},
 		{
