@@ -182,4 +182,3 @@ bkt extension remove <name> [flags]
   # Remove using the short alias
   bkt extension rm deploy
 ```
-

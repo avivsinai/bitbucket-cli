@@ -20,7 +20,7 @@ repos:
         entry: ./scripts/check-generated-skill.sh
         language: script
         pass_filenames: false
-        files: ^(pkg/cmd/|cmd/docgen/|internal/docgen/|skills/bkt/)
+        files: ^(pkg/cmd/|cmd/docgen/|internal/docgen/|skills/bkt/|Makefile|scripts/check-generated-skill\.sh)
 
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks

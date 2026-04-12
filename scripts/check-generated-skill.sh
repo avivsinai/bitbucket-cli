@@ -15,12 +15,24 @@ trap 'rm -rf "$TMPDIR"' EXIT
 cp "$SKILL_MD" "$TMPDIR/SKILL.md"
 mkdir -p "$TMPDIR/rules"
 
-go run ./cmd/docgen -o "$TMPDIR/rules" 2>/dev/null
+go run ./cmd/docgen -o "$TMPDIR/rules"
 
-# Compare rule files
-if ! diff -rq "$RULES_DIR" "$TMPDIR/rules" >/dev/null 2>&1; then
-    echo "❌ Generated skill rules are stale. Run 'make generate-skill' and commit the result."
-    diff -rq "$RULES_DIR" "$TMPDIR/rules" || true
+# Compare generated rule files (ignore manually authored files in RULES_DIR
+# and trailing blank lines that end-of-file-fixer may strip)
+STALE=""
+for f in "$TMPDIR/rules"/*.md; do
+    name="$(basename "$f")"
+    if [ ! -f "$RULES_DIR/$name" ]; then
+        STALE="${STALE}missing: $name\n"
+    elif ! diff <(sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$RULES_DIR/$name") \
+                 <(sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$f") >/dev/null 2>&1; then
+        STALE="${STALE}differs: $name\n"
+    fi
+done
+
+if [ -n "$STALE" ]; then
+    echo "ERROR: Generated skill rules are stale. Run 'make generate-skill' and commit the result."
+    printf "%b" "$STALE"
     exit 1
 fi
 
@@ -34,7 +46,7 @@ COMMITTED_REFS="$(extract_refs "$SKILL_MD")"
 GENERATED_REFS="$(extract_refs "$TMPDIR/SKILL.md")"
 
 if [ "$COMMITTED_REFS" != "$GENERATED_REFS" ]; then
-    echo "❌ SKILL.md References section is stale. Run 'make generate-skill' and commit the result."
+    echo "ERROR: SKILL.md References section is stale. Run 'make generate-skill' and commit the result."
     diff <(echo "$COMMITTED_REFS") <(echo "$GENERATED_REFS") || true
     exit 1
 fi

@@ -78,4 +78,3 @@ bkt commit diff <from> <to> [flags]
   # Diff on a Cloud workspace
   bkt commit diff develop main --workspace myteam --repo backend
 ```
-

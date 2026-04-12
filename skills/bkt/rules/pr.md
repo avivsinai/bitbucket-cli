@@ -1364,4 +1364,3 @@ bkt pr view <id> [flags]
   # View a pull request in a different repository
   bkt pr view 10 --repo my-other-repo
 ```
-

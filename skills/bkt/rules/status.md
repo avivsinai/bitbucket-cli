@@ -203,4 +203,3 @@ bkt status rate-limit [flags]
   # Check rate limits for a specific context
   bkt status rate-limit --context my-cloud-ctx
 ```
-
