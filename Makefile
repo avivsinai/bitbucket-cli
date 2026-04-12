@@ -79,7 +79,7 @@ generate-skill:
 	$(GO) run ./cmd/docgen -o skills/bkt/rules
 
 check-generated-skill:
-	@./scripts/check-generated-skill.sh
+	@GO="$(GO)" ./scripts/check-generated-skill.sh
 
 release:
 	@test -n "$(RELEASE_VERSION)" || (echo "usage: make release RELEASE_VERSION=X.Y.Z [RELEASE_DATE=YYYY-MM-DD] [RELEASE_SKIP_VERIFY=1] [RELEASE_ALLOW_EMPTY=1] [RELEASE_NO_AUTO_MERGE=1]" && exit 1)

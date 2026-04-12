@@ -4,6 +4,7 @@
 # rules. Exits non-zero if there's drift.
 set -euo pipefail
 
+GO="${GO:-go}"
 RULES_DIR="skills/bkt/rules"
 SKILL_MD="skills/bkt/SKILL.md"
 
@@ -15,7 +16,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 cp "$SKILL_MD" "$TMPDIR/SKILL.md"
 mkdir -p "$TMPDIR/rules"
 
-go run ./cmd/docgen -o "$TMPDIR/rules"
+"$GO" run ./cmd/docgen -o "$TMPDIR/rules"
 
 # Compare generated rule files (ignore manually authored files in RULES_DIR
 # and trailing blank lines that end-of-file-fixer may strip)
