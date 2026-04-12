@@ -601,7 +601,9 @@ bkt pr diff <id> [flags]
 
 ## bkt pr edit
 
-Edit a pull request's title, description, and/or reviewers.
+Edit a pull request's title, description, and/or reviewers. Also available as 'pr update'.
+
+**Alias:** `update`
 
 ### Usage
 

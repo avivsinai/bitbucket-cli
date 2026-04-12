@@ -178,3 +178,4 @@ bkt auth status [flags]
   # Get status as JSON
   bkt auth status --output json
 ```
+
