@@ -2,6 +2,7 @@ package pr_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -313,5 +314,62 @@ func TestDCPRCommentsDetailsTask(t *testing.T) {
 				t.Errorf("stdout missing %q\ngot: %s", tt.wantResolved, stdout)
 			}
 		})
+	}
+}
+
+func TestCommentsDCDeepReplyTreeDefaultOutput(t *testing.T) {
+	const deepestDepth = 40
+
+	buildCommentTree := func(depth int) map[string]any {
+		root := map[string]any{
+			"id":   1,
+			"text": "root comment",
+			"author": map[string]any{
+				"name": "root",
+			},
+		}
+
+		current := root
+		for i := 1; i <= depth; i++ {
+			child := map[string]any{
+				"id":   i + 1,
+				"text": fmt.Sprintf("reply depth %d", i),
+				"author": map[string]any{
+					"name": "deep",
+				},
+			}
+			current["comments"] = []map[string]any{child}
+			current = child
+		}
+
+		return root
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/activities") {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isLastPage": true,
+			"values": []map[string]any{
+				{
+					"action":  "COMMENTED",
+					"comment": buildCommentTree(deepestDepth),
+				},
+			},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "comments", "1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v (stderr=%s)", err, stderr)
+	}
+
+	if !strings.Contains(stdout, "41\tdeep\t") {
+		t.Fatalf("expected deepest reply to be rendered without panic, got: %s", stdout)
 	}
 }

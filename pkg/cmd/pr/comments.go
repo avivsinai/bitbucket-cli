@@ -268,8 +268,14 @@ func truncate(s string, maxLen int) string {
 	s = strings.ReplaceAll(s, "\r", "")
 	s = strings.TrimSpace(s)
 	runes := []rune(s)
+	if maxLen <= 0 {
+		return ""
+	}
 	if len(runes) <= maxLen {
-		return s
+		return string(runes)
+	}
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
 	}
 	return string(runes[:maxLen-3]) + "..."
 }
