@@ -389,6 +389,137 @@ func TestPRDeclineDeleteSourceRejectsCloud(t *testing.T) {
 	}
 }
 
+func TestPRDeclineDCMissingProjectRepo(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "test",
+		Contexts: map[string]*config.Context{
+			"test": {Host: "mock"},
+		},
+		Hosts: map[string]*config.Host{
+			"mock": {Kind: "dc", BaseURL: "http://localhost", Username: "u", Token: "t"},
+		},
+	}
+	_, _, err := runCLI(t, cfg, "pr", "decline", "1")
+	if err == nil {
+		t.Fatal("expected error for missing project/repo")
+	}
+	if !strings.Contains(err.Error(), "project and repo") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestPRDeclineCloudMissingWorkspaceRepo(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "test",
+		Contexts: map[string]*config.Context{
+			"test": {Host: "mock"},
+		},
+		Hosts: map[string]*config.Host{
+			"mock": {Kind: "cloud", BaseURL: "http://localhost", Username: "u", Token: "t"},
+		},
+	}
+	_, _, err := runCLI(t, cfg, "pr", "decline", "1")
+	if err == nil {
+		t.Fatal("expected error for missing workspace/repo")
+	}
+	if !strings.Contains(err.Error(), "workspace and repo") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestPRDeclineCloudBasic(t *testing.T) {
+	var declineCalled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:token"))
+		if r.Header.Get("Authorization") != auth {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pullrequests/42/decline") {
+			declineCalled = true
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "decline", "42")
+	if err != nil {
+		t.Fatalf("pr decline error: %v (stderr=%s)", err, stderr)
+	}
+	if !declineCalled {
+		t.Fatal("decline endpoint not called")
+	}
+	if !strings.Contains(stdout, "Declined pull request #42") {
+		t.Errorf("unexpected output: %s", stdout)
+	}
+}
+
+func TestPRDeclineUnsupportedHost(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "test",
+		Contexts: map[string]*config.Context{
+			"test": {Host: "mock"},
+		},
+		Hosts: map[string]*config.Host{
+			"mock": {Kind: "other", BaseURL: "http://localhost", Username: "u", Token: "t"},
+		},
+	}
+	_, _, err := runCLI(t, cfg, "pr", "decline", "1")
+	if err == nil {
+		t.Fatal("expected error for unsupported host kind")
+	}
+	if !strings.Contains(err.Error(), "unsupported host kind") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestPRDeclineDeleteSourceFallsBackToRefID(t *testing.T) {
+	// When displayId is empty, sourceBranch falls back to pr.FromRef.ID.
+	var deletePath string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:token"))
+		if r.Header.Get("Authorization") != auth {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/pull-requests/7"):
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 7, "title": "Test", "state": "OPEN", "version": 1,
+				"fromRef": map[string]any{
+					"id":        "refs/heads/feature",
+					"displayId": "", // empty — should fall back to id
+				},
+				"toRef": map[string]any{"id": "refs/heads/main", "displayId": "main"},
+			})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pull-requests/7/decline"):
+			w.WriteHeader(http.StatusOK)
+		case r.Method == "DELETE" && strings.HasSuffix(r.URL.Path, "/branches"):
+			deletePath = r.URL.Path
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	_, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "decline", "7", "--delete-source")
+	if err != nil {
+		t.Fatalf("pr decline error: %v (stderr=%s)", err, stderr)
+	}
+	if deletePath == "" {
+		t.Fatal("expected delete branch call")
+	}
+	// Branch name derived from refs/heads/feature → "refs/heads/feature" used as branch
+	if !strings.Contains(deletePath, "/branches") {
+		t.Errorf("unexpected delete path: %s", deletePath)
+	}
+}
+
 func cloudConfig(baseURL string) *config.Config {
 	return &config.Config{
 		ActiveContext: "test",
