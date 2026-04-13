@@ -4,9 +4,10 @@ import "os"
 
 // Cloud OAuth 2.0 configuration for Bitbucket Cloud.
 //
-// Bitbucket Cloud does not support PKCE for OAuth consumers, so the
-// client_secret is embedded in the binary at build time via ldflags.
-// This is the same trade-off made by tools like gh (GitHub CLI).
+// The flow uses PKCE (RFC 7636, S256) for defense-in-depth. Bitbucket Cloud
+// still requires client_secret at token exchange, so it is embedded in the
+// binary at build time via ldflags — the same trade-off made by tools like
+// gh (GitHub CLI).
 const (
 	// CloudAuthorizeURL is the Bitbucket Cloud authorization endpoint.
 	CloudAuthorizeURL = "https://bitbucket.org/site/oauth2/authorize"
