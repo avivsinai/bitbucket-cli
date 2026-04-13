@@ -248,6 +248,150 @@ func TestCommentsEmpty(t *testing.T) {
 	})
 }
 
+// nestComment wraps a comment inside n levels of parent comments, producing
+// a tree whose leaf sits at depth n when flattened.
+func nestComment(inner map[string]any, extraDepth int) map[string]any {
+	c := inner
+	for i := 0; i < extraDepth; i++ {
+		c = map[string]any{
+			"id":       1000 + i,
+			"text":     "parent",
+			"author":   map[string]any{"name": "sys"},
+			"comments": []map[string]any{c},
+		}
+	}
+	return c
+}
+
+func TestDCCommentsDepthCap(t *testing.T) {
+	newSrv := func(t *testing.T, body map[string]any) *httptest.Server {
+		t.Helper()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !strings.Contains(r.URL.Path, "/activities") {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(body)
+		}))
+		t.Cleanup(srv.Close)
+		return srv
+	}
+
+	// Root thread: depth 0 comment with a reply at depth 20 (at cap) and nested
+	// replies at depths 21 and 25 (over cap). A separate top-level comment
+	// ("top level comment B") that should appear after the cap.
+	atCap := map[string]any{
+		"id":     2,
+		"text":   "at cap",
+		"author": map[string]any{"name": "bob"},
+		"comments": []map[string]any{
+			nestComment(map[string]any{"id": 3, "text": "too deep", "author": map[string]any{"name": "carol"},
+				"comments": []map[string]any{
+					nestComment(map[string]any{"id": 4, "text": "very deep", "author": map[string]any{"name": "dave"}}, 3),
+				},
+			}, 0),
+		},
+	}
+	toplevel := map[string]any{
+		"id":       1,
+		"text":     "top level comment A",
+		"author":   map[string]any{"name": "alice"},
+		"comments": []map[string]any{nestComment(atCap, 19)},
+	}
+	topLevel2 := map[string]any{
+		"id":     5,
+		"text":   "top level comment B",
+		"author": map[string]any{"name": "eve"},
+	}
+	activities := map[string]any{
+		"isLastPage": true,
+		"values": []map[string]any{
+			{"action": "COMMENTED", "comment": toplevel},
+			{"action": "COMMENTED", "comment": topLevel2},
+		},
+	}
+
+	t.Run("non-details: deep comments hidden, marker shown", func(t *testing.T) {
+		srv := newSrv(t, activities)
+		stdout, _, err := runCLI(t, dcConfig(srv.URL), "pr", "comments", "1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(stdout, "top level comment A") {
+			t.Errorf("expected toplevel comment in output; got: %s", stdout)
+		}
+		if !strings.Contains(stdout, "at cap") {
+			t.Errorf("expected depth-20 comment in output; got: %s", stdout)
+		}
+		if strings.Contains(stdout, "too deep") {
+			t.Errorf("depth-21 comment should be hidden; got: %s", stdout)
+		}
+		if strings.Contains(stdout, "very deep") {
+			t.Errorf("depth-25 comment should be hidden; got: %s", stdout)
+		}
+		if !strings.Contains(stdout, "[...]") {
+			t.Errorf("expected [...] marker for skipped deep comments; got: %s", stdout)
+		}
+		if !strings.Contains(stdout, "top level comment B") {
+			t.Errorf("expected top level comment B after marker; got: %s", stdout)
+		}
+	})
+
+	t.Run("details: deep comments hidden, marker shown", func(t *testing.T) {
+		srv := newSrv(t, activities)
+		stdout, _, err := runCLI(t, dcConfig(srv.URL), "pr", "comments", "1", "--details")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(stdout, "top level comment A") {
+			t.Errorf("expected top level comment A in output; got: %s", stdout)
+		}
+		if strings.Contains(stdout, "too deep") {
+			t.Errorf("depth-21 comment should be hidden; got: %s", stdout)
+		}
+		if !strings.Contains(stdout, "[...]") {
+			t.Errorf("expected [...] marker for skipped deep comments; got: %s", stdout)
+		}
+	})
+
+	t.Run("marker appears only once for consecutive deep comments", func(t *testing.T) {
+		srv := newSrv(t, activities)
+		stdout, _, err := runCLI(t, dcConfig(srv.URL), "pr", "comments", "1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		count := strings.Count(stdout, "[...]")
+		if count != 1 {
+			t.Errorf("expected exactly 1 [...] marker, got %d; output: %s", count, stdout)
+		}
+	})
+
+	t.Run("no marker when all comments within cap", func(t *testing.T) {
+		shallow := map[string]any{
+			"isLastPage": true,
+			"values": []map[string]any{
+				{"action": "COMMENTED", "comment": map[string]any{
+					"id":     1,
+					"text":   "hello",
+					"author": map[string]any{"name": "alice"},
+					"comments": []map[string]any{
+						{"id": 2, "text": "reply", "author": map[string]any{"name": "bob"}},
+					},
+				}},
+			},
+		}
+		srv := newSrv(t, shallow)
+		stdout, _, err := runCLI(t, dcConfig(srv.URL), "pr", "comments", "1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.Contains(stdout, "[...]") {
+			t.Errorf("unexpected [...] marker when no deep comments; got: %s", stdout)
+		}
+	})
+}
+
 func TestDCPRCommentsDetailsTask(t *testing.T) {
 	tests := []struct {
 		name           string

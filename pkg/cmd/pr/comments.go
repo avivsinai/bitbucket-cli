@@ -105,12 +105,32 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 			"comments": comments,
 		}
 
+		const maxDepth = 20
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(comments) == 0 {
 				_, err := fmt.Fprintf(ios.Out, "No comments on pull request #%d\n", id)
 				return err
 			}
+			maxIndent := strings.Repeat("  ", maxDepth)
+			var skippedDeep bool
+			printSkipped := func() error {
+				if skippedDeep {
+					skippedDeep = false
+					_, err := fmt.Fprintf(ios.Out, "%s[...]\n", maxIndent)
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			}
 			for _, c := range comments {
+				if c.Depth > maxDepth {
+					skippedDeep = true
+					continue
+				}
+				if err := printSkipped(); err != nil {
+					return err
+				}
 				author := c.Author.Name
 				if author == "" {
 					author = c.Author.FullName
@@ -162,7 +182,7 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 					return err
 				}
 			}
-			return nil
+			return printSkipped()
 		})
 
 	case "cloud":
