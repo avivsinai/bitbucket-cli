@@ -386,7 +386,7 @@ func TestRunLoginRejectsUnsupportedKind(t *testing.T) {
 }
 
 func TestRunStatusShowsOAuthMethod(t *testing.T) {
-	t.Setenv(secret.EnvToken, "")
+	t.Setenv(secret.EnvToken, "test-env-token")
 
 	cfg := &config.Config{
 		Hosts: map[string]*config.Host{

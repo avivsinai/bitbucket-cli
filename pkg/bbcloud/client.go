@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 	"github.com/avivsinai/bitbucket-cli/pkg/types"
@@ -13,19 +14,21 @@ import (
 
 // Options configure the Bitbucket Cloud client.
 type Options struct {
-	BaseURL        string
-	Username       string
-	Token          string
-	Workspace      string
-	AuthMethod     string // "basic" (default) or "bearer"
-	EnableCache    bool
-	Retry          httpx.RetryPolicy
-	TokenRefresher func(ctx context.Context) (string, error)
+	BaseURL           string
+	Username          string
+	Token             string
+	Workspace         string
+	AuthMethod        string // "basic" (default) or "bearer"
+	EnableCache       bool
+	Retry             httpx.RetryPolicy
+	MergePollInterval time.Duration
+	TokenRefresher    func(ctx context.Context) (string, error)
 }
 
 // Client wraps Bitbucket Cloud REST endpoints.
 type Client struct {
-	http *httpx.Client
+	http              *httpx.Client
+	mergePollInterval time.Duration
 }
 
 // HTTP exposes the underlying HTTP client for advanced scenarios.
@@ -57,7 +60,15 @@ func New(opts Options) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{http: httpClient}, nil
+	mergePollInterval := opts.MergePollInterval
+	if mergePollInterval <= 0 {
+		mergePollInterval = 2 * time.Second
+	}
+
+	return &Client{
+		http:              httpClient,
+		mergePollInterval: mergePollInterval,
+	}, nil
 }
 
 // User represents a Bitbucket Cloud user profile.

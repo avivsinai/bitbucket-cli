@@ -533,7 +533,7 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("merge task timed out: %w", ctx.Err())
-		case <-time.After(2 * time.Second):
+		case <-time.After(c.mergePollInterval):
 		}
 
 		req, err := c.http.NewRequest(ctx, "GET", path, nil)

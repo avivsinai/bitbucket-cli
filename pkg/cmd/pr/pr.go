@@ -161,7 +161,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			return fmt.Errorf("context must supply project; use --project if needed")
 		}
 
-		client, err := cmdutil.NewDCClient(host)
+		client, err := f.DCClient(host)
 		if err != nil {
 			return err
 		}
@@ -233,7 +233,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			return fmt.Errorf("context must supply workspace; use --workspace if needed")
 		}
 
-		client, err := cmdutil.NewCloudClient(host)
+		client, err := f.CloudClient(host)
 		if err != nil {
 			return err
 		}
@@ -515,7 +515,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
 
-		client, err := cmdutil.NewDCClient(host)
+		client, err := f.DCClient(host)
 		if err != nil {
 			return err
 		}
@@ -583,7 +583,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
 
-		client, err := cmdutil.NewCloudClient(host)
+		client, err := f.CloudClient(host)
 		if err != nil {
 			return err
 		}
@@ -1540,7 +1540,7 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
 
-		client, err := cmdutil.NewDCClient(host)
+		client, err := f.DCClient(host)
 		if err != nil {
 			return err
 		}
@@ -1607,7 +1607,7 @@ func runEdit(cmd *cobra.Command, f *cmdutil.Factory, opts *editOptions) error {
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
 
-		client, err := cmdutil.NewCloudClient(host)
+		client, err := f.CloudClient(host)
 		if err != nil {
 			return err
 		}
@@ -2881,6 +2881,7 @@ type checksOptions struct {
 	Interval    time.Duration
 	MaxInterval time.Duration
 	Timeout     time.Duration
+	waitForPoll func(context.Context, time.Duration) error
 }
 
 func newChecksCmd(f *cmdutil.Factory) *cobra.Command {
@@ -3009,7 +3010,7 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
 
-		client, err := cmdutil.NewDCClient(host)
+		client, err := f.DCClient(host)
 		if err != nil {
 			return err
 		}
@@ -3056,7 +3057,7 @@ func runChecks(cmd *cobra.Command, f *cmdutil.Factory, opts *checksOptions) erro
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
 
-		client, err := cmdutil.NewCloudClient(host)
+		client, err := f.CloudClient(host)
 		if err != nil {
 			return err
 		}
@@ -3215,12 +3216,10 @@ func pollUntilComplete(
 			_, _ = fmt.Fprintf(ios.ErrOut, "  ⚠ Error fetching status (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
 			// Use iteration + consecutiveErrors to back off faster on errors
 			errorBackoff := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration+consecutiveErrors)
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(errorBackoff):
-				continue
+			if err := waitForPollInterval(ctx, opts, errorBackoff); err != nil {
+				return nil, err
 			}
+			continue
 		}
 		consecutiveErrors = 0 // Reset on success
 
@@ -3271,12 +3270,25 @@ func pollUntilComplete(
 
 		iteration++
 
-		select {
-		case <-ctx.Done():
-			return statuses, ctx.Err()
-		case <-time.After(nextInterval):
-			continue
+		if err := waitForPollInterval(ctx, opts, nextInterval); err != nil {
+			return statuses, err
 		}
+	}
+}
+
+func waitForPollInterval(ctx context.Context, opts *checksOptions, d time.Duration) error {
+	if opts.waitForPoll != nil {
+		return opts.waitForPoll(ctx, d)
+	}
+
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
