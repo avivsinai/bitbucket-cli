@@ -36,7 +36,7 @@ bkt pr <command> [flags]
 | [checkout](#bkt-pr-checkout) | Check out the pull request branch | `--branch`, `--project`, `--remote`, `--repo` |
 | [checks](#bkt-pr-checks) | Show build/CI status for a pull request | `--fail-fast`, `--interval`, `--max-interval`, `--project` |
 | [comment](#bkt-pr-comment) | Comment on a pull request | `--file`, `--from-line`, `--parent`, `--pending` |
-| [comments](#bkt-pr-comments) | List comments on a pull request | `--project`, `--repo`, `--state`, `--workspace` |
+| [comments](#bkt-pr-comments) | List comments on a pull request | `--details`, `--project`, `--repo`, `--state` |
 | [create](#bkt-pr-create) | Create a new pull request | `--body`, `--close-source`, `--description`, `--draft` |
 | [decline](#bkt-pr-decline) | Decline a pull request | `--delete-source`, `--project`, `--repo`, `--workspace` |
 | [diff](#bkt-pr-diff) | Show the diff for a pull request | `--project`, `--repo`, `--stat`, `--workspace` |
@@ -422,6 +422,7 @@ bkt pr comments <id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
+| `--details` |  | Show full comment details (file, resolved, task status) |
 | `--project` |  | Bitbucket project key override |
 | `--repo` |  | Repository slug override |
 | `--state` |  | Filter by state: all, resolved, unresolved (Cloud only) |

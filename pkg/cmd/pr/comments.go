@@ -17,6 +17,7 @@ type commentsOptions struct {
 	Project   string
 	Repo      string
 	State     string // "all", "resolved", "unresolved"
+	Details   bool
 }
 
 func newCommentsCmd(f *cmdutil.Factory) *cobra.Command {
@@ -51,6 +52,7 @@ Works on both Data Center and Cloud.`,
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.State, "state", "all", "Filter by state: all, resolved, unresolved (Cloud only)")
+	cmd.Flags().BoolVar(&opts.Details, "details", false, "Show full comment details (file, resolved, task status)")
 
 	return cmd
 }
@@ -103,22 +105,84 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 			"comments": comments,
 		}
 
+		const maxDepth = 20
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(comments) == 0 {
 				_, err := fmt.Fprintf(ios.Out, "No comments on pull request #%d\n", id)
 				return err
 			}
+			maxIndent := strings.Repeat("  ", maxDepth)
+			var skippedDeep bool
+			printSkipped := func() error {
+				if skippedDeep {
+					skippedDeep = false
+					_, err := fmt.Fprintf(ios.Out, "%s[...]\n", maxIndent)
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			}
 			for _, c := range comments {
+				if c.Depth > maxDepth {
+					skippedDeep = true
+					continue
+				}
+				if err := printSkipped(); err != nil {
+					return err
+				}
 				author := c.Author.Name
 				if author == "" {
 					author = c.Author.FullName
 				}
-				text := truncate(c.Text, 80)
-				if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", c.ID, author, text); err != nil {
+				if !opts.Details {
+					indent := strings.Repeat("  ", c.Depth)
+					text := truncate(c.Text, 80-2*c.Depth)
+					if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s%s\n", c.ID, author, indent, text); err != nil {
+						return err
+					}
+					continue
+				}
+				indent := strings.Repeat("  ", c.Depth)
+				kind := "Comment"
+				if strings.EqualFold(c.Severity, "BLOCKER") {
+					kind = "Task"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "%s--- %s #%d by %s ---\n", indent, kind, c.ID, author); err != nil {
+					return err
+				}
+				if c.Anchor != nil {
+					if c.Anchor.Line > 0 {
+						if _, err := fmt.Fprintf(ios.Out, "%sFile: %s:%d\n", indent, c.Anchor.Path, c.Anchor.Line); err != nil {
+							return err
+						}
+					} else {
+						if _, err := fmt.Fprintf(ios.Out, "%sFile: %s\n", indent, c.Anchor.Path); err != nil {
+							return err
+						}
+					}
+				}
+				if kind == "Task" {
+					complete := "no"
+					if strings.EqualFold(c.State, "RESOLVED") {
+						complete = "yes"
+					}
+					if _, err := fmt.Fprintf(ios.Out, "%sComplete: %s\n", indent, complete); err != nil {
+						return err
+					}
+				}
+				resolved := "no"
+				if c.ThreadResolved {
+					resolved = "yes"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "%sResolved: %s\n", indent, resolved); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintf(ios.Out, "\n%s%s\n\n", indent, c.Text); err != nil {
 					return err
 				}
 			}
-			return nil
+			return printSkipped()
 		})
 
 	case "cloud":
@@ -178,8 +242,35 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 						author = c.User.Nickname
 					}
 				}
-				text := truncate(c.Content.Raw, 80)
-				if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", c.ID, author, text); err != nil {
+				if !opts.Details {
+					text := truncate(c.Content.Raw, 80)
+					if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s\n", c.ID, author, text); err != nil {
+						return err
+					}
+					continue
+				}
+				if _, err := fmt.Fprintf(ios.Out, "--- Comment #%d by %s ---\n", c.ID, author); err != nil {
+					return err
+				}
+				if c.Inline != nil {
+					line := ""
+					if c.Inline.To != nil {
+						line = fmt.Sprintf(":%d", *c.Inline.To)
+					} else if c.Inline.From != nil {
+						line = fmt.Sprintf(":%d", *c.Inline.From)
+					}
+					if _, err := fmt.Fprintf(ios.Out, "File: %s%s\n", c.Inline.Path, line); err != nil {
+						return err
+					}
+				}
+				resolved := "no"
+				if c.Resolution != nil {
+					resolved = "yes"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "Resolved: %s\n", resolved); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintf(ios.Out, "\n%s\n\n", c.Content.Raw); err != nil {
 					return err
 				}
 			}
@@ -197,8 +288,14 @@ func truncate(s string, maxLen int) string {
 	s = strings.ReplaceAll(s, "\r", "")
 	s = strings.TrimSpace(s)
 	runes := []rune(s)
+	if maxLen <= 0 {
+		return ""
+	}
 	if len(runes) <= maxLen {
-		return s
+		return string(runes)
+	}
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
 	}
 	return string(runes[:maxLen-3]) + "..."
 }

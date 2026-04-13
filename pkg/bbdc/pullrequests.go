@@ -23,15 +23,20 @@ type PullRequestParticipant struct {
 
 // PullRequestComment represents a PR comment.
 type PullRequestComment struct {
-	ID     int    `json:"id"`
-	Text   string `json:"text"`
-	Author User   `json:"author"`
-	Anchor *struct {
+	ID             int    `json:"id"`
+	Text           string `json:"text"`
+	Severity       string `json:"severity"` // "NORMAL" or "BLOCKER" (task)
+	State          string `json:"state"`    // "OPEN" or "RESOLVED"
+	Author         User   `json:"author"`
+	ThreadResolved bool   `json:"threadResolved"`
+	Anchor         *struct {
 		Path     string `json:"path"`
 		Line     int    `json:"line"`
 		LineType string `json:"lineType"`
 		FileType string `json:"fileType"`
 	} `json:"anchor,omitempty"`
+	Comments []PullRequestComment `json:"comments,omitempty"`
+	Depth    int                  `json:"-"` // nesting depth, set during flattening
 }
 
 // pullRequestActivity represents a single entry from the PR activities endpoint.
@@ -73,7 +78,7 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 
 		for _, a := range resp.Values {
 			if a.Action == "COMMENTED" && a.Comment != nil {
-				all = append(all, *a.Comment)
+				all = append(all, flattenComments(*a.Comment, 0)...)
 			}
 		}
 
@@ -84,6 +89,19 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 	}
 
 	return all, nil
+}
+
+// flattenComments walks a comment tree depth-first, returning a flat slice
+// with Depth set on each node.
+func flattenComments(c PullRequestComment, depth int) []PullRequestComment {
+	children := c.Comments
+	c.Comments = nil
+	c.Depth = depth
+	out := []PullRequestComment{c}
+	for _, child := range children {
+		out = append(out, flattenComments(child, depth+1)...)
+	}
+	return out
 }
 
 // CreatePROptions configures pull request creation.
