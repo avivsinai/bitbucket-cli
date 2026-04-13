@@ -16,6 +16,9 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.sha }}
   cancel-in-progress: false
@@ -129,6 +132,19 @@ jobs:
           go-version: '1.25'
       - name: Verify release metadata
         run: ./scripts/check-release-version.sh "${{ needs.prepare.outputs.version }}"
+      - name: Check skill sync
+        run: make check-skills
+      - name: Verify gofmt
+        shell: bash
+        run: |
+          files="$(gofmt -l .)"
+          if [[ -n "$files" ]]; then
+            echo "The following files need gofmt:" >&2
+            echo "$files" >&2
+            exit 1
+          fi
+      - name: Go vet
+        run: go vet ./...
       - name: Run tests
         run: make test
       - name: Build CLI
@@ -143,6 +159,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -212,6 +230,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      - name: Collect attestation subjects
+        id: attestation_subjects
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t subjects < <(find dist -maxdepth 1 -type f | sort)
+          if ((${#subjects[@]} == 0)); then
+            echo "::error::No release artifacts found to attest."
+            exit 1
+          fi
+          {
+            echo "subjects<<EOF"
+            printf '%s\n' "${subjects[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate artifact attestation
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4
+        with:
+          subject-path: ${{ steps.attestation_subjects.outputs.subjects }}
 
   skill-publish:
     name: Publish skills
