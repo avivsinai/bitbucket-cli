@@ -50,6 +50,7 @@ bkt repo browse [<repository>] [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -99,6 +100,7 @@ bkt repo clone <repository> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -154,6 +156,7 @@ bkt repo create <repository> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -222,6 +225,7 @@ bkt repo default-reviewers list [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -269,6 +273,7 @@ bkt repo list [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -319,6 +324,7 @@ bkt repo view [repository] [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -339,3 +345,4 @@ bkt repo view [repository] [flags]
   # View a Cloud repository in a specific workspace
   bkt repo view --workspace my-team --repo frontend-app
 ```
+

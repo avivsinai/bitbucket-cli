@@ -58,6 +58,7 @@ bkt project list [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -78,3 +79,4 @@ bkt project list [flags]
   # List projects in JSON format
   bkt project list --json
 ```
+

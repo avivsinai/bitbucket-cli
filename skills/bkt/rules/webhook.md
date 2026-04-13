@@ -71,6 +71,7 @@ bkt webhook create [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -118,6 +119,7 @@ bkt webhook delete <id|uuid> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -167,6 +169,7 @@ bkt webhook list [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -211,6 +214,7 @@ bkt webhook test <id> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -225,3 +229,4 @@ bkt webhook test <id> [flags]
   # Test a webhook in a specific repository
   bkt webhook test 7 --project MYPROJ --repo my-repo
 ```
+

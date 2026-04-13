@@ -3,6 +3,7 @@ package cmdutil
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -30,6 +31,7 @@ func ResolveOutputSettings(cmd *cobra.Command) (OutputSettings, error) {
 
 	jsonEnabled := lookup("json") == "true"
 	yamlEnabled := lookup("yaml") == "true"
+	formatVal := strings.ToLower(lookup("format"))
 	jqExpr := lookup("jq")
 	tmpl := lookup("template")
 
@@ -37,19 +39,29 @@ func ResolveOutputSettings(cmd *cobra.Command) (OutputSettings, error) {
 		return OutputSettings{}, fmt.Errorf("cannot use --json and --yaml simultaneously")
 	}
 
+	if formatVal != "" && (jsonEnabled || yamlEnabled) {
+		return OutputSettings{}, fmt.Errorf("cannot use --format and --json/--yaml simultaneously")
+	}
+
+	if formatVal != "" && formatVal != "json" && formatVal != "yaml" {
+		return OutputSettings{}, fmt.Errorf("--format %q is not supported; use json or yaml", formatVal)
+	}
+
 	if jqExpr != "" && tmpl != "" {
 		return OutputSettings{}, fmt.Errorf("cannot use --jq and --template simultaneously")
 	}
 
-	if jqExpr != "" && !jsonEnabled {
+	if jqExpr != "" && !jsonEnabled && formatVal != "json" {
 		return OutputSettings{}, fmt.Errorf("--jq requires --json")
 	}
 
-	format := ""
-	if jsonEnabled {
-		format = "json"
-	} else if yamlEnabled {
-		format = "yaml"
+	format := formatVal
+	if format == "" {
+		if jsonEnabled {
+			format = "json"
+		} else if yamlEnabled {
+			format = "yaml"
+		}
 	}
 
 	return OutputSettings{

@@ -67,6 +67,7 @@ bkt branch create <branch> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -115,6 +116,7 @@ bkt branch delete <branch> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -164,6 +166,7 @@ bkt branch list [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -255,6 +258,7 @@ bkt branch protect add <branch> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -303,6 +307,7 @@ bkt branch protect list [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -343,6 +348,7 @@ bkt branch protect remove <restriction-id> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -387,6 +393,7 @@ bkt branch rebase <branch> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -425,6 +432,7 @@ bkt branch set-default <branch> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -439,3 +447,4 @@ bkt branch set-default <branch> [flags]
   # Switch the default branch to develop
   bkt branch set-default develop
 ```
+

@@ -61,6 +61,7 @@ bkt context create <name> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -98,6 +99,7 @@ bkt context delete <name> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -132,6 +134,7 @@ bkt context list [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -167,6 +170,7 @@ bkt context use <name> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json) |
 | `--json` |  | Output in JSON format when supported |
 | `--template` |  | Render output using Go templates |
@@ -181,3 +185,4 @@ bkt context use <name> [flags]
   # Switch to a personal Cloud context
   bkt context use personal
 ```
+

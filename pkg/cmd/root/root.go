@@ -48,6 +48,7 @@ Common flows:
 	root.PersistentFlags().StringP("context", "c", "", "Active Bitbucket context name")
 	root.PersistentFlags().Bool("json", false, "Output in JSON format when supported")
 	root.PersistentFlags().Bool("yaml", false, "Output in YAML format when supported")
+	root.PersistentFlags().String("format", "", "Output format: json or yaml (alias for --json/--yaml)")
 	root.PersistentFlags().String("jq", "", "Apply a jq expression to JSON output (requires --json)")
 	root.PersistentFlags().String("template", "", "Render output using Go templates")
 

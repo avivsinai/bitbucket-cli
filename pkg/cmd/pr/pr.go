@@ -978,6 +978,7 @@ via the --draft flag.`,
 	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Pull request description (alias for --description)")
 	cmd.Flags().StringVar(&opts.Source, "source", "", "Source branch (defaults to the current branch)")
 	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (defaults to the remote's default branch)")
+	cmd.Flags().StringVar(&opts.Target, "destination", "", "Target branch (alias for --target)")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
 	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers")
@@ -2456,8 +2457,9 @@ type declineOptions struct {
 func newDeclineCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &declineOptions{}
 	cmd := &cobra.Command{
-		Use:   "decline <id>",
-		Short: "Decline a pull request",
+		Use:     "decline <id>",
+		Aliases: []string{"close"},
+		Short:   "Decline a pull request",
 		Long: `Decline (close without merging) a pull request. On Data Center, the optional
 --delete-source flag also deletes the source branch after declining. This flag
 is not supported on Cloud.
@@ -2468,6 +2470,9 @@ Works on both Data Center and Cloud.`,
 
   # Decline with a comment explaining the reason
   bkt pr decline 42 --comment "Needs more work before we can merge"
+
+  # Same using the close alias
+  bkt pr close 42
 
   # Decline and delete the source branch (Data Center only)
   bkt pr decline 42 --delete-source`,
@@ -2714,8 +2719,9 @@ type commentOptions struct {
 func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &commentOptions{}
 	cmd := &cobra.Command{
-		Use:   "comment <id> --text <message>",
-		Short: "Comment on a pull request",
+		Use:     "comment <id> --text <message>",
+		Aliases: []string{"reply"},
+		Short:   "Comment on a pull request",
 		Long: `Add a comment to a pull request. Comments can be general (activity-level),
 threaded replies (via --parent), or inline on a specific file and line in the
 diff (via --file with --from-line or --to-line). Use --pending to create a
