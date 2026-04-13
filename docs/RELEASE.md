@@ -9,7 +9,7 @@
      - It creates `release/vX.Y.Z`.
      - It turns `Unreleased` into `## [X.Y.Z] - YYYY-MM-DD`.
      - It bumps `skills/*/SKILL.md`, `.claude-plugin/plugin.json`, and `.codex-plugin/plugin.json`.
-     - It runs `./scripts/check-release-version.sh`, `make fmt`, `make test`, and `make build`.
+     - It runs `./scripts/check-release-version.sh`, `make check-skills`, `gofmt`, `go vet`, `make test`, and `make build`.
      - It commits `chore(release): vX.Y.Z`, pushes the release branch, opens a PR, and enables squash auto-merge by default.
 
 2. **Merge**
@@ -24,6 +24,7 @@
      - Checksums (`bkt_${VERSION}_checksums.txt`)
      - SBOMs (`sbom-${VERSION}.cyclonedx.json` via Syft)
    - Artifacts are uploaded to the GitHub Release page.
+   - The workflow emits GitHub build provenance attestations for the released files.
    - The `bkt` skill publish workflow runs from the CI-created tag.
 
 4. **Post-release**

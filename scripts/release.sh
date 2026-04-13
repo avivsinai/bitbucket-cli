@@ -12,13 +12,13 @@ Prepares a release PR from master by:
 - moving CHANGELOG.md's Unreleased section into a versioned release entry
 - bumping skill/plugin metadata versions
 - validating the release metadata
-- optionally running fmt/test/build
+- optionally running check-skills/gofmt/vet/test/build
 - creating and pushing the release commit
 - opening a GitHub PR and enabling squash auto-merge
 
 Options:
   --date YYYY-MM-DD  Override release date (default: today in UTC)
-  --skip-verify      Skip make fmt/test/build
+  --skip-verify      Skip local verification gates
   --allow-empty      Allow releasing with an empty Unreleased section
   --no-auto-merge    Create the PR but do not enable auto-merge
   -h, --help         Show this help text
@@ -210,7 +210,14 @@ PY
 ./scripts/check-release-version.sh "$tag"
 
 if [ "$skip_verify" -eq 0 ]; then
-  make fmt
+  make check-skills
+  files="$(gofmt -l .)"
+  if [[ -n "$files" ]]; then
+    echo "error: gofmt wants changes:" >&2
+    echo "$files" >&2
+    exit 1
+  fi
+  go vet ./...
   make test
   make build
 fi
