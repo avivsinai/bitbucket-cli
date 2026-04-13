@@ -82,6 +82,109 @@ func TestPRDeclineDataCenter(t *testing.T) {
 	}
 }
 
+func TestPRDeclineCommentAliases(t *testing.T) {
+	type hostCase struct {
+		name      string
+		cfg       func(string) *config.Config
+		setupSrv  func(t *testing.T, gotValue *string) http.Handler
+		wantValue func(got *string) string
+	}
+
+	flags := []string{"--comment", "--text", "--body"}
+
+	hosts := []hostCase{
+		{
+			name: "dc",
+			cfg:  dcConfig,
+			setupSrv: func(t *testing.T, got *string) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:token"))
+					if r.Header.Get("Authorization") != auth {
+						http.Error(w, "unauthorized", http.StatusUnauthorized)
+						return
+					}
+					switch {
+					case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/pull-requests/42"):
+						w.Header().Set("Content-Type", "application/json")
+						_ = json.NewEncoder(w).Encode(map[string]any{
+							"id": 42, "title": "Test PR", "state": "OPEN", "version": 1,
+							"fromRef": map[string]any{"id": "refs/heads/f", "displayId": "f"},
+							"toRef":   map[string]any{"id": "refs/heads/main", "displayId": "main"},
+						})
+					case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pull-requests/42/decline"):
+						var body map[string]any
+						_ = json.NewDecoder(r.Body).Decode(&body)
+						if c, ok := body["comment"].(map[string]any); ok {
+							*got, _ = c["text"].(string)
+						}
+						w.WriteHeader(http.StatusOK)
+					default:
+						http.NotFound(w, r)
+					}
+				})
+			},
+		},
+		{
+			name: "cloud",
+			cfg:  cloudConfig,
+			setupSrv: func(t *testing.T, got *string) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:token"))
+					if r.Header.Get("Authorization") != auth {
+						http.Error(w, "unauthorized", http.StatusUnauthorized)
+						return
+					}
+					if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pullrequests/42/decline") {
+						var body map[string]any
+						_ = json.NewDecoder(r.Body).Decode(&body)
+						*got, _ = body["message"].(string)
+						w.WriteHeader(http.StatusOK)
+						return
+					}
+					http.NotFound(w, r)
+				})
+			},
+		},
+	}
+
+	for _, h := range hosts {
+		for _, flag := range flags {
+			t.Run(h.name+"/"+flag, func(t *testing.T) {
+				var gotValue string
+				srv := httptest.NewServer(h.setupSrv(t, &gotValue))
+				t.Cleanup(srv.Close)
+
+				_, stderr, err := runCLI(t, h.cfg(srv.URL), "pr", "decline", "42", flag, "reason text")
+				if err != nil {
+					t.Fatalf("pr decline error: %v (stderr=%s)", err, stderr)
+				}
+				if gotValue != "reason text" {
+					t.Errorf("value = %q, want %q", gotValue, "reason text")
+				}
+			})
+		}
+	}
+}
+
+func TestPRDeclineCommentAliasesMutuallyExclusive(t *testing.T) {
+	pairs := [][2]string{
+		{"--comment", "--text"},
+		{"--comment", "--body"},
+		{"--text", "--body"},
+	}
+	for _, pair := range pairs {
+		t.Run(pair[0]+"/"+pair[1], func(t *testing.T) {
+			_, _, err := runCLI(t, dcConfig("http://localhost"), "pr", "decline", "42", pair[0], "a", pair[1], "b")
+			if err == nil {
+				t.Fatalf("expected error for %s + %s", pair[0], pair[1])
+			}
+			if !strings.Contains(err.Error(), pair[0][2:]) || !strings.Contains(err.Error(), pair[1][2:]) {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestPRDeclineWithDeleteSource(t *testing.T) {
 	var deleteBranchCalled bool
 

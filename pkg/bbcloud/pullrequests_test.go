@@ -224,13 +224,15 @@ func TestListRepositoriesRespectsLimit(t *testing.T) {
 
 func TestDeclinePullRequest(t *testing.T) {
 	var gotMethod, gotPath string
+	var gotBody []byte
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
+		gotBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.DeclinePullRequest(context.Background(), "myworkspace", "my-repo", 7); err != nil {
+	if err := client.DeclinePullRequest(context.Background(), "myworkspace", "my-repo", 7, ""); err != nil {
 		t.Fatalf("DeclinePullRequest: %v", err)
 	}
 	if gotMethod != "POST" {
@@ -238,6 +240,24 @@ func TestDeclinePullRequest(t *testing.T) {
 	}
 	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/7/decline" {
 		t.Errorf("path = %s, want .../7/decline", gotPath)
+	}
+	if len(gotBody) > 0 {
+		t.Errorf("expected no body when message is empty, got: %s", gotBody)
+	}
+}
+
+func TestDeclinePullRequestWithMessage(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.DeclinePullRequest(context.Background(), "myworkspace", "my-repo", 7, "needs more work"); err != nil {
+		t.Fatalf("DeclinePullRequest: %v", err)
+	}
+	if gotBody["message"] != "needs more work" {
+		t.Errorf("message = %v, want %q", gotBody["message"], "needs more work")
 	}
 }
 
@@ -258,7 +278,7 @@ func TestDeclinePullRequestValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := client.DeclinePullRequest(context.Background(), tt.workspace, tt.repo, 1); err == nil {
+			if err := client.DeclinePullRequest(context.Background(), tt.workspace, tt.repo, 1, ""); err == nil {
 				t.Error("expected error")
 			}
 		})

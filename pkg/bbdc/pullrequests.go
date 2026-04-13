@@ -352,13 +352,17 @@ func (c *Client) UpdatePullRequest(ctx context.Context, projectKey, repoSlug str
 }
 
 // DeclinePullRequest declines (rejects) a pull request.
-func (c *Client) DeclinePullRequest(ctx context.Context, projectKey, repoSlug string, prID int, version int) error {
+// An optional comment text may be provided; leave empty to omit it.
+func (c *Client) DeclinePullRequest(ctx context.Context, projectKey, repoSlug string, prID int, version int, comment string) error {
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("project key and repository slug are required")
 	}
 
 	body := map[string]any{
 		"version": version,
+	}
+	if comment != "" {
+		body["comment"] = map[string]any{"text": comment}
 	}
 
 	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/decline",

@@ -38,7 +38,7 @@ bkt pr <command> [flags]
 | [comment](#bkt-pr-comment) | Comment on a pull request | `--file`, `--from-line`, `--parent`, `--pending` |
 | [comments](#bkt-pr-comments) | List comments on a pull request | `--details`, `--project`, `--repo`, `--state` |
 | [create](#bkt-pr-create) | Create a new pull request | `--body`, `--close-source`, `--description`, `--draft` |
-| [decline](#bkt-pr-decline) | Decline a pull request | `--delete-source`, `--project`, `--repo`, `--workspace` |
+| [decline](#bkt-pr-decline) | Decline a pull request | `--body`, `--comment`, `--delete-source`, `--project` |
 | [diff](#bkt-pr-diff) | Show the diff for a pull request | `--project`, `--repo`, `--stat`, `--workspace` |
 | [edit](#bkt-pr-edit) | Edit a pull request | `--body`, `--description`, `--project`, `--remove-reviewer` |
 | [list](#bkt-pr-list) | List pull requests | `--limit`, `--mine`, `--project`, `--repo` |
@@ -531,9 +531,12 @@ bkt pr decline <id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
+| `--body` |  | Alias for --comment; use --comment instead |
+| `--comment` | `-m` | Comment explaining why the pull request was declined |
 | `--delete-source` |  | Delete the source branch after declining |
 | `--project` |  | Bitbucket project key override |
 | `--repo` |  | Repository slug override |
+| `--text` |  | Alias for --comment; use --comment instead |
 | `--workspace` |  | Bitbucket workspace override (Cloud) |
 
 ### Inherited Flags
@@ -551,6 +554,9 @@ bkt pr decline <id> [flags]
 ```bash
 # Decline a pull request
   bkt pr decline 42
+
+  # Decline with a comment explaining the reason
+  bkt pr decline 42 --comment "Needs more work before we can merge"
 
   # Decline and delete the source branch (Data Center only)
   bkt pr decline 42 --delete-source
