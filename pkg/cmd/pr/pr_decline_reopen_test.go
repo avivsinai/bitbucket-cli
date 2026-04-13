@@ -84,10 +84,9 @@ func TestPRDeclineDataCenter(t *testing.T) {
 
 func TestPRDeclineCommentAliases(t *testing.T) {
 	type hostCase struct {
-		name      string
-		cfg       func(string) *config.Config
-		setupSrv  func(t *testing.T, gotValue *string) http.Handler
-		wantValue func(got *string) string
+		name     string
+		cfg      func(string) *config.Config
+		setupSrv func(t *testing.T, gotValue *string) http.Handler
 	}
 
 	flags := []string{"--comment", "--text", "--body"}
