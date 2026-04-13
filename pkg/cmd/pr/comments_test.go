@@ -513,7 +513,18 @@ func TestCommentsDCDeepReplyTreeDefaultOutput(t *testing.T) {
 		t.Fatalf("unexpected error: %v (stderr=%s)", err, stderr)
 	}
 
-	if !strings.Contains(stdout, "41\tdeep\t") {
-		t.Fatalf("expected deepest reply to be rendered without panic, got: %s", stdout)
+	// Replies beyond depth 20 are capped; the root and depth-20 reply render,
+	// deeper ones are replaced by a single [...] marker.
+	if !strings.Contains(stdout, "root comment") {
+		t.Fatalf("expected root comment in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "reply depth 20") {
+		t.Fatalf("expected depth-20 reply in output, got: %s", stdout)
+	}
+	if strings.Contains(stdout, "reply depth 21") {
+		t.Fatalf("depth-21 reply should be hidden by cap, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "[...]") {
+		t.Fatalf("expected [...] marker for capped replies, got: %s", stdout)
 	}
 }
