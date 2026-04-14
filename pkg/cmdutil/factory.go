@@ -4,6 +4,8 @@ import (
 	"sync"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
+	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/browser"
 	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 	"github.com/avivsinai/bitbucket-cli/pkg/pager"
@@ -19,6 +21,10 @@ type Factory struct {
 	IOStreams *iostreams.IOStreams
 
 	Config func() (*config.Config, error)
+
+	// Optional client builders for tests that need custom transport/retry behavior.
+	NewCloudClientFunc func(*config.Host) (*bbcloud.Client, error)
+	NewDCClientFunc    func(*config.Host) (*bbdc.Client, error)
 
 	// Lazy-initialised platform helpers.
 	Browser  browser.Browser
@@ -57,6 +63,22 @@ func (f *Factory) Streams() (*iostreams.IOStreams, error) {
 		f.ios = iostreams.System()
 	})
 	return f.ios, nil
+}
+
+// CloudClient returns a Bitbucket Cloud client, using a test override when set.
+func (f *Factory) CloudClient(host *config.Host) (*bbcloud.Client, error) {
+	if f != nil && f.NewCloudClientFunc != nil {
+		return f.NewCloudClientFunc(host)
+	}
+	return NewCloudClient(host)
+}
+
+// DCClient returns a Bitbucket Data Center client, using a test override when set.
+func (f *Factory) DCClient(host *config.Host) (*bbdc.Client, error) {
+	if f != nil && f.NewDCClientFunc != nil {
+		return f.NewDCClientFunc(host)
+	}
+	return NewDCClient(host)
 }
 
 // BrowserOpener returns a Browser, initialising the default system implementation

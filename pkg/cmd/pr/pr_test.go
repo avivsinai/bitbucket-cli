@@ -19,9 +19,50 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 	"github.com/avivsinai/bitbucket-cli/pkg/types"
 )
+
+func noWaitPoll(context.Context, time.Duration) error { return nil }
+
+// newCloudClientNoRetry mirrors cmdutil.NewCloudClient with MaxAttempts:1 to avoid retry delays in tests.
+func newCloudClientNoRetry(host *config.Host) (*bbcloud.Client, error) {
+	if host == nil {
+		return nil, fmt.Errorf("missing host configuration")
+	}
+	if host.BaseURL == "" {
+		host.BaseURL = "https://api.bitbucket.org/2.0"
+	}
+
+	return bbcloud.New(bbcloud.Options{
+		BaseURL:     host.BaseURL,
+		Username:    host.Username,
+		Token:       host.Token,
+		AuthMethod:  host.AuthMethod,
+		EnableCache: true,
+		Retry:       httpx.RetryPolicy{MaxAttempts: 1},
+	})
+}
+
+// newDCClientNoRetry mirrors cmdutil.NewDCClient with MaxAttempts:1 to avoid retry delays in tests.
+func newDCClientNoRetry(host *config.Host) (*bbdc.Client, error) {
+	if host == nil {
+		return nil, fmt.Errorf("missing host configuration")
+	}
+	if host.BaseURL == "" {
+		return nil, fmt.Errorf("host %q has no base URL configured", host.Kind)
+	}
+
+	return bbdc.New(bbdc.Options{
+		BaseURL:     host.BaseURL,
+		Username:    host.Username,
+		Token:       host.Token,
+		AuthMethod:  host.AuthMethod,
+		EnableCache: true,
+		Retry:       httpx.RetryPolicy{MaxAttempts: 1},
+	})
+}
 
 func TestListRequiresMineWithoutRepo(t *testing.T) {
 	// Change to a temp directory without a git repo to prevent
@@ -1943,6 +1984,7 @@ func TestPollUntilComplete_MultipleIterations(t *testing.T) {
 		Wait:        true,
 		Interval:    1 * time.Millisecond, // Very short for testing
 		MaxInterval: 5 * time.Millisecond,
+		waitForPoll: noWaitPoll,
 	}
 
 	fetcher := &mockFetcher{
@@ -2049,6 +2091,7 @@ func TestPollUntilComplete_FetchErrorRetry(t *testing.T) {
 		Wait:        true,
 		Interval:    1 * time.Millisecond,
 		MaxInterval: 5 * time.Millisecond,
+		waitForPoll: noWaitPoll,
 	}
 
 	fetcher := &mockFetcher{
@@ -2082,6 +2125,7 @@ func TestPollUntilComplete_MaxConsecutiveErrors(t *testing.T) {
 		Wait:        true,
 		Interval:    1 * time.Millisecond,
 		MaxInterval: 5 * time.Millisecond,
+		waitForPoll: noWaitPoll,
 	}
 
 	testErr := fmt.Errorf("persistent error")
@@ -2117,6 +2161,7 @@ func TestPollUntilComplete_ErrorResetOnSuccess(t *testing.T) {
 		Wait:        true,
 		Interval:    1 * time.Millisecond,
 		MaxInterval: 5 * time.Millisecond,
+		waitForPoll: noWaitPoll,
 	}
 
 	testErr := fmt.Errorf("temporary error")
@@ -3982,10 +4027,11 @@ func TestRunEditDataCenterErrors(t *testing.T) {
 			}
 
 			f := &cmdutil.Factory{
-				AppVersion:     "test",
-				ExecutableName: "bkt",
-				IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
-				Config:         func() (*config.Config, error) { return tt.cfg, nil },
+				AppVersion:      "test",
+				ExecutableName:  "bkt",
+				IOStreams:       &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+				Config:          func() (*config.Config, error) { return tt.cfg, nil },
+				NewDCClientFunc: newDCClientNoRetry,
 			}
 
 			cmd := newEditCmd(f)
@@ -4178,10 +4224,11 @@ func TestRunEditCloudErrors(t *testing.T) {
 			}
 
 			f := &cmdutil.Factory{
-				AppVersion:     "test",
-				ExecutableName: "bkt",
-				IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
-				Config:         func() (*config.Config, error) { return tt.cfg, nil },
+				AppVersion:         "test",
+				ExecutableName:     "bkt",
+				IOStreams:          &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+				Config:             func() (*config.Config, error) { return tt.cfg, nil },
+				NewCloudClientFunc: newCloudClientNoRetry,
 			}
 
 			cmd := newEditCmd(f)

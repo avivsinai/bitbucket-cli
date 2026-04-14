@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 )
@@ -18,9 +19,10 @@ func newTestClient(t *testing.T, handler http.Handler) *bbcloud.Client {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	client, err := bbcloud.New(bbcloud.Options{
-		BaseURL:  server.URL,
-		Username: "user",
-		Token:    "token",
+		BaseURL:           server.URL,
+		Username:          "user",
+		Token:             "token",
+		MergePollInterval: time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("create client: %v", err)

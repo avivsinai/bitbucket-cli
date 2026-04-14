@@ -12,6 +12,16 @@ repos:
       - id: gitleaks
         args: ['--config=.gitleaks.toml']
 
+  # Go linting - matches CI tool
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run --timeout 5m
+        language: system
+        pass_filenames: false
+        files: ^(.*\.go|go\.mod|go\.sum)$
+
   # Generated skill rules freshness check
   - repo: local
     hooks:
