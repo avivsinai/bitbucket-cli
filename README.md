@@ -53,7 +53,7 @@ nix profile install github:avivsinai/bitbucket-cli
 
 Pin to a specific tag or commit by appending a ref (e.g. `github:avivsinai/bitbucket-cli/v1.2.3`).
 
-Requires flakes enabled (`experimental-features = nix-command flakes` in `nix.conf`).
+Don't have Nix yet? See [nixos.asia/en/install](https://nixos.asia/en/install) for a quick setup guide (installs Nix with flakes enabled out of the box).
 
 ### Binary Downloads
 
