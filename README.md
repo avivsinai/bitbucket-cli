@@ -37,6 +37,24 @@ go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest
 
 This installs `bkt` to `$GOPATH/bin` (or `$HOME/go/bin` by default). Ensure the directory is in your `$PATH`.
 
+### Nix (NixOS / nix-darwin / Linux / macOS)
+
+Run the latest `master` without installing:
+
+```bash
+nix run github:avivsinai/bitbucket-cli -- --version
+```
+
+Install into your user profile:
+
+```bash
+nix profile install github:avivsinai/bitbucket-cli
+```
+
+Pin to a specific tag or commit by appending a ref (e.g. `github:avivsinai/bitbucket-cli/v1.2.3`).
+
+Requires flakes enabled (`experimental-features = nix-command flakes` in `nix.conf`).
+
 ### Binary Downloads
 
 Download pre-built binaries for your platform from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).

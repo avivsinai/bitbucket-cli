@@ -3,20 +3,8 @@ name: Nix
 on:
   push:
     branches: [ master ]
-    paths:
-      - 'flake.nix'
-      - 'flake.lock'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/nix.yml'
   pull_request:
     branches: [ master ]
-    paths:
-      - 'flake.nix'
-      - 'flake.lock'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/nix.yml'
 
 permissions:
   contents: read
