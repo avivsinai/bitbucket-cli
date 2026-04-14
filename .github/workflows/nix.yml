@@ -1,0 +1,51 @@
+name: Nix
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/nix.yml'
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/nix.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: cachix/install-nix-action@02a151ada4993995686f9ed4f1be17cfbcc72f51 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Check flake
+        run: nix flake check --no-build
+
+      - name: Build bkt
+        run: nix build .#default --print-build-logs
+
+      - name: Smoke test binary
+        run: ./result/bin/bkt --version
