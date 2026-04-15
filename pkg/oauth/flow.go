@@ -3,6 +3,8 @@ package oauth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -66,7 +68,12 @@ func RunFlow(ctx context.Context, opts FlowOptions) (*FlowResult, error) {
 		return nil, fmt.Errorf("generate state: %w", err)
 	}
 
-	authURL := buildAuthorizeURL(opts, srv.RedirectURI(), state)
+	pkce, err := generatePKCE()
+	if err != nil {
+		return nil, fmt.Errorf("generate pkce: %w", err)
+	}
+
+	authURL := buildAuthorizeURL(opts, srv.RedirectURI(), state, pkce.challenge)
 
 	if opts.OpenBrowser != nil {
 		if err := opts.OpenBrowser(authURL); err != nil {
@@ -86,7 +93,7 @@ func RunFlow(ctx context.Context, opts FlowOptions) (*FlowResult, error) {
 		return nil, fmt.Errorf("state mismatch: possible CSRF attack")
 	}
 
-	tok, err := exchangeCode(ctx, opts, code, srv.RedirectURI())
+	tok, err := exchangeCode(ctx, opts, code, srv.RedirectURI(), pkce.verifier)
 	if err != nil {
 		return nil, err
 	}
@@ -120,12 +127,14 @@ func RefreshToken(ctx context.Context, refreshToken, clientID, clientSecret, tok
 	return doTokenRequest(req)
 }
 
-func buildAuthorizeURL(opts FlowOptions, redirectURI, state string) string {
+func buildAuthorizeURL(opts FlowOptions, redirectURI, state, codeChallenge string) string {
 	v := url.Values{
-		"client_id":     {opts.ClientID},
-		"response_type": {"code"},
-		"redirect_uri":  {redirectURI},
-		"state":         {state},
+		"client_id":             {opts.ClientID},
+		"response_type":         {"code"},
+		"redirect_uri":          {redirectURI},
+		"state":                 {state},
+		"code_challenge":        {codeChallenge},
+		"code_challenge_method": {"S256"},
 	}
 	if len(opts.Scopes) > 0 {
 		v.Set("scope", strings.Join(opts.Scopes, " "))
@@ -133,13 +142,14 @@ func buildAuthorizeURL(opts FlowOptions, redirectURI, state string) string {
 	return opts.AuthorizeURL + "?" + v.Encode()
 }
 
-func exchangeCode(ctx context.Context, opts FlowOptions, code, redirectURI string) (*Token, error) {
+func exchangeCode(ctx context.Context, opts FlowOptions, code, redirectURI, codeVerifier string) (*Token, error) {
 	// Bitbucket requires redirect_uri at both authorize and token exchange
 	// when it was included at authorize. Must be the exact same value.
 	data := url.Values{
-		"grant_type":   {"authorization_code"},
-		"code":         {code},
-		"redirect_uri": {redirectURI},
+		"grant_type":    {"authorization_code"},
+		"code":          {code},
+		"redirect_uri":  {redirectURI},
+		"code_verifier": {codeVerifier},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", opts.TokenURL, strings.NewReader(data.Encode()))
@@ -236,4 +246,23 @@ func randomState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+type pkceParams struct {
+	verifier  string
+	challenge string
+}
+
+// generatePKCE creates a PKCE verifier and S256 challenge per RFC 7636.
+// The verifier is 43 base64url characters (ceil(32×8/6)=43, no padding).
+// The challenge is base64url(SHA-256(verifier)) without padding.
+func generatePKCE() (pkceParams, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return pkceParams{}, fmt.Errorf("generate pkce verifier: %w", err)
+	}
+	verifier := base64.RawURLEncoding.EncodeToString(b)
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	return pkceParams{verifier: verifier, challenge: challenge}, nil
 }

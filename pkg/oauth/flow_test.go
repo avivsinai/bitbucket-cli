@@ -2,11 +2,14 @@ package oauth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +21,7 @@ func TestBuildAuthorizeURL(t *testing.T) {
 		AuthorizeURL: "https://bitbucket.org/site/oauth2/authorize",
 		Scopes:       []string{"account", "repository"},
 	}
-	got := buildAuthorizeURL(opts, "http://127.0.0.1:12345/callback", "test-state")
+	got := buildAuthorizeURL(opts, "http://127.0.0.1:12345/callback", "test-state", "test-challenge")
 	u, err := url.Parse(got)
 	if err != nil {
 		t.Fatalf("parse URL: %v", err)
@@ -42,6 +45,12 @@ func TestBuildAuthorizeURL(t *testing.T) {
 	if q.Get("scope") != "account repository" {
 		t.Errorf("scope = %q", q.Get("scope"))
 	}
+	if q.Get("code_challenge") != "test-challenge" {
+		t.Errorf("code_challenge = %q, want test-challenge", q.Get("code_challenge"))
+	}
+	if q.Get("code_challenge_method") != "S256" {
+		t.Errorf("code_challenge_method = %q, want S256", q.Get("code_challenge_method"))
+	}
 }
 
 func TestExchangeCode(t *testing.T) {
@@ -61,6 +70,10 @@ func TestExchangeCode(t *testing.T) {
 		// redirect_uri must be present and match what was sent at authorize.
 		if r.Form.Get("redirect_uri") == "" {
 			t.Error("redirect_uri must be sent at token exchange")
+		}
+		// code_verifier must be present for PKCE.
+		if r.Form.Get("code_verifier") != "test-verifier" {
+			t.Errorf("code_verifier = %q, want test-verifier", r.Form.Get("code_verifier"))
 		}
 		// Verify Basic auth.
 		user, pass, ok := r.BasicAuth()
@@ -84,7 +97,7 @@ func TestExchangeCode(t *testing.T) {
 		ClientSecret: "csecret",
 		TokenURL:     tokenSrv.URL,
 	}
-	tok, err := exchangeCode(context.Background(), opts, "test-code", "http://127.0.0.1:12345/callback")
+	tok, err := exchangeCode(context.Background(), opts, "test-code", "http://127.0.0.1:12345/callback", "test-verifier")
 	if err != nil {
 		t.Fatalf("exchangeCode: %v", err)
 	}
@@ -114,7 +127,7 @@ func TestExchangeCodeError(t *testing.T) {
 		ClientSecret: "csecret",
 		TokenURL:     tokenSrv.URL,
 	}
-	_, err := exchangeCode(context.Background(), opts, "used-code", "http://127.0.0.1:12345/callback")
+	_, err := exchangeCode(context.Background(), opts, "used-code", "http://127.0.0.1:12345/callback", "verifier")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -469,5 +482,37 @@ func TestRandomState(t *testing.T) {
 	}
 	if len(s1) != 32 {
 		t.Errorf("state length = %d, want 32", len(s1))
+	}
+}
+
+var reBase64URLUnreserved = regexp.MustCompile(`^[A-Za-z0-9\-_]+$`)
+
+func TestGeneratePKCE(t *testing.T) {
+	p, err := generatePKCE()
+	if err != nil {
+		t.Fatalf("generatePKCE: %v", err)
+	}
+
+	// Verifier must be 43 chars: ceil(32×8/6)=43 base64url chars without padding.
+	if len(p.verifier) != 43 {
+		t.Errorf("verifier length = %d, want 43", len(p.verifier))
+	}
+
+	// Verifier charset: base64url unreserved chars only (RFC 7636 §4.1).
+	if !reBase64URLUnreserved.MatchString(p.verifier) {
+		t.Errorf("verifier contains invalid characters: %q", p.verifier)
+	}
+
+	// Challenge must equal base64url(SHA-256(verifier)) without padding.
+	sum := sha256.Sum256([]byte(p.verifier))
+	wantChallenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	if p.challenge != wantChallenge {
+		t.Errorf("challenge = %q, want %q", p.challenge, wantChallenge)
+	}
+
+	// Two calls must produce different verifiers.
+	p2, _ := generatePKCE()
+	if p.verifier == p2.verifier {
+		t.Error("two calls returned same verifier")
 	}
 }
