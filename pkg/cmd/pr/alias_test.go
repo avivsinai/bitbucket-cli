@@ -1,6 +1,9 @@
 package pr_test
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDeclineCloseAlias(t *testing.T) {
 	cfg := dcConfig("http://localhost")
@@ -80,6 +83,16 @@ func TestCreateDestinationFlagAlias(t *testing.T) {
 		_, _, err := runCLI(t, cfg, "pr", "create", "--destination", "main", "--help")
 		if err != nil {
 			t.Fatalf("pr create --destination --help failed: %v", err)
+		}
+	})
+
+	t.Run("--target and --destination mutually exclusive", func(t *testing.T) {
+		_, _, err := runCLI(t, cfg, "pr", "create", "--target", "main", "--destination", "develop")
+		if err == nil {
+			t.Fatal("expected error when both --target and --destination supplied")
+		}
+		if !strings.Contains(err.Error(), "specify only one") {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }

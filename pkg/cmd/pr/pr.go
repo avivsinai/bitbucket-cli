@@ -675,6 +675,7 @@ type createOptions struct {
 	Title                string
 	Source               string
 	Target               string
+	Destination          string
 	Description          string
 	Body                 string
 	Reviewers            []string
@@ -966,6 +967,16 @@ via the --draft flag.`,
 				opts.Description = opts.Body
 			}
 
+			// --destination and --target are mutually exclusive aliases
+			if cmd.Flags().Changed("destination") && cmd.Flags().Changed("target") {
+				return fmt.Errorf("specify only one of --target or --destination")
+			}
+
+			// --destination is an alias for --target (for Bitbucket web UI ergonomics)
+			if cmd.Flags().Changed("destination") {
+				opts.Target = opts.Destination
+			}
+
 			return runCreate(cmd, f, opts)
 		},
 	}
@@ -978,7 +989,7 @@ via the --draft flag.`,
 	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Pull request description (alias for --description)")
 	cmd.Flags().StringVar(&opts.Source, "source", "", "Source branch (defaults to the current branch)")
 	cmd.Flags().StringVar(&opts.Target, "target", "", "Target branch (defaults to the remote's default branch)")
-	cmd.Flags().StringVar(&opts.Target, "destination", "", "Target branch (alias for --target)")
+	cmd.Flags().StringVar(&opts.Destination, "destination", "", "Target branch (alias for --target)")
 	cmd.Flags().StringSliceVar(&opts.Reviewers, "reviewer", nil, "Reviewer username or {UUID} (repeatable)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", false, "Close source branch on merge")
 	cmd.Flags().BoolVar(&opts.WithDefaultReviewers, "with-default-reviewers", false, "Add repository default reviewers")
