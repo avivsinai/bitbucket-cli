@@ -6,12 +6,14 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-04-15
 ### Added
 - `bkt pr comments --details` now shows file:line context, resolved/complete status, full comment text, and nested reply indentation for Bitbucket Data Center pull request threads (#110).
 
 ### Changed
 - Bitbucket Cloud OAuth login now layers PKCE (RFC 7636, S256) onto the existing authorization-code flow while preserving the client-secret token exchange Bitbucket still requires (#162).
 - Release automation now attests published artifacts and tightens release-commit verification before tags are created (#164).
+
 
 ## [0.23.0] - 2026-04-12
 ### Added
