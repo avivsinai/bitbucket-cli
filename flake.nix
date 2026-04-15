@@ -11,24 +11,15 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        version =
-          if (self ? rev) then builtins.substring 0 7 self.rev
-          else "dev";
-
         bkt = pkgs.buildGoModule {
           pname = "bkt";
-          inherit version;
+          version = "dev";
           src = ./.;
           vendorHash = "sha256-ZBYfb1B3OuD8nydEIy/tG1W03BjS1LUPepQvknUQO9Y=";
 
           subPackages = [ "cmd/bkt" ];
 
-          ldflags = [
-            "-s"
-            "-w"
-            "-X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags=${version}"
-          ];
-
+          ldflags = [ "-s" "-w" ];
 
           meta = with pkgs.lib; {
             description = "Bitbucket CLI (gh-equivalent for Bitbucket Cloud and Data Center)";
