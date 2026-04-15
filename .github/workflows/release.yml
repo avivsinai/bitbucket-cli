@@ -251,14 +251,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t subjects < <(find dist -maxdepth 1 -type f | sort)
-          if ((${#subjects[@]} == 0)); then
+          subjects="$(find dist -maxdepth 1 -type f | sort)"
+          if [[ -z "$subjects" ]]; then
             echo "::error::No release artifacts found to attest."
             exit 1
           fi
           {
             echo "subjects<<EOF"
-            printf '%s\n' "${subjects[@]}"
+            printf '%s\n' "$subjects"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
