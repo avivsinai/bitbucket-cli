@@ -270,12 +270,8 @@ func TestDeclinePullRequestWithComment(t *testing.T) {
 		t.Fatalf("DeclinePullRequest: %v", err)
 	}
 
-	comment, ok := gotBody["comment"].(map[string]any)
-	if !ok {
-		t.Fatalf("comment field missing or wrong type: %v", gotBody["comment"])
-	}
-	if comment["text"] != "needs more work" {
-		t.Errorf("comment.text = %v, want %q", comment["text"], "needs more work")
+	if gotBody["comment"] != "needs more work" {
+		t.Errorf("comment = %v, want %q", gotBody["comment"], "needs more work")
 	}
 }
 

@@ -362,7 +362,7 @@ func (c *Client) DeclinePullRequest(ctx context.Context, projectKey, repoSlug st
 		"version": version,
 	}
 	if comment != "" {
-		body["comment"] = map[string]any{"text": comment}
+		body["comment"] = comment
 	}
 
 	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/decline",

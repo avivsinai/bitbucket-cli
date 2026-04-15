@@ -113,8 +113,8 @@ func TestPRDeclineCommentAliases(t *testing.T) {
 					case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pull-requests/42/decline"):
 						var body map[string]any
 						_ = json.NewDecoder(r.Body).Decode(&body)
-						if c, ok := body["comment"].(map[string]any); ok {
-							*got, _ = c["text"].(string)
+						if c, ok := body["comment"].(string); ok {
+							*got = c
 						}
 						w.WriteHeader(http.StatusOK)
 					default:
