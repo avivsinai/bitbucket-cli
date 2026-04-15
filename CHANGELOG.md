@@ -6,8 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-04-15
 ### Fixed
 - Release workflow attestation subject collection now avoids Bash-4-only `mapfile`, so macOS runners can finish artifact attestation after GoReleaser publishes a release.
+
 
 ## [0.24.0] - 2026-04-15
 ### Added
