@@ -24,10 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: cachix/install-nix-action@02a151ada4993995686f9ed4f1be17cfbcc72f51 # v31
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
+      - uses: nixbuild/nix-quick-install-action@v34
 
       - name: Check flake
         run: nix flake check --no-build

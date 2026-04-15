@@ -29,7 +29,6 @@
             "-X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags=${version}"
           ];
 
-          doCheck = false;
 
           meta = with pkgs.lib; {
             description = "Bitbucket CLI (gh-equivalent for Bitbucket Cloud and Data Center)";
