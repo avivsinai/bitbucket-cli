@@ -53,6 +53,8 @@ nix profile install github:avivsinai/bitbucket-cli
 
 Pin to a specific tag or commit by appending a ref (e.g. `github:avivsinai/bitbucket-cli/v1.2.3`).
 
+> **Note:** The Nix package does not embed OAuth client credentials. For Bitbucket Cloud OAuth (`bkt auth login --kind cloud --web`), set `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` in your environment.
+
 Don't have Nix yet? See [nixos.asia/en/install](https://nixos.asia/en/install) for a quick setup guide (installs Nix with flakes enabled out of the box).
 
 ### Binary Downloads
