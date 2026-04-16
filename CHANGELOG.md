@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-04-16
+### Added
+- `bkt pr decline` now accepts `--comment` / `-m`, plus `--text` and `--body` aliases, to send a decline reason on Bitbucket Cloud and Data Center (#161).
+- Nix flake support for running and installing `bkt` via `nix run` / `nix profile install`, with CI validation on Linux and macOS (#165).
+
 ## [0.24.1] - 2026-04-15
 ### Fixed
 - Release workflow attestation subject collection now avoids Bash-4-only `mapfile`, so macOS runners can finish artifact attestation after GoReleaser publishes a release.
