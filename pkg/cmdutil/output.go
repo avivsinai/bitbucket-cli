@@ -52,7 +52,7 @@ func ResolveOutputSettings(cmd *cobra.Command) (OutputSettings, error) {
 	}
 
 	if jqExpr != "" && !jsonEnabled && formatVal != "json" {
-		return OutputSettings{}, fmt.Errorf("--jq requires --json")
+		return OutputSettings{}, fmt.Errorf("--jq requires --json or --format json")
 	}
 
 	format := formatVal

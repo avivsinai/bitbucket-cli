@@ -2730,8 +2730,7 @@ type commentOptions struct {
 func newCommentCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &commentOptions{}
 	cmd := &cobra.Command{
-		Use:     "comment <id> --text <message>",
-		Aliases: []string{"reply"},
+		Use: "comment <id> --text <message>",
 		Short:   "Comment on a pull request",
 		Long: `Add a comment to a pull request. Comments can be general (activity-level),
 threaded replies (via --parent), or inline on a specific file and line in the

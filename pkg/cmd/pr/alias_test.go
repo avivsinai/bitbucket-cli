@@ -37,34 +37,13 @@ func TestDeclineCloseAlias(t *testing.T) {
 	})
 }
 
-func TestCommentReplyAlias(t *testing.T) {
+func TestCommentCmd(t *testing.T) {
 	cfg := dcConfig("http://localhost")
 
 	t.Run("canonical name", func(t *testing.T) {
 		_, _, err := runCLI(t, cfg, "pr", "comment", "--help")
 		if err != nil {
 			t.Fatalf("pr comment --help failed: %v", err)
-		}
-	})
-
-	t.Run("reply alias", func(t *testing.T) {
-		_, _, err := runCLI(t, cfg, "pr", "reply", "--help")
-		if err != nil {
-			t.Fatalf("pr reply --help failed: %v", err)
-		}
-	})
-
-	t.Run("help output matches", func(t *testing.T) {
-		commentOut, _, err := runCLI(t, cfg, "pr", "comment", "--help")
-		if err != nil {
-			t.Fatalf("pr comment --help failed: %v", err)
-		}
-		replyOut, _, err := runCLI(t, cfg, "pr", "reply", "--help")
-		if err != nil {
-			t.Fatalf("pr reply --help failed: %v", err)
-		}
-		if commentOut != replyOut {
-			t.Errorf("help output differs between 'pr comment' and 'pr reply'\ncomment:\n%s\nreply:\n%s", commentOut, replyOut)
 		}
 	})
 }
