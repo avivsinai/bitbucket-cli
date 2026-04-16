@@ -37,6 +37,26 @@ go install github.com/avivsinai/bitbucket-cli/cmd/bkt@latest
 
 This installs `bkt` to `$GOPATH/bin` (or `$HOME/go/bin` by default). Ensure the directory is in your `$PATH`.
 
+### Nix (NixOS / nix-darwin / Linux / macOS)
+
+Run the latest `master` without installing:
+
+```bash
+nix run github:avivsinai/bitbucket-cli -- --version
+```
+
+Install into your user profile:
+
+```bash
+nix profile install github:avivsinai/bitbucket-cli
+```
+
+Pin to a specific tag or commit by appending a ref (e.g. `github:avivsinai/bitbucket-cli/v1.2.3`).
+
+> **Note:** The Nix package does not embed OAuth client credentials. For Bitbucket Cloud OAuth (`bkt auth login --kind cloud --web`), set `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` in your environment.
+
+Don't have Nix yet? See [nixos.asia/en/install](https://nixos.asia/en/install) for a quick setup guide (installs Nix with flakes enabled out of the box).
+
 ### Binary Downloads
 
 Download pre-built binaries for your platform from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
