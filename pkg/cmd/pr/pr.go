@@ -2450,6 +2450,7 @@ type declineOptions struct {
 	Workspace    string
 	Repo         string
 	DeleteSource bool
+	Comment      string
 }
 
 func newDeclineCmd(f *cmdutil.Factory) *cobra.Command {
@@ -2464,6 +2465,9 @@ is not supported on Cloud.
 Works on both Data Center and Cloud.`,
 		Example: `  # Decline a pull request
   bkt pr decline 42
+
+  # Decline with a comment explaining the reason
+  bkt pr decline 42 --comment "Needs more work before we can merge"
 
   # Decline and delete the source branch (Data Center only)
   bkt pr decline 42 --delete-source`,
@@ -2481,6 +2485,10 @@ Works on both Data Center and Cloud.`,
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().BoolVar(&opts.DeleteSource, "delete-source", false, "Delete the source branch after declining")
+	cmd.Flags().StringVarP(&opts.Comment, "comment", "m", "", "Comment explaining why the pull request was declined")
+	cmd.Flags().StringVar(&opts.Comment, "text", "", "Alias for --comment; use --comment instead")
+	cmd.Flags().StringVar(&opts.Comment, "body", "", "Alias for --comment; use --comment instead")
+	cmd.MarkFlagsMutuallyExclusive("comment", "text", "body")
 
 	return cmd
 }
@@ -2518,7 +2526,7 @@ func runDecline(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *declineOpt
 			return err
 		}
 
-		if err := client.DeclinePullRequest(ctx, projectKey, repoSlug, id, pr.Version); err != nil {
+		if err := client.DeclinePullRequest(ctx, projectKey, repoSlug, id, pr.Version, opts.Comment); err != nil {
 			return err
 		}
 
@@ -2572,7 +2580,7 @@ func runDecline(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *declineOpt
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
-		if err := client.DeclinePullRequest(ctx, workspace, repoSlug, id); err != nil {
+		if err := client.DeclinePullRequest(ctx, workspace, repoSlug, id, opts.Comment); err != nil {
 			return err
 		}
 

@@ -19,6 +19,7 @@ bin/
 
 # Scratch / working docs (not committed)
 .scratch/
+prds/
 
 # AI agent configuration (track only skills for distribution)
 .claude/**

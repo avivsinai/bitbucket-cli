@@ -160,9 +160,15 @@ func (c *Client) GetPullRequest(ctx context.Context, workspace, repoSlug string,
 }
 
 // DeclinePullRequest declines (rejects) a pull request.
-func (c *Client) DeclinePullRequest(ctx context.Context, workspace, repoSlug string, id int) error {
+// An optional message may be provided; leave empty to omit it.
+func (c *Client) DeclinePullRequest(ctx context.Context, workspace, repoSlug string, id int, message string) error {
 	if workspace == "" || repoSlug == "" {
 		return fmt.Errorf("workspace and repository slug are required")
+	}
+
+	var body any
+	if message != "" {
+		body = map[string]any{"message": message}
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/decline",
@@ -170,7 +176,7 @@ func (c *Client) DeclinePullRequest(ctx context.Context, workspace, repoSlug str
 		url.PathEscape(repoSlug),
 		id,
 	)
-	req, err := c.http.NewRequest(ctx, "POST", path, nil)
+	req, err := c.http.NewRequest(ctx, "POST", path, body)
 	if err != nil {
 		return err
 	}

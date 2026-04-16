@@ -240,7 +240,7 @@ func TestDeclinePullRequest(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.DeclinePullRequest(context.Background(), "PROJ", "my-repo", 42, 3); err != nil {
+	if err := client.DeclinePullRequest(context.Background(), "PROJ", "my-repo", 42, 3, ""); err != nil {
 		t.Fatalf("DeclinePullRequest: %v", err)
 	}
 
@@ -252,6 +252,26 @@ func TestDeclinePullRequest(t *testing.T) {
 	}
 	if v, ok := gotBody["version"].(float64); !ok || int(v) != 3 {
 		t.Errorf("version = %v, want 3", gotBody["version"])
+	}
+	if _, ok := gotBody["comment"]; ok {
+		t.Error("comment should be absent when empty string passed")
+	}
+}
+
+func TestDeclinePullRequestWithComment(t *testing.T) {
+	var gotBody map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.DeclinePullRequest(context.Background(), "PROJ", "my-repo", 42, 3, "needs more work"); err != nil {
+		t.Fatalf("DeclinePullRequest: %v", err)
+	}
+
+	if gotBody["comment"] != "needs more work" {
+		t.Errorf("comment = %v, want %q", gotBody["comment"], "needs more work")
 	}
 }
 
@@ -273,7 +293,7 @@ func TestDeclinePullRequestValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := client.DeclinePullRequest(context.Background(), tt.project, tt.repo, 1, 0); err == nil {
+			if err := client.DeclinePullRequest(context.Background(), tt.project, tt.repo, 1, 0, ""); err == nil {
 				t.Error("expected error")
 			}
 		})
