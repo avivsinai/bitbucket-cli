@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `bkt pr close` as an alias for `bkt pr decline`, matching `gh`-style command expectations (#160).
+- `--destination` as a visible alias for `--target` on `bkt pr create`, mutually exclusive with `--target` (#160).
+- Global `--format json|yaml` flag as an alternative to `--json` / `--yaml`; validated before any mutating subcommand runs (#160).
+
 ## [0.25.0] - 2026-04-16
 ### Added
 - `bkt pr decline` now accepts `--comment` / `-m`, plus `--text` and `--body` aliases, to send a decline reason on Bitbucket Cloud and Data Center (#161).
