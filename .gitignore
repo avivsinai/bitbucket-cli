@@ -31,3 +31,4 @@ prds/
 !.agents/skills/**
 .agent-mail/
 .amqrc
+prds/

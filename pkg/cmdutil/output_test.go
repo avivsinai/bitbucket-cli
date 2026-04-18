@@ -13,6 +13,7 @@ func newTestCommand(flags map[string]string) *cobra.Command {
 	root.PersistentFlags().Bool("yaml", false, "")
 	root.PersistentFlags().String("jq", "", "")
 	root.PersistentFlags().String("template", "", "")
+	root.PersistentFlags().String("format", "", "")
 
 	child := &cobra.Command{Use: "test"}
 	root.AddCommand(child)
@@ -99,6 +100,86 @@ func TestResolveOutputSettingsJQWithJSON(t *testing.T) {
 	}
 	if settings.Format != "json" || settings.JQ != ".name" {
 		t.Fatalf("unexpected settings: %+v", settings)
+	}
+}
+
+func TestResolveOutputSettingsFormatJSON(t *testing.T) {
+	cmd := newTestCommand(map[string]string{"format": "json"})
+	settings, err := ResolveOutputSettings(cmd)
+	if err != nil {
+		t.Fatalf("ResolveOutputSettings: %v", err)
+	}
+	if settings.Format != "json" {
+		t.Fatalf("format = %q, want json", settings.Format)
+	}
+}
+
+func TestResolveOutputSettingsFormatYAML(t *testing.T) {
+	cmd := newTestCommand(map[string]string{"format": "yaml"})
+	settings, err := ResolveOutputSettings(cmd)
+	if err != nil {
+		t.Fatalf("ResolveOutputSettings: %v", err)
+	}
+	if settings.Format != "yaml" {
+		t.Fatalf("format = %q, want yaml", settings.Format)
+	}
+}
+
+func TestResolveOutputSettingsFormatCaseInsensitive(t *testing.T) {
+	for _, val := range []string{"JSON", "YAML", "Json", "Yaml"} {
+		cmd := newTestCommand(map[string]string{"format": val})
+		settings, err := ResolveOutputSettings(cmd)
+		if err != nil {
+			t.Fatalf("--format %q: %v", val, err)
+		}
+		want := strings.ToLower(val)
+		if settings.Format != want {
+			t.Fatalf("--format %q: got %q, want %q", val, settings.Format, want)
+		}
+	}
+}
+
+func TestResolveOutputSettingsFormatConflictsWithJSON(t *testing.T) {
+	cmd := newTestCommand(map[string]string{"format": "json", "json": "true"})
+	_, err := ResolveOutputSettings(cmd)
+	if err == nil {
+		t.Fatal("expected error for --format with --json")
+	}
+	if !strings.Contains(err.Error(), "--format") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveOutputSettingsFormatConflictsWithYAML(t *testing.T) {
+	cmd := newTestCommand(map[string]string{"format": "yaml", "yaml": "true"})
+	_, err := ResolveOutputSettings(cmd)
+	if err == nil {
+		t.Fatal("expected error for --format with --yaml")
+	}
+	if !strings.Contains(err.Error(), "--format") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveOutputSettingsFormatInvalidValue(t *testing.T) {
+	cmd := newTestCommand(map[string]string{"format": "xml"})
+	_, err := ResolveOutputSettings(cmd)
+	if err == nil {
+		t.Fatal("expected error for unknown --format value")
+	}
+	if !strings.Contains(err.Error(), "xml") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveOutputSettingsFormatEmpty(t *testing.T) {
+	cmd := newTestCommand(map[string]string{"format": ""})
+	settings, err := ResolveOutputSettings(cmd)
+	if err != nil {
+		t.Fatalf("ResolveOutputSettings: %v", err)
+	}
+	if settings.Format != "" {
+		t.Fatalf("format = %q, want empty", settings.Format)
 	}
 }
 
