@@ -1,8 +1,14 @@
 package pr_test
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/avivsinai/bitbucket-cli/internal/config"
 )
 
 func TestDeclineCloseAlias(t *testing.T) {
@@ -72,6 +78,53 @@ func TestCreateDestinationFlagAlias(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "specify only one") {
 			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("--destination populates target branch in API request", func(t *testing.T) {
+		var (
+			mu          sync.Mutex
+			capturedRef string
+		)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/pull-requests") {
+				var body map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				if toRef, ok := body["toRef"].(map[string]any); ok {
+					if id, ok := toRef["id"].(string); ok {
+						mu.Lock()
+						capturedRef = id
+						mu.Unlock()
+					}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "title": "t"})
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		defer server.Close()
+
+		testCfg := &config.Config{
+			ActiveContext: "test",
+			Contexts: map[string]*config.Context{
+				"test": {Host: "mock", ProjectKey: "PROJ", DefaultRepo: "my-repo"},
+			},
+			Hosts: map[string]*config.Host{
+				"mock": {Kind: "dc", BaseURL: server.URL, Username: "admin", Token: "token"},
+			},
+		}
+
+		_, _, err := runCLI(t, testCfg, "pr", "create",
+			"--title", "t", "--source", "feat", "--destination", "main")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		if capturedRef != "refs/heads/main" {
+			t.Errorf("expected toRef.id = refs/heads/main, got %q", capturedRef)
 		}
 	})
 }

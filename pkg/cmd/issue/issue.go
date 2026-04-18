@@ -23,6 +23,9 @@ func NewCmdIssue(f *cmdutil.Factory) *cobra.Command {
 Note: The issue tracker is only available for Bitbucket Cloud. Bitbucket Data Center
 uses Jira for issue tracking.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if _, err := cmdutil.ResolveOutputSettings(cmd); err != nil {
+				return err
+			}
 			ios, err := f.Streams()
 			if err != nil {
 				return nil // swallow — subcommand will handle
