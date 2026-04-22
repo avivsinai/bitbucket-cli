@@ -10,6 +10,10 @@ implementation details.
   Linux Secret Service) or an encrypted local file backend. Host metadata lives
   in `$XDG_CONFIG_HOME/bkt/config.yml` with permissions `0600`. The `BKT_TOKEN`
   environment variable provides runtime-only injection for CI/headless use.
+- Bitbucket Cloud OAuth consumer credentials are runtime-only too. Set
+  `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` in the environment when
+  using `bkt auth login --kind cloud --web`; release artifacts never bake them
+  into the binary.
 - For development, set `BKT_CONFIG_DIR` to a throwaway directory.
 - Never commit test credentials. Use environment variables or the
   `internal/config/testdata` fixtures when unit testing.

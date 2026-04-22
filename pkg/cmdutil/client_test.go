@@ -133,7 +133,7 @@ func TestOAuthTokenRefresherMissingCreds(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "OAuth client credentials are missing") {
+	if !strings.Contains(err.Error(), "Cloud OAuth consumer credentials are missing") {
 		t.Errorf("error = %q", err)
 	}
 }

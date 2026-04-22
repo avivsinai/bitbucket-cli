@@ -106,14 +106,16 @@ func ListRemotes(repoPath string) (map[string][]string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return nil, ErrNoGitRemote
-		}
 		if errors.Is(err, exec.ErrNotFound) {
 			return nil, fmt.Errorf("git executable not found: %w", err)
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("git remote -v timed out after 30s")
+		}
+		if message := strings.TrimSpace(string(out)); message != "" {
+			return nil, fmt.Errorf("git remote -v: %s", message)
 		}
 		return nil, fmt.Errorf("git remote -v: %w", err)
 	}

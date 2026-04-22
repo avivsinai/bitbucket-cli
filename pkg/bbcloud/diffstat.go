@@ -54,7 +54,11 @@ func (c *Client) PullRequestDiffStat(ctx context.Context, workspace, repoSlug st
 
 	result := &DiffStatResult{}
 
-	for pageNum := 0; path != "" && pageNum < maxDiffStatPages; pageNum++ {
+	for pageNum := 0; path != ""; pageNum++ {
+		if pageNum >= maxDiffStatPages {
+			return nil, fmt.Errorf("diffstat pagination exceeded safety limit (%d pages)", maxDiffStatPages)
+		}
+
 		req, err := c.http.NewRequest(ctx, "GET", path, nil)
 		if err != nil {
 			return nil, err

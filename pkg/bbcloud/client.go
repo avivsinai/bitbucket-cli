@@ -139,10 +139,23 @@ type Pipeline struct {
 	CompletedOn string `json:"completed_on"`
 }
 
-// NormalizeUUID ensures a UUID has curly braces, as required by Bitbucket Cloud API.
+// NormalizeUUID wraps a canonical UUID in curly braces, as required by the
+// Bitbucket Cloud API. Invalid inputs return an empty string.
 func NormalizeUUID(uuid string) string {
+	uuid = strings.TrimSpace(uuid)
+	if !LooksLikeUUID(uuid) {
+		return ""
+	}
 	uuid = strings.Trim(uuid, "{}")
 	return "{" + uuid + "}"
+}
+
+func normalizeUUIDArg(label, value string) (string, error) {
+	normalized := NormalizeUUID(value)
+	if normalized == "" {
+		return "", fmt.Errorf("%s must be a canonical UUID", label)
+	}
+	return normalized, nil
 }
 
 // uuidPattern matches canonical UUIDs (8-4-4-4-12 hex segments), either bare
@@ -414,10 +427,18 @@ func (c *Client) TriggerPipeline(ctx context.Context, workspace, repoSlug string
 
 // GetPipeline fetches pipeline details.
 func (c *Client) GetPipeline(ctx context.Context, workspace, repoSlug, uuid string) (*Pipeline, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	pipelineUUID, err := normalizeUUIDArg("pipeline UUID", uuid)
+	if err != nil {
+		return nil, err
+	}
+
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(uuid)),
+		url.PathEscape(pipelineUUID),
 	)
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)
 	if err != nil {
@@ -473,10 +494,18 @@ func (s PipelineStep) Status() string {
 
 // ListPipelineSteps enumerates step executions for the pipeline.
 func (c *Client) ListPipelineSteps(ctx context.Context, workspace, repoSlug, pipelineUUID string) ([]PipelineStep, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	normalizedPipelineUUID, err := normalizeUUIDArg("pipeline UUID", pipelineUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(pipelineUUID)),
+		url.PathEscape(normalizedPipelineUUID),
 	)
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)
 	if err != nil {
@@ -505,11 +534,23 @@ type CommitStatus = types.CommitStatus
 
 // GetPipelineLogs fetches logs for a pipeline step.
 func (c *Client) GetPipelineLogs(ctx context.Context, workspace, repoSlug, pipelineUUID, stepUUID string) ([]byte, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	normalizedPipelineUUID, err := normalizeUUIDArg("pipeline UUID", pipelineUUID)
+	if err != nil {
+		return nil, err
+	}
+	normalizedStepUUID, err := normalizeUUIDArg("step UUID", stepUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/%s/log",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(pipelineUUID)),
-		url.PathEscape(NormalizeUUID(stepUUID)),
+		url.PathEscape(normalizedPipelineUUID),
+		url.PathEscape(normalizedStepUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "GET", path, nil)

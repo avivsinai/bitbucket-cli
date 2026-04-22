@@ -75,6 +75,13 @@ func TestListIssuesBBQLQueryBuilding(t *testing.T) {
 			wantQueryParts: []string{`milestone.name = "v1.0"`},
 		},
 		{
+			name: "escapes quoted BBQL values",
+			opts: IssueListOptions{
+				Milestone: `release "1"\draft`,
+			},
+			wantQueryParts: []string{`milestone.name = "release \"1\"\\draft"`},
+		},
+		{
 			name: "multiple filters combined with AND",
 			opts: IssueListOptions{
 				State:    "open",

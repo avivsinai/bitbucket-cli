@@ -81,14 +81,12 @@ For Data Center (--kind dc, the default), you authenticate with a Personal
 Access Token (PAT). The token needs Repository Read/Write and Project Read
 permissions. Use --web-token to open the PAT management page in your browser.
 
-For Bitbucket Cloud (--kind cloud), the recommended method is --web, which
-uses OAuth 2.0 to authenticate in the browser. The CLI receives a short-lived
-access token that is automatically refreshed. Alternatively, use --web-token
-to create an Atlassian API token manually.
-
-OAuth credentials are embedded at build time via ldflags. For source installs
-(go install), set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET environment
-variables before running --web.
+For Bitbucket Cloud (--kind cloud), the simplest method is --web-token, which
+opens the Atlassian API token page and prompts for the token locally. If you
+prefer browser-based OAuth, use --web with BKT_OAUTH_CLIENT_ID and
+BKT_OAUTH_CLIENT_SECRET set in your environment. The CLI receives a short-lived
+access token that is automatically refreshed while those environment variables
+remain available.
 
 Credentials are verified against the remote host before being stored. If no
 OS keychain is available, pass --allow-insecure-store to use encrypted file
@@ -318,7 +316,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		if opts.Web {
 			// OAuth 2.0 browser-based flow.
 			if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
-				return fmt.Errorf("OAuth credentials were not embedded in this build; rebuild with BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET or use --web-token for API token login")
+				return fmt.Errorf("cloud OAuth requires BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET in the environment; use --web-token for API token login")
 			}
 			if _, err := fmt.Fprintln(ios.Out, "Authenticating with Bitbucket Cloud via OAuth..."); err != nil {
 				return err
