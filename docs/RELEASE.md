@@ -35,6 +35,7 @@
 ## Guardrails
 
 - Treat `scripts/release.sh` as the only supported release entrypoint.
+- Refresh `flake.nix`'s `vendorHash` whenever `go.mod` or `go.sum` changes; do not wait until release time because Nix CI runs on pull requests. Use `make nix-update-vendor-hash` after dependency bumps.
 - `scripts/check-release-version.sh vX.Y.Z` now validates both metadata versions and the matching `CHANGELOG.md` heading.
 - If a release PR merges but the tag publish fails verification, fix forward with the next patch version instead of rewriting the failed tag.
 
