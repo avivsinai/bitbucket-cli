@@ -47,8 +47,8 @@ func (c *Client) ListBranches(ctx context.Context, workspace, repoSlug string, o
 
 	var params []string
 	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	if strings.TrimSpace(opts.Filter) != "" {
-		params = append(params, "q="+url.QueryEscape(fmt.Sprintf("name ~ \"%s\"", opts.Filter)))
+	if filter := strings.TrimSpace(opts.Filter); filter != "" {
+		params = append(params, "q="+url.QueryEscape(bbqlContains("name", filter)))
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/refs/branches?%s",

@@ -1485,7 +1485,9 @@ func getDCDefaultReviewers(ctx context.Context, client *bbdc.Client, projectKey,
 func cloudUserKeys(user bbcloud.User) []string {
 	keys := make([]string, 0, 3)
 	if user.UUID != "" {
-		keys = append(keys, "uuid:"+bbcloud.NormalizeUUID(user.UUID))
+		if normalized := bbcloud.NormalizeUUID(user.UUID); normalized != "" {
+			keys = append(keys, "uuid:"+normalized)
+		}
 	}
 	if user.AccountID != "" {
 		keys = append(keys, "account_id:"+user.AccountID)

@@ -319,7 +319,7 @@ func TestRunLoginRejectsWebWithoutOAuthCreds(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "OAuth credentials were not embedded") {
+	if !strings.Contains(err.Error(), "Cloud OAuth requires BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET") {
 		t.Errorf("error = %q", err)
 	}
 }

@@ -454,7 +454,33 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.25.0...v0.26.0
+[0.25.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.24.1...v0.25.0
+[0.24.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.24.0...v0.24.1
+[0.24.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.23.0...v0.24.0
+[0.23.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.22.0...v0.23.0
+[0.22.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.21.0...v0.22.0
+[0.21.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.20.0...v0.21.0
+[0.20.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.19.0...v0.20.0
+[0.19.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.18.0...v0.19.0
+[0.18.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.16.4...v0.17.0
+[0.16.4]: https://github.com/avivsinai/bitbucket-cli/compare/v0.16.3...v0.16.4
+[0.16.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.16.2...v0.16.3
+[0.16.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.16.1...v0.16.2
+[0.16.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.15.0...v0.16.1
+[0.15.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.7...v0.15.0
+[0.14.7]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.6...v0.14.7
+[0.14.6]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.5...v0.14.6
+[0.14.5]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.4...v0.14.5
+[0.14.4]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.3...v0.14.4
+[0.14.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.2...v0.14.3
+[0.14.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.1...v0.14.2
+[0.14.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.14.0...v0.14.1
+[0.14.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.13.1...v0.14.0
+[0.13.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.13.0...v0.13.1
+[0.13.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.10.0...v0.11.0

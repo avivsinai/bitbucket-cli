@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -91,6 +92,21 @@ func TestDetectNoRemote(t *testing.T) {
 	_, err := Detect(dir)
 	if !errors.Is(err, ErrNoGitRemote) {
 		t.Fatalf("Detect() error = %v, want %v", err, ErrNoGitRemote)
+	}
+}
+
+func TestDetectNotGitRepoPreservesUnderlyingError(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := Detect(dir)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if errors.Is(err, ErrNoGitRemote) {
+		t.Fatalf("Detect() error = %v, did not want %v", err, ErrNoGitRemote)
+	}
+	if !strings.Contains(err.Error(), "git remote -v:") {
+		t.Fatalf("error = %q, want git remote context", err)
 	}
 }
 

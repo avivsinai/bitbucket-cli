@@ -94,8 +94,8 @@ func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug strin
 	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
 		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
 	}
-	if opts.Mine != "" {
-		params = append(params, "q="+url.QueryEscape(fmt.Sprintf("author.username=\"%s\"", opts.Mine)))
+	if mine := strings.TrimSpace(opts.Mine); mine != "" {
+		params = append(params, "q="+url.QueryEscape(bbqlEquals("author.username", mine)))
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests?%s",

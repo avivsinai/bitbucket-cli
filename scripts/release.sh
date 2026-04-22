@@ -24,8 +24,8 @@ Options:
   -h, --help         Show this help text
 
 Examples:
-  ./scripts/release.sh 0.16.2
-  ./scripts/release.sh 0.16.2 --no-auto-merge
+  ./scripts/release.sh 1.2.3
+  ./scripts/release.sh 1.2.3 --no-auto-merge
 EOF
 }
 
@@ -150,6 +150,8 @@ import re
 import sys
 
 version, release_date, allow_empty = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+repo_compare_prefix = "https://github.com/avivsinai/bitbucket-cli/compare/"
+repo_release_prefix = "https://github.com/avivsinai/bitbucket-cli/releases/tag/"
 
 changelog = pathlib.Path("CHANGELOG.md")
 text = changelog.read_text()
@@ -175,6 +177,26 @@ release_header = f"\n\n## [{version}] - {release_date}\n"
 new_text = text[:start] + marker + release_header + unreleased_body.lstrip("\n")
 if suffix:
     new_text += suffix if suffix.startswith("\n") else "\n" + suffix
+
+versions = re.findall(r"(?m)^## \[([0-9A-Za-z.+-]+)\] - \d{4}-\d{2}-\d{2}$", new_text)
+if not versions:
+    raise SystemExit("error: CHANGELOG.md contains no version headings")
+
+footer_lines = [f"[Unreleased]: {repo_compare_prefix}v{versions[0]}...HEAD"]
+for i, current in enumerate(versions):
+    if i + 1 < len(versions):
+        footer_lines.append(
+            f"[{current}]: {repo_compare_prefix}v{versions[i + 1]}...v{current}"
+        )
+    else:
+        footer_lines.append(f"[{current}]: {repo_release_prefix}v{current}")
+
+new_text = re.sub(
+    r"(?ms)\n\[Unreleased\]: https://github\.com/avivsinai/bitbucket-cli/.*\Z",
+    "",
+    new_text.rstrip(),
+)
+new_text = new_text.rstrip() + "\n\n" + "\n".join(footer_lines) + "\n"
 changelog.write_text(new_text)
 
 changed = ["CHANGELOG.md"]

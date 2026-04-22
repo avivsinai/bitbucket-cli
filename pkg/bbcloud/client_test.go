@@ -354,12 +354,16 @@ func TestNormalizeUUID(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"abc-123", "{abc-123}"},
-		{"{abc-123}", "{abc-123}"},
-		{"abc-123}", "{abc-123}"},
-		{"{abc-123", "{abc-123}"},
-		{"{}", "{}"},
-		{"", "{}"},
+		{"550e8400-e29b-41d4-a716-446655440000", "{550e8400-e29b-41d4-a716-446655440000}"},
+		{"{550e8400-e29b-41d4-a716-446655440000}", "{550e8400-e29b-41d4-a716-446655440000}"},
+		{" 550e8400-e29b-41d4-a716-446655440000 ", "{550e8400-e29b-41d4-a716-446655440000}"},
+		{"550E8400-E29B-41D4-A716-446655440000", "{550E8400-E29B-41D4-A716-446655440000}"},
+		{"abc-123", ""},
+		{"{abc-123}", ""},
+		{"abc-123}", ""},
+		{"{abc-123", ""},
+		{"{}", ""},
+		{"", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -694,41 +698,43 @@ func TestTriggerPipelineValidation(t *testing.T) {
 }
 
 func TestGetPipelineNormalizesUUID(t *testing.T) {
+	const pipelineUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// normalizeUUID wraps the UUID in braces; verify they appear in the path
-		if !strings.Contains(r.URL.Path, "{abc-123}") {
+		if !strings.Contains(r.URL.Path, pipelineUUID) {
 			t.Errorf("expected normalized UUID in path, got: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(Pipeline{UUID: "{abc-123}"})
+		_ = json.NewEncoder(w).Encode(Pipeline{UUID: pipelineUUID})
 	})
 
 	client := newTestClient(t, handler)
-	pipeline, err := client.GetPipeline(context.Background(), "ws", "repo", "{abc-123}")
+	pipeline, err := client.GetPipeline(context.Background(), "ws", "repo", "550e8400-e29b-41d4-a716-446655440000")
 	if err != nil {
 		t.Fatalf("GetPipeline: %v", err)
 	}
-	if pipeline.UUID != "{abc-123}" {
+	if pipeline.UUID != pipelineUUID {
 		t.Fatalf("expected UUID preserved in response, got %q", pipeline.UUID)
 	}
 }
 
 func TestListPipelineStepsNormalizesUUID(t *testing.T) {
+	const pipelineUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// normalizeUUID wraps the UUID in braces; verify they appear in the path
-		if !strings.Contains(r.URL.Path, "{pipeline-uuid}") {
+		if !strings.Contains(r.URL.Path, pipelineUUID) {
 			t.Errorf("expected normalized UUID in path, got: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"values": []map[string]any{
-				{"uuid": "{step-1}", "name": "Build"},
+				{"uuid": "{123e4567-e89b-12d3-a456-426614174000}", "name": "Build"},
 			},
 		})
 	})
 
 	client := newTestClient(t, handler)
-	steps, err := client.ListPipelineSteps(context.Background(), "ws", "repo", "{pipeline-uuid}")
+	steps, err := client.ListPipelineSteps(context.Background(), "ws", "repo", "550e8400-e29b-41d4-a716-446655440000")
 	if err != nil {
 		t.Fatalf("ListPipelineSteps: %v", err)
 	}
@@ -738,12 +744,14 @@ func TestListPipelineStepsNormalizesUUID(t *testing.T) {
 }
 
 func TestGetPipelineLogsNormalizesUUIDs(t *testing.T) {
+	const pipelineUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+	const stepUUID = "{123e4567-e89b-12d3-a456-426614174000}"
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// normalizeUUID wraps UUIDs in braces; verify they appear in the path
-		if !strings.Contains(r.URL.Path, "{pipeline-uuid}") {
+		if !strings.Contains(r.URL.Path, pipelineUUID) {
 			t.Errorf("expected normalized pipeline UUID in path, got: %s", r.URL.Path)
 		}
-		if !strings.Contains(r.URL.Path, "{step-uuid}") {
+		if !strings.Contains(r.URL.Path, stepUUID) {
 			t.Errorf("expected normalized step UUID in path, got: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "text/plain")
@@ -751,12 +759,69 @@ func TestGetPipelineLogsNormalizesUUIDs(t *testing.T) {
 	})
 
 	client := newTestClient(t, handler)
-	logs, err := client.GetPipelineLogs(context.Background(), "ws", "repo", "{pipeline-uuid}", "{step-uuid}")
+	logs, err := client.GetPipelineLogs(context.Background(), "ws", "repo", "550e8400-e29b-41d4-a716-446655440000", "123e4567-e89b-12d3-a456-426614174000")
 	if err != nil {
 		t.Fatalf("GetPipelineLogs: %v", err)
 	}
 	if string(logs) != "build output here" {
 		t.Fatalf("expected log content, got %q", string(logs))
+	}
+}
+
+func TestPipelineEndpointsRejectInvalidUUIDs(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected HTTP request to %s", r.URL.Path)
+	}))
+
+	tests := []struct {
+		name string
+		call func() error
+		want string
+	}{
+		{
+			name: "get pipeline",
+			call: func() error {
+				_, err := client.GetPipeline(context.Background(), "ws", "repo", "not-a-uuid")
+				return err
+			},
+			want: "pipeline UUID must be a canonical UUID",
+		},
+		{
+			name: "list pipeline steps",
+			call: func() error {
+				_, err := client.ListPipelineSteps(context.Background(), "ws", "repo", "not-a-uuid")
+				return err
+			},
+			want: "pipeline UUID must be a canonical UUID",
+		},
+		{
+			name: "get pipeline logs rejects pipeline UUID",
+			call: func() error {
+				_, err := client.GetPipelineLogs(context.Background(), "ws", "repo", "not-a-uuid", "123e4567-e89b-12d3-a456-426614174000")
+				return err
+			},
+			want: "pipeline UUID must be a canonical UUID",
+		},
+		{
+			name: "get pipeline logs rejects step UUID",
+			call: func() error {
+				_, err := client.GetPipelineLogs(context.Background(), "ws", "repo", "550e8400-e29b-41d4-a716-446655440000", "not-a-uuid")
+				return err
+			},
+			want: "step UUID must be a canonical UUID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want substring %q", err, tt.want)
+			}
+		})
 	}
 }
 

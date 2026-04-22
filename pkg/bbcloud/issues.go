@@ -130,22 +130,22 @@ func (c *Client) ListIssues(ctx context.Context, workspace, repoSlug string, opt
 	// Build BBQL query
 	var queryParts []string
 	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-		queryParts = append(queryParts, fmt.Sprintf("state = \"%s\"", state))
+		queryParts = append(queryParts, bbqlEquals("state", state))
 	}
 	if kind := strings.TrimSpace(opts.Kind); kind != "" {
-		queryParts = append(queryParts, fmt.Sprintf("kind = \"%s\"", kind))
+		queryParts = append(queryParts, bbqlEquals("kind", kind))
 	}
 	if priority := strings.TrimSpace(opts.Priority); priority != "" {
-		queryParts = append(queryParts, fmt.Sprintf("priority = \"%s\"", priority))
+		queryParts = append(queryParts, bbqlEquals("priority", priority))
 	}
 	if assignee := strings.TrimSpace(opts.Assignee); assignee != "" {
-		queryParts = append(queryParts, fmt.Sprintf("assignee.uuid = \"%s\"", assignee))
+		queryParts = append(queryParts, bbqlEquals("assignee.uuid", assignee))
 	}
 	if reporter := strings.TrimSpace(opts.Reporter); reporter != "" {
-		queryParts = append(queryParts, fmt.Sprintf("reporter.uuid = \"%s\"", reporter))
+		queryParts = append(queryParts, bbqlEquals("reporter.uuid", reporter))
 	}
 	if milestone := strings.TrimSpace(opts.Milestone); milestone != "" {
-		queryParts = append(queryParts, fmt.Sprintf("milestone.name = \"%s\"", milestone))
+		queryParts = append(queryParts, bbqlEquals("milestone.name", milestone))
 	}
 	if opts.Query != "" {
 		queryParts = append(queryParts, opts.Query)

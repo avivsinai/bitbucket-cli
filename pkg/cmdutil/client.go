@@ -79,7 +79,7 @@ func NewCloudClient(host *config.Host) (*bbcloud.Client, error) {
 func oauthTokenRefresher(hostKey string, host *config.Host) func(ctx context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
 		if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
-			return "", fmt.Errorf("token expired and OAuth client credentials are missing; rebuild with BKT_OAUTH_CLIENT_ID/BKT_OAUTH_CLIENT_SECRET or re-login with `bkt auth login --web-token`")
+			return "", fmt.Errorf("token expired and Cloud OAuth consumer credentials are missing; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET or re-login with `bkt auth login --web-token`")
 		}
 
 		store, err := secret.Open(secretOpts(host)...)

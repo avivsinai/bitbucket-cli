@@ -159,3 +159,46 @@ func TestPullRequestDiffStatPagination(t *testing.T) {
 		t.Errorf("expected 2 requests, got %d", hits)
 	}
 }
+
+func TestPullRequestDiffStatRejectsTruncatedResults(t *testing.T) {
+	var hits int32
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+
+		resp := map[string]any{
+			"values": []map[string]any{
+				{
+					"status":        "modified",
+					"lines_added":   1,
+					"lines_removed": 1,
+					"old":           map[string]string{"path": "file.go"},
+					"new":           map[string]string{"path": "file.go"},
+				},
+			},
+		}
+		if count <= 50 {
+			resp["next"] = serverURL + "/repositories/ws/repo/pullrequests/1/diffstat?page=overflow"
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	serverURL = server.URL
+	t.Cleanup(server.Close)
+
+	client, err := bbcloud.New(bbcloud.Options{BaseURL: server.URL, Username: "u", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.PullRequestDiffStat(context.Background(), "ws", "repo", 1)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := err.Error(); got != "diffstat pagination exceeded safety limit (50 pages)" {
+		t.Fatalf("error = %q", got)
+	}
+	if hits != 50 {
+		t.Fatalf("expected 50 requests, got %d", hits)
+	}
+}
