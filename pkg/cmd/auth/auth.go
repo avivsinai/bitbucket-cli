@@ -316,7 +316,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		if opts.Web {
 			// OAuth 2.0 browser-based flow.
 			if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
-				return fmt.Errorf("Cloud OAuth requires BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET in the environment; use --web-token for API token login")
+				return fmt.Errorf("cloud OAuth requires BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET in the environment; use --web-token for API token login")
 			}
 			if _, err := fmt.Fprintln(ios.Out, "Authenticating with Bitbucket Cloud via OAuth..."); err != nil {
 				return err
