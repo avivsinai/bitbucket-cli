@@ -480,6 +480,41 @@ func TestDecodeErrorBitbucketCloudTokenHint(t *testing.T) {
 	}
 }
 
+func TestDecodeErrorBitbucketCloudAuthMechanismMessageHasNoTokenHint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"type": "error",
+			"error": map[string]any{
+				"message": "This API is not accessible by this authentication mechanism",
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL, Retry: RetryPolicy{MaxAttempts: 1}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	err = client.Do(req, nil)
+	if err == nil {
+		t.Fatal("expected error for 401 response")
+	}
+	if strings.Contains(err.Error(), "read:user:bitbucket") {
+		t.Fatalf("expected auth mechanism error without token hint, got %v", err)
+	}
+	if strings.Contains(err.Error(), "Atlassian account email") {
+		t.Fatalf("expected auth mechanism error without username hint, got %v", err)
+	}
+}
+
 func TestDecodeErrorPlainText(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")

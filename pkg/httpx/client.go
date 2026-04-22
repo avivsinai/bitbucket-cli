@@ -454,8 +454,7 @@ func isCaptchaException(exceptionName string) bool {
 
 func withBitbucketCloudAuthHint(msg string) string {
 	lower := strings.ToLower(msg)
-	if !strings.Contains(lower, "token is invalid, expired, or not supported for this endpoint") &&
-		!strings.Contains(lower, "this api is not accessible by this authentication mechanism") {
+	if !strings.Contains(lower, "token is invalid, expired, or not supported for this endpoint") {
 		return msg
 	}
 	if strings.Contains(lower, "read:user:bitbucket") || strings.Contains(lower, "atlassian account email") {
