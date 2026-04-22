@@ -60,6 +60,7 @@ Don't have Nix yet? See [nixos.asia/en/install](https://nixos.asia/en/install) f
 ### Binary Downloads
 
 Download pre-built binaries for your platform from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
+The `.tar.gz` and `.zip` release archives also include `skills/bkt/`, so the CLI and canonical skill files stay in sync when you install from a release artifact.
 
 ### Bitbucket Pipelines
 

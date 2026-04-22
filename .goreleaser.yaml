@@ -47,6 +47,7 @@ archives:
       - README.md
       - LICENSE
       - CHANGELOG.md
+      - skills/**/*
     format_overrides:
       - goos: windows
         format: zip
