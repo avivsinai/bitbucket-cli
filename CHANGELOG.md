@@ -6,6 +6,9 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Release `.tar.gz` and `.zip` archives now bundle `skills/bkt/` alongside the CLI binary and docs.
+
 ### Fixed
 - Bitbucket Cloud 401 auth failures now explain the most common API-token misconfigurations, including the required Atlassian-account email username and `read:user:bitbucket` scope.
 
