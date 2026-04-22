@@ -401,12 +401,20 @@ func decodeError(resp *http.Response) error {
 	type apiErr struct {
 		Errors []apiErrEntry `json:"errors"`
 	}
+	type cloudAPIError struct {
+		Type  string `json:"type"`
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
 
 	var payload apiErr
+	var cloudPayload cloudAPIError
 	data, err := io.ReadAll(resp.Body)
 	if err == nil && len(data) > 0 {
 		// Attempt to parse structured error; intentionally ignore unmarshal errors and fall back to raw text
 		_ = json.Unmarshal(data, &payload)
+		_ = json.Unmarshal(data, &cloudPayload)
 	}
 
 	if len(payload.Errors) > 0 {
@@ -424,7 +432,12 @@ func decodeError(resp *http.Response) error {
 		if isCaptchaException(bestErr.ExceptionName) && !strings.Contains(strings.ToLower(msg), "captcha") {
 			msg = "CAPTCHA verification required: " + msg
 		}
+		msg = withBitbucketCloudAuthHint(msg)
 		return fmt.Errorf("%s: %s", resp.Status, msg)
+	}
+
+	if msg := strings.TrimSpace(cloudPayload.Error.Message); msg != "" {
+		return fmt.Errorf("%s: %s", resp.Status, withBitbucketCloudAuthHint(msg))
 	}
 
 	if err == nil && len(data) > 0 {
@@ -437,6 +450,18 @@ func decodeError(resp *http.Response) error {
 // isCaptchaException checks if the exception name indicates a CAPTCHA-locked account.
 func isCaptchaException(exceptionName string) bool {
 	return strings.Contains(strings.ToLower(exceptionName), "captcharequired")
+}
+
+func withBitbucketCloudAuthHint(msg string) string {
+	lower := strings.ToLower(msg)
+	if !strings.Contains(lower, "token is invalid, expired, or not supported for this endpoint") &&
+		!strings.Contains(lower, "this api is not accessible by this authentication mechanism") {
+		return msg
+	}
+	if strings.Contains(lower, "read:user:bitbucket") || strings.Contains(lower, "atlassian account email") {
+		return msg
+	}
+	return msg + " Hint: for Bitbucket Cloud API tokens, set BKT_USERNAME to your Atlassian account email and include the read:user:bitbucket scope."
 }
 
 func cloneRequest(req *http.Request) (*http.Request, error) {

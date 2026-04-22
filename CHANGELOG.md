@@ -6,6 +6,9 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Bitbucket Cloud 401 auth failures now explain the most common API-token misconfigurations, including the required Atlassian-account email username and `read:user:bitbucket` scope.
+
 ## [0.26.0] - 2026-04-18
 ### Added
 - `bkt pr close` as an alias for `bkt pr decline`, matching `gh`-style command expectations (#160).
