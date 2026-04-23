@@ -202,15 +202,18 @@ func buildConfig(opts ...Option) (keyring.Config, error) {
 		// tells Keychain Services to trust the calling binary. Without this we
 		// pass an empty slice, which forces a prompt on every access.
 		//
-		// KeychainAccessibleWhenUnlocked marks the item so it is available any
-		// time the login keychain is unlocked, avoiding re-prompts after the
-		// user logs back in.
+		// KeychainAccessibleWhenUnlocked is set alongside for forward
+		// compatibility. It maps to kSecAttrAccessible, which Apple documents
+		// as applying only to data-protection keychain items or synchronizable
+		// items — so in the file-based Keychain path 99designs/keyring uses
+		// today it is a no-op. Harmless to set; keeps us ready if the backend
+		// migrates to the data-protection keychain.
 		//
-		// Neither flag alone stops re-prompts after `brew upgrade bkt` — that
-		// requires a stable Designated Requirement on the signed binary (see
-		// scripts/codesign-macos.sh). These flags just ensure a clean first-run
-		// experience for new items. Existing items keep whatever ACL they had
-		// until the item is deleted and recreated (see pkg/cmd/auth).
+		// The trust flag alone does not stop re-prompts after `brew upgrade
+		// bkt` — that requires a stable Designated Requirement on the signed
+		// binary (see scripts/codesign-macos.sh). It just ensures a clean
+		// first-run experience for new items. Existing items keep whatever ACL
+		// they had until the item is deleted and recreated (see pkg/cmd/auth).
 		cfg.KeychainTrustApplication = true
 		cfg.KeychainAccessibleWhenUnlocked = true
 	}
