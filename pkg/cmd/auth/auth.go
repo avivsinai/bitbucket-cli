@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -50,6 +51,7 @@ credentials, and "bkt auth logout" to remove them.`,
 	cmd.AddCommand(newLoginCmd(f))
 	cmd.AddCommand(newStatusCmd(f))
 	cmd.AddCommand(newLogoutCmd(f))
+	cmd.AddCommand(newDoctorCmd(f))
 
 	return cmd
 }
@@ -762,7 +764,21 @@ func storeHostToken(hostKey, token string, allowInsecure bool) error {
 		return err
 	}
 
-	return store.Set(secret.TokenKey(hostKey), token)
+	key := secret.TokenKey(hostKey)
+
+	// On darwin, an existing Keychain item's ACL is preserved by the update
+	// path in 99designs/keyring (kcItem.SetAccess(nil) in updateItem). That
+	// means a stale ACL entry from a previous bkt binary with a different
+	// Designated Requirement — typically after a Homebrew upgrade — keeps
+	// prompting forever. Delete first so Set() takes the create path with the
+	// current binary's DR as the trusted app.
+	if runtime.GOOS == "darwin" {
+		if err := store.Delete(key); err != nil {
+			return err
+		}
+	}
+
+	return store.Set(key, token)
 }
 
 func deleteHostToken(hostKey string, host *config.Host) error {

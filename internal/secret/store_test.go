@@ -1,12 +1,40 @@
 package secret
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/99designs/keyring"
 )
+
+func TestBuildConfig_DarwinTrustFlags(t *testing.T) {
+	cfg, err := buildConfig()
+	if err != nil {
+		t.Fatalf("buildConfig: %v", err)
+	}
+
+	if runtime.GOOS == "darwin" {
+		if !cfg.KeychainTrustApplication {
+			t.Errorf("KeychainTrustApplication should be true on darwin")
+		}
+		if !cfg.KeychainAccessibleWhenUnlocked {
+			t.Errorf("KeychainAccessibleWhenUnlocked should be true on darwin")
+		}
+	} else {
+		if cfg.KeychainTrustApplication {
+			t.Errorf("KeychainTrustApplication should be false on %s", runtime.GOOS)
+		}
+		if cfg.KeychainAccessibleWhenUnlocked {
+			t.Errorf("KeychainAccessibleWhenUnlocked should be false on %s", runtime.GOOS)
+		}
+	}
+
+	if cfg.ServiceName != serviceName {
+		t.Errorf("ServiceName = %q, want %q", cfg.ServiceName, serviceName)
+	}
+}
 
 func TestParseTimeoutEnv(t *testing.T) {
 	t.Parallel()

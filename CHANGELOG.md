@@ -5,6 +5,13 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt auth doctor [host]` diagnoses macOS Keychain re-prompt issues without reading the stored secret. Reports the binary's signature, Designated Requirement, and whether a Keychain entry is present for the host (#181).
+
+### Fixed
+- macOS Keychain "Always Allow" now survives `brew upgrade bkt`. The release codesign script pins the Designated Requirement to the bundle identifier (`-r='designated => identifier "…"'`) instead of letting it default to the cdhash, which changes on every build. The previous claim in 0.21.0 that the stable identifier alone preserved approvals was incomplete — without an explicit DR, `codesign` still derived one from the cdhash. (#181)
+- Token saves on macOS now delete any stale Keychain item before writing, so the new entry is created with the current binary's DR instead of inheriting an ACL from a previous bkt build. Re-run `bkt auth login` once after upgrading to benefit. (#181)
+- macOS Keychain items created by bkt now set `KeychainTrustApplication` and `KeychainAccessibleWhenUnlocked`, so fresh items trust the calling binary at create time and remain accessible after logging back in without re-prompting. (#181)
 
 ## [0.26.1] - 2026-04-22
 ### Added
