@@ -272,7 +272,9 @@ func keychainItemPresent(hostKey string) (bool, error) {
 	return false, fmt.Errorf("security find-generic-password: %w (%s)", err, detail)
 }
 
-func runCmd(ctx context.Context, name string, args ...string) (string, error) {
+// runCmd is a package-level function pointer so tests can stub the shell-out
+// surface without running real codesign/security binaries.
+var runCmd = func(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err

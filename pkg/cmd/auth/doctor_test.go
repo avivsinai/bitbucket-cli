@@ -2,12 +2,172 @@ package auth
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 )
+
+type fakeCmdResult struct {
+	out string
+	err error
+}
+
+func stubRunCmd(t *testing.T, responses map[string]fakeCmdResult) {
+	t.Helper()
+	original := runCmd
+	t.Cleanup(func() { runCmd = original })
+
+	runCmd = func(_ context.Context, name string, args ...string) (string, error) {
+		key := name + " " + strings.Join(args, " ")
+		if res, ok := responses[key]; ok {
+			return res.out, res.err
+		}
+		t.Fatalf("unexpected runCmd call: %s", key)
+		return "", nil
+	}
+}
+
+func TestInspectCodesign_AdhocCdhashDR(t *testing.T) {
+	stubRunCmd(t, map[string]fakeCmdResult{
+		"codesign -dvvv /opt/homebrew/bin/bkt": {
+			out: `Executable=/opt/homebrew/bin/bkt
+Identifier=io.github.avivsinai.bitbucket-cli
+Format=Mach-O thin (arm64)
+CodeDirectory v=20400 size=87418 flags=0x2(adhoc) hashes=2726+2 location=embedded
+Signature=adhoc
+TeamIdentifier=not set
+`,
+		},
+		"codesign -d -r- /opt/homebrew/bin/bkt": {
+			out: `Executable=/opt/homebrew/bin/bkt
+# designated => cdhash H"b4ed1c39f9c0fc28b8fb3e0fb351501a49948b1b"
+`,
+		},
+	})
+
+	info, err := inspectCodesign("/opt/homebrew/bin/bkt")
+	if err != nil {
+		t.Fatalf("inspectCodesign: %v", err)
+	}
+	if info.signature != "adhoc" {
+		t.Errorf("signature = %q, want adhoc", info.signature)
+	}
+	if info.identifier != "io.github.avivsinai.bitbucket-cli" {
+		t.Errorf("identifier = %q", info.identifier)
+	}
+	if info.teamIdentifier != "not set" {
+		t.Errorf("teamIdentifier = %q", info.teamIdentifier)
+	}
+	if !strings.Contains(info.designatedReq, "cdhash") {
+		t.Errorf("designatedReq = %q, want cdhash", info.designatedReq)
+	}
+	if info.stableDR {
+		t.Errorf("stableDR should be false for cdhash DR")
+	}
+}
+
+func TestInspectCodesign_StableIdentifierDR(t *testing.T) {
+	stubRunCmd(t, map[string]fakeCmdResult{
+		"codesign -dvvv /opt/bkt": {
+			out: `Signature=adhoc
+Identifier=io.github.avivsinai.bitbucket-cli
+TeamIdentifier=not set
+`,
+		},
+		"codesign -d -r- /opt/bkt": {
+			out: `designated => identifier "io.github.avivsinai.bitbucket-cli"
+`,
+		},
+	})
+
+	info, err := inspectCodesign("/opt/bkt")
+	if err != nil {
+		t.Fatalf("inspectCodesign: %v", err)
+	}
+	if !info.stableDR {
+		t.Errorf("stableDR should be true for identifier DR, got designated=%q", info.designatedReq)
+	}
+}
+
+func TestInspectCodesign_MetaCmdError(t *testing.T) {
+	stubRunCmd(t, map[string]fakeCmdResult{
+		"codesign -dvvv /missing": {err: errors.New("boom")},
+	})
+
+	info, err := inspectCodesign("/missing")
+	if err == nil {
+		t.Fatal("expected error when codesign metadata call fails")
+	}
+	if info.signature != "" || info.designatedReq != "" {
+		t.Errorf("expected empty info on error, got %+v", info)
+	}
+}
+
+func TestKeychainItemPresent(t *testing.T) {
+	notFoundErr := mustExitError(t, errSecItemNotFound)
+	genericErr := mustExitError(t, 1)
+
+	tests := []struct {
+		name        string
+		result      fakeCmdResult
+		wantPresent bool
+		wantErr     bool
+	}{
+		{
+			name:        "present",
+			result:      fakeCmdResult{out: "keychain: ...\n"},
+			wantPresent: true,
+		},
+		{
+			name:        "not found",
+			result:      fakeCmdResult{out: "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.\n", err: notFoundErr},
+			wantPresent: false,
+		},
+		{
+			name:        "probe failure",
+			result:      fakeCmdResult{out: "error: some other failure", err: genericErr},
+			wantPresent: false,
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			stubRunCmd(t, map[string]fakeCmdResult{
+				"security find-generic-password -s bkt -a host/example/token": tt.result,
+			})
+
+			present, err := keychainItemPresent("example")
+			if present != tt.wantPresent {
+				t.Errorf("present = %v, want %v", present, tt.wantPresent)
+			}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("err = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// mustExitError runs a trivial subprocess that exits with the given code so
+// tests can pass a real *exec.ExitError with an asserted ExitCode() through
+// the stubbed runCmd path. Relies on /bin/sh being present (always true on
+// darwin and linux runners used here).
+func mustExitError(t *testing.T, code int) error {
+	t.Helper()
+	cmd := exec.Command("/bin/sh", "-c", "exit "+strconv.Itoa(code))
+	err := cmd.Run()
+	if err == nil {
+		t.Fatalf("sh -c exit %d returned nil error", code)
+	}
+	return err
+}
 
 func TestDiagnose_NoHosts(t *testing.T) {
 	cfg := &config.Config{Hosts: map[string]*config.Host{}}
