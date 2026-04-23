@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"runtime"
 	"strings"
 	"testing"
@@ -160,5 +161,117 @@ func TestChooseHostKeys(t *testing.T) {
 	keys = chooseHostKeys(cfg, "aaa")
 	if len(keys) != 1 || keys[0] != "aaa" {
 		t.Errorf("expected [aaa], got %v", keys)
+	}
+
+	// Selector that does not match and cannot be parsed as a URL passes through.
+	keys = chooseHostKeys(cfg, "not-a-host-we-know")
+	if len(keys) != 1 || keys[0] != "not-a-host-we-know" {
+		t.Errorf("expected passthrough for unknown selector, got %v", keys)
+	}
+
+	// URL-style selector is normalized and resolved against known hosts.
+	cfg.Hosts["bitbucket.example.com"] = &config.Host{BaseURL: "https://bitbucket.example.com"}
+	keys = chooseHostKeys(cfg, "https://bitbucket.example.com")
+	if len(keys) != 1 || keys[0] != "bitbucket.example.com" {
+		t.Errorf("URL selector should normalize to host key, got %v", keys)
+	}
+}
+
+func TestDescribeBackend(t *testing.T) {
+	got := describeBackend()
+	switch runtime.GOOS {
+	case "darwin":
+		if got != "macOS Keychain" {
+			t.Errorf("darwin: got %q", got)
+		}
+	case "windows":
+		if got != "Windows Credential Manager" {
+			t.Errorf("windows: got %q", got)
+		}
+	default:
+		if got != "Secret Service / libsecret" {
+			t.Errorf("linux: got %q", got)
+		}
+	}
+}
+
+func TestWriteDoctorText_DarwinStableDR(t *testing.T) {
+	r := doctorReport{
+		Platform:      "darwin",
+		Backend:       "macOS Keychain",
+		Executable:    "/opt/homebrew/bin/bkt",
+		Signature:     "adhoc",
+		Identifier:    "io.github.avivsinai.bitbucket-cli",
+		DesignatedReq: `identifier "io.github.avivsinai.bitbucket-cli"`,
+		StableDR:      true,
+		TrustFlags:    true,
+		Hosts: []hostProbe{
+			{Key: "example.com", BaseURL: "https://example.com", AuthMethod: "basic", ItemStored: true},
+			{Key: "other.example", AuthMethod: "bearer", ProbeError: "exit status 1"},
+		},
+		Diagnosis: "something concise",
+		NextSteps: []string{"do a thing", "do another thing"},
+	}
+
+	var buf bytes.Buffer
+	if err := writeDoctorText(&buf, r, nil); err != nil {
+		t.Fatalf("writeDoctorText: %v", err)
+	}
+	out := buf.String()
+
+	for _, want := range []string{
+		"Diagnosis: something concise",
+		"Environment:",
+		"platform: darwin",
+		"backend:  macOS Keychain",
+		"bkt path: /opt/homebrew/bin/bkt",
+		"Binary signature:",
+		"signature:  adhoc",
+		"identifier: io.github.avivsinai.bitbucket-cli",
+		`designated: identifier "io.github.avivsinai.bitbucket-cli"`,
+		"DR stable:  yes",
+		"Keychain wiring:",
+		"trust flags: yes",
+		"Hosts:",
+		"example.com (https://example.com), auth=basic, keychain=present",
+		"other.example, auth=bearer, keychain=unknown",
+		"Next steps:",
+		"1. do a thing",
+		"2. do another thing",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
+	}
+
+	if strings.Contains(out, "team id") {
+		t.Errorf("team id line should be omitted when empty, got:\n%s", out)
+	}
+}
+
+func TestWriteDoctorText_NonDarwinMinimal(t *testing.T) {
+	r := doctorReport{
+		Platform:  "linux",
+		Backend:   "Secret Service / libsecret",
+		Diagnosis: "Backend: Secret Service / libsecret — no macOS-specific diagnostics apply.",
+		Hosts: []hostProbe{
+			{Key: "example.com", AuthMethod: "basic"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := writeDoctorText(&buf, r, nil); err != nil {
+		t.Fatalf("writeDoctorText: %v", err)
+	}
+	out := buf.String()
+
+	if strings.Contains(out, "Binary signature:") {
+		t.Errorf("should not emit signature section off-darwin:\n%s", out)
+	}
+	if strings.Contains(out, "keychain=") {
+		t.Errorf("should not emit keychain presence off-darwin:\n%s", out)
+	}
+	if !strings.Contains(out, "example.com, auth=basic") {
+		t.Errorf("host line missing:\n%s", out)
 	}
 }
