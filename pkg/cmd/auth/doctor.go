@@ -20,6 +20,13 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
+// Pin to absolute paths so a poisoned $PATH cannot point these probes at a
+// different binary. Both are standard-location Apple tools.
+const (
+	codesignPath = "/usr/bin/codesign"
+	securityPath = "/usr/bin/security"
+)
+
 type doctorOptions struct {
 	Host string
 }
@@ -202,7 +209,7 @@ func inspectCodesign(path string) (codesignInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	meta, err := runCmd(ctx, "codesign", "-dvvv", path)
+	meta, err := runCmd(ctx, codesignPath, "-dvvv", path)
 	if err != nil {
 		return info, err
 	}
@@ -223,7 +230,7 @@ func inspectCodesign(path string) (codesignInfo, error) {
 		}
 	}
 
-	req, _ := runCmd(ctx, "codesign", "-d", "-r-", path)
+	req, reqErr := runCmd(ctx, codesignPath, "-d", "-r-", path)
 	for _, line := range strings.Split(req, "\n") {
 		line = strings.TrimSpace(line)
 		if idx := strings.Index(line, "designated => "); idx >= 0 {
@@ -234,7 +241,7 @@ func inspectCodesign(path string) (codesignInfo, error) {
 
 	info.stableDR = info.designatedReq != "" && !strings.Contains(info.designatedReq, "cdhash ")
 
-	return info, nil
+	return info, reqErr
 }
 
 // errSecItemNotFound is the exit status /usr/bin/security returns when no
@@ -252,7 +259,7 @@ func keychainItemPresent(hostKey string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	out, err := runCmd(ctx, "security", "find-generic-password",
+	out, err := runCmd(ctx, securityPath, "find-generic-password",
 		"-s", "bkt",
 		"-a", secret.TokenKey(hostKey),
 	)

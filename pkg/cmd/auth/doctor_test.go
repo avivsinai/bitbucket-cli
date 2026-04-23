@@ -35,7 +35,7 @@ func stubRunCmd(t *testing.T, responses map[string]fakeCmdResult) {
 
 func TestInspectCodesign_AdhocCdhashDR(t *testing.T) {
 	stubRunCmd(t, map[string]fakeCmdResult{
-		"codesign -dvvv /opt/homebrew/bin/bkt": {
+		"/usr/bin/codesign -dvvv /opt/homebrew/bin/bkt": {
 			out: `Executable=/opt/homebrew/bin/bkt
 Identifier=io.github.avivsinai.bitbucket-cli
 Format=Mach-O thin (arm64)
@@ -44,7 +44,7 @@ Signature=adhoc
 TeamIdentifier=not set
 `,
 		},
-		"codesign -d -r- /opt/homebrew/bin/bkt": {
+		"/usr/bin/codesign -d -r- /opt/homebrew/bin/bkt": {
 			out: `Executable=/opt/homebrew/bin/bkt
 # designated => cdhash H"b4ed1c39f9c0fc28b8fb3e0fb351501a49948b1b"
 `,
@@ -74,13 +74,13 @@ TeamIdentifier=not set
 
 func TestInspectCodesign_StableIdentifierDR(t *testing.T) {
 	stubRunCmd(t, map[string]fakeCmdResult{
-		"codesign -dvvv /opt/bkt": {
+		"/usr/bin/codesign -dvvv /opt/bkt": {
 			out: `Signature=adhoc
 Identifier=io.github.avivsinai.bitbucket-cli
 TeamIdentifier=not set
 `,
 		},
-		"codesign -d -r- /opt/bkt": {
+		"/usr/bin/codesign -d -r- /opt/bkt": {
 			out: `designated => identifier "io.github.avivsinai.bitbucket-cli"
 `,
 		},
@@ -97,7 +97,7 @@ TeamIdentifier=not set
 
 func TestInspectCodesign_MetaCmdError(t *testing.T) {
 	stubRunCmd(t, map[string]fakeCmdResult{
-		"codesign -dvvv /missing": {err: errors.New("boom")},
+		"/usr/bin/codesign -dvvv /missing": {err: errors.New("boom")},
 	})
 
 	info, err := inspectCodesign("/missing")
@@ -141,7 +141,7 @@ func TestKeychainItemPresent(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			stubRunCmd(t, map[string]fakeCmdResult{
-				"security find-generic-password -s bkt -a host/example/token": tt.result,
+				"/usr/bin/security find-generic-password -s bkt -a host/example/token": tt.result,
 			})
 
 			present, err := keychainItemPresent("example")
