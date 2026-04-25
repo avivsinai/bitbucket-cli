@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/internal/secret"
@@ -71,6 +72,32 @@ func TestNewCloudClientOAuthSkipsRefresherWithBKTToken(t *testing.T) {
 	}
 }
 
+func TestNewCloudClientOAuthExpiredMissingCredsPreflight(t *testing.T) {
+	host := &config.Host{
+		Kind:           "cloud",
+		BaseURL:        "https://api.bitbucket.org/2.0",
+		Username:       "erank_ai21",
+		AuthMethod:     "oauth",
+		Token:          "expired-access",
+		OAuthExpiresAt: time.Now().Add(-time.Minute),
+	}
+
+	t.Setenv(secret.EnvToken, "")
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
+
+	_, err := NewCloudClient(host)
+	if err == nil {
+		t.Fatal("expected expired OAuth preflight error")
+	}
+	if !strings.Contains(err.Error(), "oauth access token for api.bitbucket.org expired at") {
+		t.Errorf("error = %q, want expired OAuth message", err)
+	}
+	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web-token") {
+		t.Errorf("error = %q, want API-token recovery command", err)
+	}
+}
+
 func TestNewCloudClientNilHostError(t *testing.T) {
 	_, err := NewCloudClient(nil)
 	if err == nil {
@@ -120,21 +147,132 @@ func TestSecretOptsNilHost(t *testing.T) {
 func TestOAuthTokenRefresherMissingCreds(t *testing.T) {
 	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
 	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
+	t.Setenv("BKT_ALLOW_INSECURE_STORE", "1")
+	t.Setenv("BKT_KEYRING_PASSPHRASE", "test-pass")
+	t.Setenv("KEYRING_BACKEND", "file")
+	fileDir := t.TempDir()
+	t.Setenv("KEYRING_FILE_DIR", fileDir)
+
+	tok := oauth.FromResponse("old-access", "old-refresh", -60)
+	blob, err := tok.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	store, err := secret.Open(secret.WithAllowFileFallback(true), secret.WithPassphrase("test-pass"), secret.WithFileDir(fileDir))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), blob); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
 
 	host := &config.Host{
 		Kind:               "cloud",
 		BaseURL:            "https://api.bitbucket.org/2.0",
 		AuthMethod:         "oauth",
+		Token:              "old-access",
 		AllowInsecureStore: true,
 	}
 
 	refresher := oauthTokenRefresher("api.bitbucket.org", host)
-	_, err := refresher(context.Background())
+	_, err = refresher(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "Cloud OAuth consumer credentials are missing") {
+	if !strings.Contains(err.Error(), "BKT_OAUTH_CLIENT_ID / BKT_OAUTH_CLIENT_SECRET are not set") {
 		t.Errorf("error = %q", err)
+	}
+	if strings.Contains(err.Error(), "auth logout") {
+		t.Errorf("error = %q, should not recommend logout", err)
+	}
+	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web-token") {
+		t.Errorf("error = %q, want API-token recovery command", err)
+	}
+}
+
+func TestOAuthTokenRefresherUsesNewerKeyringTokenWithoutCreds(t *testing.T) {
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
+	t.Setenv("BKT_ALLOW_INSECURE_STORE", "1")
+	t.Setenv("BKT_KEYRING_PASSPHRASE", "test-pass")
+	t.Setenv("KEYRING_BACKEND", "file")
+	fileDir := t.TempDir()
+	t.Setenv("KEYRING_FILE_DIR", fileDir)
+
+	tok := oauth.FromResponse("new-access", "new-refresh", 7200)
+	blob, err := tok.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	store, err := secret.Open(secret.WithAllowFileFallback(true), secret.WithPassphrase("test-pass"), secret.WithFileDir(fileDir))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), blob); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
+
+	host := &config.Host{
+		Kind:               "cloud",
+		BaseURL:            "https://api.bitbucket.org/2.0",
+		AuthMethod:         "oauth",
+		Token:              "old-access",
+		AllowInsecureStore: true,
+	}
+
+	refresher := oauthTokenRefresher("api.bitbucket.org", host)
+	got, err := refresher(context.Background())
+	if err != nil {
+		t.Fatalf("refresher: %v", err)
+	}
+	if got != "new-access" {
+		t.Errorf("token = %q, want new-access", got)
+	}
+	if host.Token != "new-access" {
+		t.Errorf("host.Token = %q, want new-access", host.Token)
+	}
+}
+
+func TestOAuthTokenRefresherUsesNewerKeyringTokenWithCreds(t *testing.T) {
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "cid")         // gitleaks:allow
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "csecret") // gitleaks:allow
+	t.Setenv("BKT_ALLOW_INSECURE_STORE", "1")
+	t.Setenv("BKT_KEYRING_PASSPHRASE", "test-pass")
+	t.Setenv("KEYRING_BACKEND", "file")
+	fileDir := t.TempDir()
+	t.Setenv("KEYRING_FILE_DIR", fileDir)
+
+	tok := oauth.FromResponse("new-access", "new-refresh", 7200)
+	blob, err := tok.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	store, err := secret.Open(secret.WithAllowFileFallback(true), secret.WithPassphrase("test-pass"), secret.WithFileDir(fileDir))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), blob); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
+
+	host := &config.Host{
+		Kind:               "cloud",
+		BaseURL:            "https://api.bitbucket.org/2.0",
+		AuthMethod:         "oauth",
+		Token:              "old-access",
+		AllowInsecureStore: true,
+	}
+
+	refresher := oauthTokenRefresher("api.bitbucket.org", host)
+	got, err := refresher(context.Background())
+	if err != nil {
+		t.Fatalf("refresher: %v", err)
+	}
+	if got != "new-access" {
+		t.Errorf("token = %q, want new-access", got)
+	}
+	if host.Token != "new-access" {
+		t.Errorf("host.Token = %q, want new-access", host.Token)
 	}
 }
 
@@ -219,7 +357,7 @@ func TestOAuthTokenRefresherSuccess(t *testing.T) {
 	t.Setenv("KEYRING_FILE_DIR", fileDir)
 
 	// Store a valid OAuth token blob in the keyring.
-	tok := oauth.FromResponse("old-access", "old-refresh", 7200)
+	tok := oauth.FromResponse("old-access", "old-refresh", -60)
 	blob, err := tok.Marshal()
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

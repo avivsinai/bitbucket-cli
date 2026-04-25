@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -46,6 +47,9 @@ type Host struct {
 	Token              string `yaml:"token,omitempty"`
 	AuthMethod         string `yaml:"auth_method,omitempty"` // "basic" (default) or "bearer"
 	AllowInsecureStore bool   `yaml:"allow_insecure_store,omitempty"`
+
+	// OAuthExpiresAt is runtime-only metadata loaded from an OAuth token blob.
+	OAuthExpiresAt time.Time `yaml:"-"`
 }
 
 // MarshalYAML strips the token field so credentials are never written to disk.

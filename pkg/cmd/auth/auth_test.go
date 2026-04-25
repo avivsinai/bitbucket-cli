@@ -49,6 +49,9 @@ func TestLoginFlagHelpTextNoAppPassword(t *testing.T) {
 	}
 
 	cmd := newLoginCmd(f)
+	if strings.Contains(strings.ToLower(cmd.Long), "app password") {
+		t.Fatalf("login long help should not mention app password, got: %s", cmd.Long)
+	}
 
 	// Check --token flag usage
 	tokenFlag := cmd.Flag("token")
@@ -386,7 +389,8 @@ func TestRunLoginRejectsUnsupportedKind(t *testing.T) {
 }
 
 func TestRunStatusShowsOAuthMethod(t *testing.T) {
-	t.Setenv(secret.EnvToken, "test-env-token")
+	setupFileKeyring(t)
+	t.Setenv(secret.EnvToken, "")
 
 	cfg := &config.Config{
 		Hosts: map[string]*config.Host{
@@ -408,6 +412,89 @@ func TestRunStatusShowsOAuthMethod(t *testing.T) {
 	output := stdout.String()
 	if !strings.Contains(output, "auth: oauth") {
 		t.Errorf("expected 'auth: oauth' in output, got:\n%s", output)
+	}
+}
+
+func TestRunStatusDetectsOAuthBlobWhenAuthMethodMissing(t *testing.T) {
+	setupFileKeyring(t)
+	t.Setenv(secret.EnvToken, "")
+
+	store, err := secret.Open(secret.WithAllowFileFallback(true))
+	if err != nil {
+		t.Fatalf("secret.Open: %v", err)
+	}
+	blob := `{"access_token":"at-from-keyring","refresh_token":"rt-456","expires_at":"2099-01-01T00:00:00Z"}`
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), blob); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
+
+	cfg := &config.Config{
+		Hosts: map[string]*config.Host{
+			"api.bitbucket.org": {
+				Kind:               "cloud",
+				BaseURL:            "https://api.bitbucket.org/2.0",
+				Username:           "erank@example.com",
+				AllowInsecureStore: true,
+			},
+		},
+		Contexts: make(map[string]*config.Context),
+	}
+	f, stdout, _ := newAuthTestFactory(cfg)
+
+	if err := runStatus(&cobra.Command{}, f); err != nil {
+		t.Fatalf("runStatus error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "auth: oauth") {
+		t.Errorf("expected detected oauth auth in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "expires:") {
+		t.Errorf("expected oauth expiry in output, got:\n%s", output)
+	}
+}
+
+func TestRunStatusWarnsWhenOAuthExpiredAndRefreshUnavailable(t *testing.T) {
+	setupFileKeyring(t)
+	t.Setenv(secret.EnvToken, "")
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
+
+	store, err := secret.Open(secret.WithAllowFileFallback(true))
+	if err != nil {
+		t.Fatalf("secret.Open: %v", err)
+	}
+	blob := `{"access_token":"at-from-keyring","refresh_token":"rt-456","expires_at":"2000-01-01T00:00:00Z"}`
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), blob); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
+
+	cfg := &config.Config{
+		Hosts: map[string]*config.Host{
+			"api.bitbucket.org": {
+				Kind:               "cloud",
+				BaseURL:            "https://api.bitbucket.org/2.0",
+				Username:           "erank@example.com",
+				AllowInsecureStore: true,
+			},
+		},
+		Contexts: make(map[string]*config.Context),
+	}
+	f, stdout, _ := newAuthTestFactory(cfg)
+
+	if err := runStatus(&cobra.Command{}, f); err != nil {
+		t.Fatalf("runStatus error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "expires: expired") {
+		t.Errorf("expected expired oauth status, got:\n%s", output)
+	}
+	if !strings.Contains(output, "refresh: unavailable") {
+		t.Errorf("expected unavailable refresh guidance, got:\n%s", output)
+	}
+	if strings.Contains(output, "auth logout") {
+		t.Errorf("status recovery guidance should not recommend logout, got:\n%s", output)
 	}
 }
 
@@ -437,6 +524,9 @@ func TestRunStatusHidesOAuthExpiryWithBKTToken(t *testing.T) {
 	}
 	if !strings.Contains(output, "token source: BKT_TOKEN") {
 		t.Errorf("expected BKT_TOKEN source, got:\n%s", output)
+	}
+	if !strings.Contains(output, "auth: basic") {
+		t.Errorf("expected BKT_TOKEN to report basic auth by default, got:\n%s", output)
 	}
 }
 
@@ -822,6 +912,18 @@ func TestRunLoginCloudAPITokenFullFlow(t *testing.T) {
 	}
 	if !strings.Contains(output, "erank") {
 		t.Errorf("expected username in output, got:\n%s", output)
+	}
+
+	hostKey, err := cmdutil.HostKeyFromURL(srv.URL)
+	if err != nil {
+		t.Fatalf("HostKeyFromURL: %v", err)
+	}
+	host := cfg.Hosts[hostKey]
+	if host == nil {
+		t.Fatalf("expected host %q to be configured", hostKey)
+	}
+	if host.AuthMethod != "basic" {
+		t.Errorf("AuthMethod = %q, want basic", host.AuthMethod)
 	}
 }
 

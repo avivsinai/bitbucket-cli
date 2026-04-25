@@ -960,6 +960,9 @@ func TestLoadHostTokenDetectsOAuthBlobFromKeyring(t *testing.T) {
 	if host.AuthMethod != "oauth" {
 		t.Errorf("AuthMethod = %q, want oauth", host.AuthMethod)
 	}
+	if host.OAuthExpiresAt.IsZero() {
+		t.Error("OAuthExpiresAt should be populated")
+	}
 }
 
 func TestLoadHostTokenPreservesExistingAuthMethodOnBlob(t *testing.T) {
@@ -985,6 +988,77 @@ func TestLoadHostTokenPreservesExistingAuthMethodOnBlob(t *testing.T) {
 	}
 }
 
+func TestLoadHostTokenExplicitBasicTreatsJSONAsPlainToken(t *testing.T) {
+	store := setupFileKeyring(t)
+
+	stored := `{"not_oauth":true}`
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), stored); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
+
+	host := &config.Host{
+		Kind:               "cloud",
+		BaseURL:            "https://api.bitbucket.org/2.0",
+		AuthMethod:         "basic",
+		AllowInsecureStore: true,
+	}
+
+	if err := loadHostToken("bkt", "api.bitbucket.org", host); err != nil {
+		t.Fatalf("loadHostToken: %v", err)
+	}
+	if host.Token != stored {
+		t.Errorf("Token = %q, want literal stored token", host.Token)
+	}
+	if host.AuthMethod != "basic" {
+		t.Errorf("AuthMethod = %q, want basic", host.AuthMethod)
+	}
+}
+
+func TestLoadHostTokenExplicitOAuthRejectsPlainToken(t *testing.T) {
+	store := setupFileKeyring(t)
+
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), "plain-token"); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
+
+	host := &config.Host{
+		Kind:               "cloud",
+		BaseURL:            "https://api.bitbucket.org/2.0",
+		AuthMethod:         "oauth",
+		AllowInsecureStore: true,
+	}
+
+	err := loadHostToken("bkt", "api.bitbucket.org", host)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "stored OAuth token") {
+		t.Errorf("error = %q, want stored OAuth token", err)
+	}
+}
+
+func TestLoadHostTokenRejectsJSONMissingOAuthFields(t *testing.T) {
+	store := setupFileKeyring(t)
+
+	if err := store.Set(secret.TokenKey("api.bitbucket.org"), `{"foo":"bar"}`); err != nil {
+		t.Fatalf("store.Set: %v", err)
+	}
+
+	host := &config.Host{
+		Kind:               "cloud",
+		BaseURL:            "https://api.bitbucket.org/2.0",
+		AllowInsecureStore: true,
+	}
+
+	err := loadHostToken("bkt", "api.bitbucket.org", host)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "looks like JSON but is not a valid OAuth token") {
+		t.Errorf("error = %q, want invalid OAuth token guidance", err)
+	}
+}
+
 func TestLoadHostTokenInvalidBlobFromKeyring(t *testing.T) {
 	store := setupFileKeyring(t)
 
@@ -1002,8 +1076,8 @@ func TestLoadHostTokenInvalidBlobFromKeyring(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON blob")
 	}
-	if !strings.Contains(err.Error(), "parse OAuth token") {
-		t.Errorf("error = %q, want 'parse OAuth token'", err)
+	if !strings.Contains(err.Error(), "looks like JSON but is not a valid OAuth token") {
+		t.Errorf("error = %q, want invalid OAuth token guidance", err)
 	}
 }
 

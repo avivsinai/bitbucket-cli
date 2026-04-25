@@ -24,7 +24,8 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/oauth"
 )
 
-// CloudTokenURL is the URL where users create Bitbucket Cloud API tokens.
+// CloudTokenURL is Atlassian's token-management page. Atlassian does not
+// currently expose a stable deep link into the Bitbucket scoped-token wizard.
 const CloudTokenURL = "https://id.atlassian.com/manage-profile/security/api-tokens"
 
 // CloudEmailPrompt is the prompt shown when asking for the Atlassian account email.
@@ -42,7 +43,7 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 
 Tokens are stored in the OS keychain by default. For Data Center hosts, bkt
 uses Personal Access Tokens (PATs). For Bitbucket Cloud, bkt uses Atlassian
-API tokens (app passwords).
+API tokens with scopes.
 
 Use "bkt auth login" to add a host, "bkt auth status" to inspect stored
 credentials, and "bkt auth logout" to remove them.`,
@@ -94,7 +95,7 @@ Credentials are verified against the remote host before being stored. If no
 OS keychain is available, pass --allow-insecure-store to use encrypted file
 fallback. In non-interactive environments, provide --username and --token
 on the command line or via stdin.`,
-		Example: `  # Login to Bitbucket Cloud via OAuth (recommended)
+		Example: `  # Login to Bitbucket Cloud via OAuth
   bkt auth login https://bitbucket.org --kind cloud --web
 
   # Login to Bitbucket Cloud with an API token
@@ -375,7 +376,13 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 				if _, err := fmt.Fprintln(ios.Out, "Opening Atlassian to create a Bitbucket API token..."); err != nil {
 					return err
 				}
+				if _, err := fmt.Fprintf(ios.Out, "This opens Atlassian's generic API token page: %s\n", tokenURL); err != nil {
+					return err
+				}
 				if _, err := fmt.Fprintln(ios.Out, "\nIMPORTANT: Click \"Create API token with scopes\" and select \"Bitbucket\" as the application."); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(ios.Out, "Existing token values cannot be viewed again; create a new token if you do not already have the token string."); err != nil {
 					return err
 				}
 				if _, err := fmt.Fprintln(ios.Out, "\nRequired scopes:"); err != nil {
@@ -454,6 +461,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 				Kind:               "cloud",
 				BaseURL:            apiURL,
 				Username:           opts.Username,
+				AuthMethod:         "basic",
 				AllowInsecureStore: opts.AllowInsecureStore,
 			})
 
@@ -516,6 +524,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 		AuthMethod  string `json:"auth_method"`
 		TokenSource string `json:"token_source"`
 		Expires     string `json:"expires,omitempty"`
+		Refresh     string `json:"refresh,omitempty"`
 	}
 
 	type contextSummary struct {
@@ -538,10 +547,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 	var hosts []hostSummary
 	for _, key := range hostKeys {
 		h := cfg.Hosts[key]
-		am := h.AuthMethod
-		if am == "" {
-			am = "basic"
-		}
+		am := detectedAuthMethod(key, h, tokenSource)
 		hs := hostSummary{
 			Key:         key,
 			Kind:        h.Kind,
@@ -552,6 +558,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 		}
 		if am == "oauth" && tokenSource != secret.EnvToken {
 			hs.Expires = oauthExpiryLabel(key, h)
+			hs.Refresh = oauthRefreshStatus(hs.Expires)
 		}
 		hosts = append(hosts, hs)
 	}
@@ -613,6 +620,11 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 			}
 			if h.Expires != "" {
 				if _, err := fmt.Fprintf(ios.Out, "    expires: %s\n", h.Expires); err != nil {
+					return err
+				}
+			}
+			if h.Refresh != "" {
+				if _, err := fmt.Fprintf(ios.Out, "    refresh: %s\n", h.Refresh); err != nil {
 					return err
 				}
 			}
@@ -849,6 +861,44 @@ func resolvedTokenSource() string {
 	return "keyring"
 }
 
+func detectedAuthMethod(hostKey string, host *config.Host, tokenSource string) string {
+	if tokenSource == secret.EnvToken {
+		if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
+			return m
+		}
+		return "basic"
+	}
+	if host == nil {
+		return "basic"
+	}
+	if host.AuthMethod != "" {
+		return host.AuthMethod
+	}
+	if host.Kind != "cloud" {
+		return "basic"
+	}
+	if storedTokenIsOAuthBlob(hostKey, host) {
+		return "oauth"
+	}
+	return "basic"
+}
+
+func storedTokenIsOAuthBlob(hostKey string, host *config.Host) bool {
+	opts := []secret.Option{}
+	if host != nil && host.AllowInsecureStore {
+		opts = append(opts, secret.WithAllowFileFallback(true))
+	}
+	store, err := secret.Open(opts...)
+	if err != nil {
+		return false
+	}
+	raw, err := store.Get(secret.TokenKey(hostKey))
+	if err != nil {
+		return false
+	}
+	return oauth.IsTokenBlob(raw)
+}
+
 // oauthExpiryLabel reads the OAuth JSON blob from the keyring and returns a
 // human-readable expiry string. Returns "" on any error (best-effort).
 func oauthExpiryLabel(hostKey string, host *config.Host) string {
@@ -876,4 +926,14 @@ func oauthExpiryLabel(hostKey string, host *config.Host) string {
 	}
 	remaining := time.Until(tok.ExpiresAt).Truncate(time.Minute)
 	return fmt.Sprintf("%s (in %s)", tok.ExpiresAt.Format(time.RFC3339), remaining)
+}
+
+func oauthRefreshStatus(expires string) string {
+	if expires != "expired" {
+		return ""
+	}
+	if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
+		return "unavailable; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to refresh OAuth, or run `bkt auth login https://bitbucket.org --kind cloud --web-token` to replace it with a scoped API token"
+	}
+	return "available"
 }

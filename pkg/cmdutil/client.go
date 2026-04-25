@@ -3,9 +3,13 @@ package cmdutil
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/filelock"
 	"github.com/avivsinai/bitbucket-cli/internal/secret"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
@@ -67,6 +71,9 @@ func NewCloudClient(host *config.Host) (*bbcloud.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("resolve host key: %w", err)
 		}
+		if err := preflightExpiredOAuth(hostKey, host); err != nil {
+			return nil, err
+		}
 		opts.TokenRefresher = oauthTokenRefresher(hostKey, host)
 	}
 
@@ -78,46 +85,91 @@ func NewCloudClient(host *config.Host) (*bbcloud.Client, error) {
 // closure can persist the new token.
 func oauthTokenRefresher(hostKey string, host *config.Host) func(ctx context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
-		if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
-			return "", fmt.Errorf("token expired and Cloud OAuth consumer credentials are missing; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET or re-login with `bkt auth login --web-token`")
-		}
-
-		store, err := secret.Open(secretOpts(host)...)
+		lockPath, err := oauthRefreshLockPath(hostKey)
 		if err != nil {
-			return "", fmt.Errorf("open secret store: %w", err)
+			return "", fmt.Errorf("resolve OAuth refresh lock: %w", err)
 		}
 
-		raw, err := store.Get(secret.TokenKey(hostKey))
+		var accessToken string
+		err = filelock.With(lockPath, func() error {
+			store, err := secret.Open(secretOpts(host)...)
+			if err != nil {
+				return fmt.Errorf("open secret store: %w", err)
+			}
+
+			raw, err := store.Get(secret.TokenKey(hostKey))
+			if err != nil {
+				return fmt.Errorf("read token: %w", err)
+			}
+
+			tok, err := oauth.Unmarshal(raw)
+			if err != nil {
+				return fmt.Errorf("parse stored token: %w", err)
+			}
+
+			if !tok.IsExpired() && tok.AccessToken != host.Token {
+				accessToken = tok.AccessToken
+				host.OAuthExpiresAt = tok.ExpiresAt
+				return nil
+			}
+			if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
+				return oauthMissingCredsError(hostKey, tok.ExpiresAt)
+			}
+
+			newTok, err := oauth.RefreshToken(ctx,
+				tok.RefreshToken,
+				oauth.CloudClientID(),
+				oauth.CloudClientSecret(),
+				oauth.CloudTokenURL,
+			)
+			if err != nil {
+				return fmt.Errorf("refresh failed (re-login with `bkt auth login --web`): %w", err)
+			}
+
+			blob, err := newTok.Marshal()
+			if err != nil {
+				return fmt.Errorf("encode refreshed token: %w", err)
+			}
+			if err := store.Set(secret.TokenKey(hostKey), blob); err != nil {
+				return fmt.Errorf("store refreshed token: %w", err)
+			}
+
+			accessToken = newTok.AccessToken
+			host.OAuthExpiresAt = newTok.ExpiresAt
+			return nil
+		})
 		if err != nil {
-			return "", fmt.Errorf("read token: %w", err)
+			return "", err
 		}
 
-		tok, err := oauth.Unmarshal(raw)
-		if err != nil {
-			return "", fmt.Errorf("parse stored token: %w", err)
-		}
-
-		newTok, err := oauth.RefreshToken(ctx,
-			tok.RefreshToken,
-			oauth.CloudClientID(),
-			oauth.CloudClientSecret(),
-			oauth.CloudTokenURL,
-		)
-		if err != nil {
-			return "", fmt.Errorf("refresh failed (re-login with `bkt auth login --web`): %w", err)
-		}
-
-		blob, err := newTok.Marshal()
-		if err != nil {
-			return "", fmt.Errorf("encode refreshed token: %w", err)
-		}
-		if err := store.Set(secret.TokenKey(hostKey), blob); err != nil {
-			return "", fmt.Errorf("store refreshed token: %w", err)
-		}
-
-		host.Token = newTok.AccessToken
-		return newTok.AccessToken, nil
+		host.Token = accessToken
+		return accessToken, nil
 	}
+}
+
+func preflightExpiredOAuth(hostKey string, host *config.Host) error {
+	if host == nil || host.OAuthExpiresAt.IsZero() || time.Now().Before(host.OAuthExpiresAt) {
+		return nil
+	}
+	if oauth.CloudClientID() != "" && oauth.CloudClientSecret() != "" {
+		return nil
+	}
+	return oauthMissingCredsError(hostKey, host.OAuthExpiresAt)
+}
+
+func oauthMissingCredsError(hostKey string, expiresAt time.Time) error {
+	if !expiresAt.IsZero() && time.Now().After(expiresAt) {
+		return fmt.Errorf("oauth access token for %s expired at %s, and BKT_OAUTH_CLIENT_ID / BKT_OAUTH_CLIENT_SECRET are not set. Run `bkt auth login https://bitbucket.org --kind cloud --web-token` to replace it with a scoped API token, or restore the OAuth consumer env vars", hostKey, expiresAt.Format(time.RFC3339))
+	}
+	return fmt.Errorf("cloud OAuth consumer credentials are missing for %s; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to refresh OAuth, or run `bkt auth login https://bitbucket.org --kind cloud --web-token` to replace the stored OAuth credential with a scoped API token", hostKey)
+}
+
+func oauthRefreshLockPath(hostKey string) (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve config dir: %w", err)
+	}
+	return filepath.Join(dir, "bkt", "locks", "oauth-refresh-"+url.PathEscape(hostKey)+".lock"), nil
 }
 
 func secretOpts(host *config.Host) []secret.Option {
