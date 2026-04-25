@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -48,15 +49,21 @@ func Unmarshal(s string) (*Token, error) {
 	if err := json.Unmarshal([]byte(s), &t); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(t.AccessToken) == "" {
+		return nil, errors.New("missing access_token")
+	}
+	if strings.TrimSpace(t.RefreshToken) == "" {
+		return nil, errors.New("missing refresh_token")
+	}
+	if t.ExpiresAt.IsZero() {
+		return nil, errors.New("missing expires_at")
+	}
 	return &t, nil
 }
 
-// IsTokenBlob reports whether a keyring value is an OAuth JSON token blob
-// rather than a plain API token string.
-//
-// Detection relies on the fact that Bitbucket API tokens and PATs never begin
-// with '{'. This assumption should be verified if Bitbucket changes their
-// token format.
+// IsTokenBlob reports whether a keyring value is a complete OAuth JSON token
+// blob rather than a plain API token string.
 func IsTokenBlob(value string) bool {
-	return strings.HasPrefix(value, "{")
+	_, err := Unmarshal(value)
+	return err == nil
 }

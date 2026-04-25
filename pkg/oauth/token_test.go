@@ -101,13 +101,29 @@ func TestUnmarshalInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestUnmarshalMissingFields(t *testing.T) {
+	tests := []string{
+		`{}`,
+		`{"access_token":"acc","refresh_token":"ref"}`,
+		`{"access_token":"acc","expires_at":"2026-04-08T12:00:00Z"}`,
+		`{"refresh_token":"ref","expires_at":"2026-04-08T12:00:00Z"}`,
+	}
+	for _, input := range tests {
+		if _, err := Unmarshal(input); err == nil {
+			t.Fatalf("Unmarshal(%s) expected error", input)
+		}
+	}
+}
+
 func TestIsTokenBlob(t *testing.T) {
 	tests := []struct {
 		value string
 		want  bool
 	}{
-		{`{"access_token":"x"}`, true},
-		{`{}`, true},
+		{`{"access_token":"acc","refresh_token":"ref","expires_at":"2026-04-08T12:00:00Z"}`, true},
+		{`{"access_token":"x"}`, false},
+		{`{}`, false},
+		{`{invalid-json`, false},
 		{`plain-token-string`, false},
 		{``, false},
 		{`Bearer token`, false},

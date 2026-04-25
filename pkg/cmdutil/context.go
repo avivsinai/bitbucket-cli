@@ -293,16 +293,32 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 		return err
 	}
 
+	switch host.AuthMethod {
+	case "oauth":
+		tok, parseErr := oauth.Unmarshal(token)
+		if parseErr != nil {
+			return fmt.Errorf("stored OAuth token for host %q is invalid: %w", hostKey, parseErr)
+		}
+		host.Token = tok.AccessToken
+		host.OAuthExpiresAt = tok.ExpiresAt
+		return nil
+	case "basic", "bearer":
+		host.Token = token
+		return nil
+	}
+
 	if oauth.IsTokenBlob(token) {
 		tok, parseErr := oauth.Unmarshal(token)
 		if parseErr != nil {
-			return fmt.Errorf("parse OAuth token for host %q: %w", hostKey, parseErr)
+			return fmt.Errorf("stored OAuth token for host %q is invalid: %w", hostKey, parseErr)
 		}
 		host.Token = tok.AccessToken
-		if host.AuthMethod == "" {
-			host.AuthMethod = "oauth"
-		}
+		host.AuthMethod = "oauth"
+		host.OAuthExpiresAt = tok.ExpiresAt
 		return nil
+	}
+	if strings.HasPrefix(strings.TrimSpace(token), "{") {
+		return fmt.Errorf("stored credential for host %q looks like JSON but is not a valid OAuth token; run `%s auth login %s` to replace it", hostKey, executable, hostKey)
 	}
 
 	host.Token = token
