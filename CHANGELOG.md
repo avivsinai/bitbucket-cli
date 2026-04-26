@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.26.3] - 2026-04-26
 ### Added
 - `bkt auth status` now surfaces Cloud OAuth refresh risks, including expired inferred OAuth credentials, missing refresh credentials, and `BKT_TOKEN` overrides as effective basic auth (#184).
 
@@ -16,6 +18,7 @@ All notable changes to this project will be documented here. The format follows
 ### Fixed
 - OAuth credential detection now validates the complete stored OAuth blob before treating keychain contents as refreshable OAuth credentials (#184).
 - Concurrent Cloud OAuth refreshes now serialize behind a per-host file lock and reuse a fresher keychain token when another process already refreshed it (#184).
+
 
 ## [0.26.2] - 2026-04-24
 ### Added
@@ -477,7 +480,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.2...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.3...HEAD
+[0.26.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.2...v0.26.3
 [0.26.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.1...v0.26.2
 [0.26.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.25.0...v0.26.0
