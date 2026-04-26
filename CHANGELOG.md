@@ -5,6 +5,17 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt auth status` now surfaces Cloud OAuth refresh risks, including expired inferred OAuth credentials, missing refresh credentials, and `BKT_TOKEN` overrides as effective basic auth (#184).
+
+### Changed
+- Cloud authentication now treats explicit `auth_method` values as authoritative, and API-token logins store `auth_method: basic` instead of relying on token-shape guessing (#184).
+- Cloud OAuth expiry metadata is runtime-only and preflighted before client construction, with recovery guidance pointing to scoped API-token login instead of `auth logout` (#184).
+- Cloud OAuth login help no longer labels the OAuth browser flow as recommended, keeping scoped API-token login as the zero-config path (#184).
+
+### Fixed
+- OAuth credential detection now validates the complete stored OAuth blob before treating keychain contents as refreshable OAuth credentials (#184).
+- Concurrent Cloud OAuth refreshes now serialize behind a per-host file lock and reuse a fresher keychain token when another process already refreshed it (#184).
 
 ## [0.26.2] - 2026-04-24
 ### Added
