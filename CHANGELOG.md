@@ -5,6 +5,11 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Restored zero-config Bitbucket Cloud browser OAuth in official release
+  binaries by embedding the CLI OAuth consumer credentials through release
+  ldflags again. `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` remain the
+  fallback for source and Nix builds (#189).
 
 ## [0.26.3] - 2026-04-26
 ### Added
