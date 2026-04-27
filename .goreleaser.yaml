@@ -24,6 +24,8 @@ builds:
       - -X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags={{.Version}}
       - -X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags={{.Commit}}
       - -X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags={{.Date}}
+      - -X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientID={{ .Env.BKT_OAUTH_CLIENT_ID }}
+      - -X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientSecret={{ .Env.BKT_OAUTH_CLIENT_SECRET }}
     mod_timestamp: '{{ .CommitTimestamp }}'
     hooks:
       post:

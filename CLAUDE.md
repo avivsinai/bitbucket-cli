@@ -36,6 +36,13 @@ This is the master agent instruction file for this repository. Keep repository p
 - Release from `master` only through `./scripts/release.sh X.Y.Z` and the resulting release PR; do not create manual tags or GitHub releases.
 - A push to `master` updates the AvivSinai marketplace immediately for the `bkt` skill.
 - Keep `CHANGELOG.md` and skill/plugin metadata on one version in the release commit; after the release PR merges, CI validates the merged commit, creates the tag, publishes GitHub/Homebrew artifacts, and uses the committed changelog entry as the GitHub release notes.
+- Official release binaries must keep Bitbucket Cloud browser OAuth
+  (`bkt auth login --kind cloud --web`) zero-config by embedding bkt's OAuth
+  consumer credentials through GoReleaser ldflags. Source and Nix builds may
+  rely on `BKT_OAUTH_CLIENT_ID` / `BKT_OAUTH_CLIENT_SECRET`, but removing
+  release-binary embedding is a breaking user-facing auth change and must not
+  be done as generic security hardening. Keep
+  `scripts/check-oauth-release-contract.sh` in CI/release verification.
 - See `docs/RELEASE.md` for the full release handbook.
 
 ## Commit & Pull Request Guidelines

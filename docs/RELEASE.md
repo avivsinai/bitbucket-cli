@@ -35,9 +35,11 @@
 ## Guardrails
 
 - Treat `scripts/release.sh` as the only supported release entrypoint.
-- Release artifacts must not embed Bitbucket Cloud OAuth consumer credentials.
-  Cloud OAuth is env-driven at runtime (`BKT_OAUTH_CLIENT_ID` /
-  `BKT_OAUTH_CLIENT_SECRET`) and API-token login remains the zero-config path.
+- Official release artifacts must embed bkt's Bitbucket Cloud OAuth consumer
+  credentials through GoReleaser ldflags so `bkt auth login --kind cloud --web`
+  remains zero-config for release binaries. Do not remove the ldflags, release
+  workflow secret validation, or `scripts/check-oauth-release-contract.sh`
+  without an explicit breaking-change decision and changelog entry.
 - Refresh `flake.nix`'s `vendorHash` whenever `go.mod` or `go.sum` changes; do not wait until release time because Nix CI runs on pull requests. Use `make nix-update-vendor-hash` after dependency bumps.
 - `scripts/check-release-version.sh vX.Y.Z` now validates both metadata versions and the matching `CHANGELOG.md` heading.
 - If a release PR merges but the tag publish fails verification, fix forward with the next patch version instead of rewriting the failed tag.

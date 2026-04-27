@@ -6,8 +6,9 @@ import "os"
 //
 // The flow uses PKCE (RFC 7636, S256) for defense-in-depth. Bitbucket Cloud
 // still requires a client secret for authorization_code and refresh_token
-// exchanges, so bkt reads the consumer credentials from runtime environment
-// variables instead of embedding them in public release binaries.
+// exchanges. Official bkt release binaries embed the CLI's OAuth consumer
+// credentials so browser login works out of the box; source and Nix builds can
+// provide their own credentials through environment variables.
 const (
 	// CloudAuthorizeURL is the Bitbucket Cloud authorization endpoint.
 	CloudAuthorizeURL = "https://bitbucket.org/site/oauth2/authorize"
@@ -16,13 +17,27 @@ const (
 	CloudTokenURL = "https://bitbucket.org/site/oauth2/access_token"
 )
 
+// CloudClientID and CloudClientSecret are injected at build time via ldflags.
+// Environment variables remain the fallback for source, Nix, and development
+// builds that do not carry the official release credentials.
+var (
+	cloudClientID     string // set via -ldflags -X
+	cloudClientSecret string // set via -ldflags -X
+)
+
 // CloudClientID returns the OAuth consumer key.
 func CloudClientID() string {
+	if cloudClientID != "" {
+		return cloudClientID
+	}
 	return os.Getenv("BKT_OAUTH_CLIENT_ID")
 }
 
 // CloudClientSecret returns the OAuth consumer secret.
 func CloudClientSecret() string {
+	if cloudClientSecret != "" {
+		return cloudClientSecret
+	}
 	return os.Getenv("BKT_OAUTH_CLIENT_SECRET")
 }
 

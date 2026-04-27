@@ -147,8 +147,13 @@ jobs:
         run: go vet ./...
       - name: Run tests
         run: make test
+      - name: Check OAuth release contract
+        run: ./scripts/check-oauth-release-contract.sh
       - name: Build CLI
         run: VERSION=${{ needs.prepare.outputs.tag }} make build
+        env:
+          BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
+          BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
       - name: Check embedded version
         run: ./bin/bkt --version | grep -Fx "bkt version ${{ needs.prepare.outputs.tag }}"
 
@@ -221,6 +226,16 @@ jobs:
           output_path.write_text(match.group(0).strip() + "\n", encoding="utf-8")
           PY
 
+      - name: Validate OAuth secrets
+        env:
+          BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
+          BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
+        run: |
+          if [ -z "$BKT_OAUTH_CLIENT_ID" ] || [ -z "$BKT_OAUTH_CLIENT_SECRET" ]; then
+            echo "::error::BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET must be set as repository secrets"
+            exit 1
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7
         with:
@@ -230,6 +245,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
+          BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
 
       - name: Collect attestation subjects
         id: attestation_subjects
