@@ -5,11 +5,14 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.26.4] - 2026-04-27
 ### Fixed
 - Restored zero-config Bitbucket Cloud browser OAuth in official release
   binaries by embedding the CLI OAuth consumer credentials through release
   ldflags again. `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` remain the
   fallback for source and Nix builds (#189).
+
 
 ## [0.26.3] - 2026-04-26
 ### Added
@@ -485,7 +488,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.3...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.4...HEAD
+[0.26.4]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.3...v0.26.4
 [0.26.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.2...v0.26.3
 [0.26.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.1...v0.26.2
 [0.26.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.0...v0.26.1
