@@ -154,7 +154,7 @@ brews:
     install: |
       bin.install "bkt"
     test: |
-      system "#{bin}/bkt", "version"
+      system "#{bin}/bkt", "--version"
 
 scoops:
   - name: bitbucket-cli

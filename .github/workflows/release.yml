@@ -149,6 +149,8 @@ jobs:
         run: make test
       - name: Check OAuth release contract
         run: ./scripts/check-oauth-release-contract.sh
+      - name: Check Homebrew formula test
+        run: ./scripts/check-homebrew-formula-test.sh
       - name: Build CLI
         run: VERSION=${{ needs.prepare.outputs.tag }} make build
         env:
