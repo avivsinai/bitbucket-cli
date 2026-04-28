@@ -241,6 +241,7 @@ if [ "$skip_verify" -eq 0 ]; then
   fi
   go vet ./...
   make test
+  ./scripts/check-homebrew-formula-test.sh
   make build
 fi
 
