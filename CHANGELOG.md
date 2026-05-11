@@ -5,6 +5,10 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Corrected the Bitbucket Data Center README login example to use
+  `--web-token`, and made `bkt auth login https://bitbucket.org --web`
+  infer Bitbucket Cloud before validating the browser OAuth flow (#194).
 
 ## [0.26.4] - 2026-04-27
 ### Fixed
