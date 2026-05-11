@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"runtime"
 	"sort"
@@ -173,6 +174,9 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 	kind := strings.ToLower(opts.Kind)
 	if kind == "" {
 		kind = "dc"
+	}
+	if kind == "dc" && isBitbucketCloudBaseURL(baseURL) {
+		kind = "cloud"
 	}
 
 	authMethod := strings.ToLower(strings.TrimSpace(opts.AuthMethod))
@@ -813,6 +817,15 @@ func deleteHostToken(hostKey string, host *config.Host) error {
 	}
 	host.Token = ""
 	return nil
+}
+
+func isBitbucketCloudBaseURL(baseURL string) bool {
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "bitbucket.org" || host == "api.bitbucket.org"
 }
 
 func promptString(reader *bufio.Reader, out io.Writer, label string) (string, error) {

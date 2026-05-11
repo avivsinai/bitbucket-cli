@@ -283,6 +283,32 @@ func TestRunLoginRejectsWebOnDC(t *testing.T) {
 	}
 }
 
+func TestRunLoginInfersCloudForBitbucketOrgWeb(t *testing.T) {
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
+
+	cfg := &config.Config{
+		Hosts:    make(map[string]*config.Host),
+		Contexts: make(map[string]*config.Context),
+	}
+	f, _, _ := newAuthTestFactory(cfg)
+
+	err := runLogin(&cobra.Command{}, f, &loginOptions{
+		Host: "https://bitbucket.org",
+		Kind: "dc",
+		Web:  true,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "only supported for Bitbucket Cloud") {
+		t.Errorf("bitbucket.org should infer cloud before --web validation, got %q", err)
+	}
+	if !strings.Contains(err.Error(), "cloud OAuth requires BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET") {
+		t.Errorf("error = %q", err)
+	}
+}
+
 func TestRunLoginRejectsWebAndWebToken(t *testing.T) {
 	cfg := &config.Config{
 		Hosts:    make(map[string]*config.Host),
