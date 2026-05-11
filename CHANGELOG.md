@@ -5,10 +5,13 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.26.5] - 2026-05-11
 ### Fixed
 - Corrected the Bitbucket Data Center README login example to use
   `--web-token`, and made `bkt auth login https://bitbucket.org --web`
   infer Bitbucket Cloud before validating the browser OAuth flow (#194).
+
 
 ## [0.26.4] - 2026-04-27
 ### Fixed
@@ -492,7 +495,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.4...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.5...HEAD
+[0.26.5]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.4...v0.26.5
 [0.26.4]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.3...v0.26.4
 [0.26.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.2...v0.26.3
 [0.26.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.1...v0.26.2
