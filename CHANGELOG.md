@@ -6,6 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Bitbucket Cloud pipeline steps now decode `state.result` the same way as
+  pipeline runs, so `bkt pipeline view`, `bkt pipeline view --json`, and
+  `bkt status pipeline` show per-step outcomes (for example `FAILED` vs
+  `SUCCESSFUL`) instead of only `COMPLETED`.
+
 ## [0.26.5] - 2026-05-11
 ### Fixed
 - Corrected the Bitbucket Data Center README login example to use

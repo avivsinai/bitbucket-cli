@@ -12,6 +12,29 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 )
 
+func TestPipelineStepJSONNestedStateResult(t *testing.T) {
+	const payload = `{
+		"uuid": "{123e4567-e89b-12d3-a456-426614174000}",
+		"name": "lint",
+		"state": {
+			"name": "COMPLETED",
+			"result": {
+				"name": "FAILED"
+			}
+		}
+	}`
+	var step PipelineStep
+	if err := json.Unmarshal([]byte(payload), &step); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if step.State.Name != "COMPLETED" || step.State.Result.Name != "FAILED" {
+		t.Fatalf("state not parsed: %+v", step.State)
+	}
+	if got := step.Status(); got != "COMPLETED FAILED" {
+		t.Fatalf("Status() = %q, want COMPLETED FAILED", got)
+	}
+}
+
 func TestPipelineStepStatus(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -32,7 +55,7 @@ func TestPipelineStepStatus(t *testing.T) {
 				Name: "lint",
 			}
 			step.State.Name = tt.state
-			step.Result.Name = tt.result
+			step.State.Result.Name = tt.result
 			if got := step.Status(); got != tt.want {
 				t.Errorf("Status() = %q, want %q", got, tt.want)
 			}

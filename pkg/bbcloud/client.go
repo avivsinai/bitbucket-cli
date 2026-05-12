@@ -116,20 +116,24 @@ type Repository struct {
 	} `json:"project"`
 }
 
+// PipelineState is the nested state object returned by Bitbucket for pipeline runs
+// and for individual pipeline steps (phase in Name, outcome in Result when finished).
+type PipelineState struct {
+	Result struct {
+		Name string `json:"name"`
+	} `json:"result"`
+	Stage struct {
+		Name string `json:"name"`
+	} `json:"stage"`
+	Name string `json:"name"`
+}
+
 // Pipeline represents a pipeline execution.
 type Pipeline struct {
-	UUID        string `json:"uuid"`
-	BuildNumber int    `json:"build_number"`
-	State       struct {
-		Result struct {
-			Name string `json:"name"`
-		} `json:"result"`
-		Stage struct {
-			Name string `json:"name"`
-		} `json:"stage"`
-		Name string `json:"name"`
-	} `json:"state"`
-	Target struct {
+	UUID        string        `json:"uuid"`
+	BuildNumber int           `json:"build_number"`
+	State       PipelineState `json:"state"`
+	Target      struct {
 		Type string `json:"type"`
 		Ref  struct {
 			Name string `json:"name"`
@@ -472,22 +476,17 @@ func (c *Client) GetPipelineByBuildNumber(ctx context.Context, workspace, repoSl
 
 // PipelineStep represents an individual pipeline step execution.
 type PipelineStep struct {
-	UUID  string `json:"uuid"`
-	Name  string `json:"name"`
-	State struct {
-		Name string `json:"name"`
-	} `json:"state"`
-	Result struct {
-		Name string `json:"name"`
-	} `json:"result"`
+	UUID  string        `json:"uuid"`
+	Name  string        `json:"name"`
+	State PipelineState `json:"state"`
 }
 
 // Status returns the step state and result as a single string.
 // When the step is completed the result is appended (e.g. "COMPLETED SUCCESSFUL"),
 // otherwise only the state is returned (e.g. "PENDING").
 func (s PipelineStep) Status() string {
-	if s.Result.Name != "" {
-		return s.State.Name + " " + s.Result.Name
+	if s.State.Result.Name != "" {
+		return s.State.Name + " " + s.State.Result.Name
 	}
 	return s.State.Name
 }
