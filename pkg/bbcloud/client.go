@@ -117,13 +117,16 @@ type Repository struct {
 	} `json:"project"`
 }
 
+// PipelineResult is a Bitbucket pipeline outcome object.
+type PipelineResult struct {
+	Name string `json:"name"`
+}
+
 // PipelineState is the nested state object returned by Bitbucket for pipeline runs
 // and for individual pipeline steps (phase in Name, outcome in Result when finished).
 type PipelineState struct {
-	Result struct {
-		Name string `json:"name"`
-	} `json:"result"`
-	Stage struct {
+	Result PipelineResult `json:"result"`
+	Stage  struct {
 		Name string `json:"name"`
 	} `json:"stage"`
 	Name string `json:"name"`
@@ -477,24 +480,20 @@ func (c *Client) GetPipelineByBuildNumber(ctx context.Context, workspace, repoSl
 
 // PipelineStep represents an individual pipeline step execution.
 type PipelineStep struct {
-	UUID   string        `json:"uuid"`
-	Name   string        `json:"name"`
-	State  PipelineState `json:"state"`
-	Result struct {
-		Name string `json:"name,omitempty"`
-	} `json:"result,omitempty"` // compatibility alias; API outcome lives in state.result
+	UUID   string         `json:"uuid"`
+	Name   string         `json:"name"`
+	State  PipelineState  `json:"state"`
+	Result PipelineResult `json:"result"` // compatibility alias; API outcome lives in state.result
 }
 
 // UnmarshalJSON decodes Bitbucket step JSON and keeps Result in sync with state.result
 // so Status() and legacy JSON consumers that read steps[].result.name keep working.
 func (s *PipelineStep) UnmarshalJSON(data []byte) error {
 	type rawStep struct {
-		UUID   string        `json:"uuid"`
-		Name   string        `json:"name"`
-		State  PipelineState `json:"state"`
-		Result struct {
-			Name string `json:"name"`
-		} `json:"result"`
+		UUID   string         `json:"uuid"`
+		Name   string         `json:"name"`
+		State  PipelineState  `json:"state"`
+		Result PipelineResult `json:"result"`
 	}
 	var raw rawStep
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -516,26 +515,20 @@ func (s *PipelineStep) UnmarshalJSON(data []byte) error {
 // MarshalJSON emits state.result and a top-level result alias for structured CLI output.
 func (s PipelineStep) MarshalJSON() ([]byte, error) {
 	type out struct {
-		UUID   string        `json:"uuid"`
-		Name   string        `json:"name"`
-		State  PipelineState `json:"state"`
-		Result struct {
-			Name string `json:"name,omitempty"`
-		} `json:"result,omitempty"`
+		UUID   string         `json:"uuid"`
+		Name   string         `json:"name"`
+		State  PipelineState  `json:"state"`
+		Result PipelineResult `json:"result"`
 	}
 	resultName := s.State.Result.Name
 	if resultName == "" {
 		resultName = s.Result.Name
 	}
-	var alias struct {
-		Name string `json:"name,omitempty"`
-	}
-	alias.Name = resultName
 	return json.Marshal(out{
 		UUID:   s.UUID,
 		Name:   s.Name,
 		State:  s.State,
-		Result: alias,
+		Result: PipelineResult{Name: resultName},
 	})
 }
 

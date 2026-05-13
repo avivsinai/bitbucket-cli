@@ -109,6 +109,38 @@ func TestPipelineStepMarshalJSONTopLevelResultFromStateOnly(t *testing.T) {
 	}
 }
 
+func TestPipelineStepMarshalJSONKeepsEmptyTopLevelResultName(t *testing.T) {
+	step := PipelineStep{
+		UUID: "{123e4567-e89b-12d3-a456-426614174000}",
+		Name: "lint",
+	}
+	step.State.Name = "PENDING"
+
+	out, err := json.Marshal(step)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(out, &obj); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	rawResult, ok := obj["result"]
+	if !ok {
+		t.Fatalf("expected top-level result in JSON: %s", out)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rawResult, &got); err != nil {
+		t.Fatalf("result: %v", err)
+	}
+	name, ok := got["name"]
+	if !ok {
+		t.Fatalf("result.name missing from JSON: %s", out)
+	}
+	if name != "" {
+		t.Fatalf("result.name = %q, want empty string", name)
+	}
+}
+
 func TestPipelineStepStatus(t *testing.T) {
 	tests := []struct {
 		name   string
