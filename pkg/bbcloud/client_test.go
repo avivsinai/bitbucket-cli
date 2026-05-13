@@ -30,8 +30,82 @@ func TestPipelineStepJSONNestedStateResult(t *testing.T) {
 	if step.State.Name != "COMPLETED" || step.State.Result.Name != "FAILED" {
 		t.Fatalf("state not parsed: %+v", step.State)
 	}
+	if step.Result.Name != "FAILED" {
+		t.Fatalf("compatibility Result.Name = %q, want FAILED", step.Result.Name)
+	}
 	if got := step.Status(); got != "COMPLETED FAILED" {
 		t.Fatalf("Status() = %q, want COMPLETED FAILED", got)
+	}
+	out, err := json.Marshal(step)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(out, &obj); err != nil {
+		t.Fatalf("round-trip: %v", err)
+	}
+	rawResult, ok := obj["result"]
+	if !ok {
+		t.Fatalf("marshaled step JSON missing top-level result: %s", out)
+	}
+	var resultObj struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(rawResult, &resultObj); err != nil {
+		t.Fatalf("result object: %v", err)
+	}
+	if resultObj.Name != "FAILED" {
+		t.Fatalf("result.name = %q, want FAILED", resultObj.Name)
+	}
+}
+
+func TestPipelineStepJSONLegacyTopLevelResult(t *testing.T) {
+	// Some payloads may carry the outcome only at the top-level result field.
+	const payload = `{
+		"uuid": "{123e4567-e89b-12d3-a456-426614174000}",
+		"name": "lint",
+		"state": {"name": "COMPLETED"},
+		"result": {"name": "SUCCESSFUL"}
+	}`
+	var step PipelineStep
+	if err := json.Unmarshal([]byte(payload), &step); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if step.State.Result.Name != "SUCCESSFUL" || step.Result.Name != "SUCCESSFUL" {
+		t.Fatalf("expected state and alias result: state=%+v result=%+v", step.State.Result, step.Result)
+	}
+	if got := step.Status(); got != "COMPLETED SUCCESSFUL" {
+		t.Fatalf("Status() = %q, want COMPLETED SUCCESSFUL", got)
+	}
+}
+
+func TestPipelineStepMarshalJSONTopLevelResultFromStateOnly(t *testing.T) {
+	step := PipelineStep{
+		UUID: "{123e4567-e89b-12d3-a456-426614174000}",
+		Name: "lint",
+	}
+	step.State.Name = "COMPLETED"
+	step.State.Result.Name = "SUCCESSFUL"
+	out, err := json.Marshal(step)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(out, &obj); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	rawResult, ok := obj["result"]
+	if !ok {
+		t.Fatalf("expected top-level result in JSON: %s", out)
+	}
+	var got struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(rawResult, &got); err != nil {
+		t.Fatalf("result: %v", err)
+	}
+	if got.Name != "SUCCESSFUL" {
+		t.Fatalf("result.name = %q", got.Name)
 	}
 }
 
