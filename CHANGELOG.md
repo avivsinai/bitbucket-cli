@@ -5,6 +5,11 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Corrected the `bkt` skill's structured-output example: piping
+  `bkt pr list --json` to `jq '.[].title'` fails because the command
+  returns an object keyed by `pull_requests`, not a bare array. The
+  example now uses `jq '.pull_requests[].title'`.
 
 ## [0.26.6] - 2026-05-13
 ### Fixed

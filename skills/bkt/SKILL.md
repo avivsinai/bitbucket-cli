@@ -115,7 +115,7 @@ bkt pr checkout 42               # Creates pr/42 branch
 All commands support `--json`, `--yaml`, `--jq`, and `--template`:
 
 ```bash
-bkt pr list --mine --json | jq '.[].title'
+bkt pr list --mine --json | jq '.pull_requests[].title'
 ```
 
 ### Raw API escape hatch
