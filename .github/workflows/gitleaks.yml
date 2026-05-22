@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  pull-requests: read
   contents: read
   security-events: write
   actions: read
