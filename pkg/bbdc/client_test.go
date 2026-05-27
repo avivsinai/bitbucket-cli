@@ -34,6 +34,30 @@ func TestNewRequiresBaseURL(t *testing.T) {
 	}
 }
 
+func TestNewRequestAddsNoCheckHeaderToMutatingMethods(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		t.Run(method, func(t *testing.T) {
+			req, err := client.HTTP().NewRequest(context.Background(), method, "/rest/api/1.0/projects", nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			if got := req.Header.Get("X-Atlassian-Token"); got != "no-check" {
+				t.Fatalf("X-Atlassian-Token = %q, want no-check", got)
+			}
+		})
+	}
+
+	req, err := client.HTTP().NewRequest(context.Background(), http.MethodGet, "/rest/api/1.0/projects", nil)
+	if err != nil {
+		t.Fatalf("NewRequest GET: %v", err)
+	}
+	if got := req.Header.Get("X-Atlassian-Token"); got != "" {
+		t.Fatalf("GET X-Atlassian-Token = %q, want empty", got)
+	}
+}
+
 func TestListRepositoriesPaginates(t *testing.T) {
 	var hits int32
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -3,6 +3,7 @@ package bbdc
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -25,6 +26,8 @@ type Client struct {
 	http *httpx.Client
 }
 
+const atlassianTokenNoCheck = "no-check"
+
 // HTTP exposes the underlying HTTP client for advanced scenarios.
 func (c *Client) HTTP() *httpx.Client {
 	return c.http
@@ -44,12 +47,29 @@ func New(opts Options) (*Client, error) {
 		UserAgent:   "bkt-cli",
 		EnableCache: opts.EnableCache,
 		Retry:       opts.Retry,
+		RequestHook: addNoCheckHeader,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{http: httpClient}, nil
+}
+
+func addNoCheckHeader(req *http.Request) {
+	if req == nil || !requiresNoCheck(req.Method) {
+		return
+	}
+	req.Header.Set("X-Atlassian-Token", atlassianTokenNoCheck)
+}
+
+func requiresNoCheck(method string) bool {
+	switch strings.ToUpper(method) {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 // User represents a Bitbucket user.
