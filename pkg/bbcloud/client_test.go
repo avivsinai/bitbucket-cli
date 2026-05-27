@@ -265,6 +265,56 @@ func TestListPipelinesRespectsLimit(t *testing.T) {
 	}
 }
 
+func TestGetPipelineByBuildNumberUsesDirectEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repositories/work/repo/pipelines/42" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Pipeline{UUID: "{22222222-2222-4222-8222-222222222222}", BuildNumber: 42})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	pipeline, err := client.GetPipelineByBuildNumber(context.Background(), "work", "repo", 42)
+	if err != nil {
+		t.Fatalf("GetPipelineByBuildNumber: %v", err)
+	}
+	if pipeline.UUID != "{22222222-2222-4222-8222-222222222222}" {
+		t.Fatalf("UUID = %q, want {22222222-2222-4222-8222-222222222222}", pipeline.UUID)
+	}
+}
+
+func TestGetPipelineByBuildNumberReturnsDirectEndpointError(t *testing.T) {
+	var hits int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		if r.URL.Path != "/repositories/work/repo/pipelines/42" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		http.Error(w, `{"error":{"message":"Not found"}}`, http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.GetPipelineByBuildNumber(context.Background(), "work", "repo", 42)
+	if err == nil {
+		t.Fatal("expected direct endpoint error")
+	}
+	if hits != 1 {
+		t.Fatalf("expected 1 request, got %d", hits)
+	}
+}
+
 func TestCommitStatuses(t *testing.T) {
 	tests := []struct {
 		name          string

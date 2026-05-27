@@ -283,18 +283,10 @@ func runPipelineList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) 
 }
 
 // resolvePipeline fetches a pipeline by build number or UUID.
-// If the identifier looks like a number, tries build number first, then falls back to UUID.
 func resolvePipeline(ctx context.Context, client *bbcloud.Client, workspace, repo, identifier string) (*bbcloud.Pipeline, error) {
-	// Try parsing as build number first
 	if buildNum, err := strconv.Atoi(strings.TrimPrefix(identifier, "#")); err == nil {
-		pipeline, err := client.GetPipelineByBuildNumber(ctx, workspace, repo, buildNum)
-		if err == nil {
-			return pipeline, nil
-		}
-		// If build number lookup failed, fall back to treating as UUID
-		// (in case the numeric string is actually part of a UUID)
+		return client.GetPipelineByBuildNumber(ctx, workspace, repo, buildNum)
 	}
-	// Treat as UUID
 	return client.GetPipeline(ctx, workspace, repo, identifier)
 }
 
