@@ -174,6 +174,10 @@ func TestPRApproveDataCenter(t *testing.T) {
 		}
 
 		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pull-requests/42/approve") {
+			if got := r.Header.Get("X-Atlassian-Token"); got != "no-check" {
+				http.Error(w, "missing no-check header", http.StatusForbidden)
+				return
+			}
 			approveCalled = true
 			w.WriteHeader(http.StatusOK)
 			return
@@ -209,6 +213,10 @@ func TestPRApproveCloud(t *testing.T) {
 		}
 
 		if r.Method == "POST" && r.URL.Path == "/repositories/myworkspace/my-repo/pullrequests/42/approve" {
+			if got := r.Header.Get("X-Atlassian-Token"); got != "" {
+				http.Error(w, "unexpected no-check header", http.StatusBadRequest)
+				return
+			}
 			approveCalled = true
 			w.WriteHeader(http.StatusOK)
 			return
@@ -253,6 +261,10 @@ func TestPRMergeDataCenter(t *testing.T) {
 				"version": 3,
 			})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/pull-requests/42/merge"):
+			if got := r.Header.Get("X-Atlassian-Token"); got != "no-check" {
+				http.Error(w, "missing no-check header", http.StatusForbidden)
+				return
+			}
 			_ = json.NewDecoder(r.Body).Decode(&mergeBody)
 			w.WriteHeader(http.StatusOK)
 		default:
@@ -296,6 +308,10 @@ func TestPRMergeCloud(t *testing.T) {
 		}
 
 		if r.Method == "POST" && r.URL.Path == "/repositories/myworkspace/my-repo/pullrequests/42/merge" {
+			if got := r.Header.Get("X-Atlassian-Token"); got != "" {
+				http.Error(w, "unexpected no-check header", http.StatusBadRequest)
+				return
+			}
 			_ = json.NewDecoder(r.Body).Decode(&mergeBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{})

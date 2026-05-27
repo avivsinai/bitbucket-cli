@@ -39,6 +39,7 @@ type Client struct {
 	// a new access token. The client retries the original request once with the
 	// updated credentials.
 	tokenRefresher func(ctx context.Context) (string, error)
+	requestHook    func(*http.Request)
 
 	debug bool
 }
@@ -61,6 +62,10 @@ type Options struct {
 	// credentials and retries the request once. If the retry also returns 401
 	// the error is returned to the caller without a second refresh attempt.
 	TokenRefresher func(ctx context.Context) (string, error)
+
+	// RequestHook can apply host-specific defaults after standard headers and
+	// auth are set.
+	RequestHook func(*http.Request)
 }
 
 // RetryPolicy defines exponential backoff characteristics for retries.
@@ -144,6 +149,7 @@ func New(opts Options) (*Client, error) {
 	}
 	client.retry = policy
 	client.tokenRefresher = opts.TokenRefresher
+	client.requestHook = opts.RequestHook
 
 	return client, nil
 }
@@ -228,6 +234,7 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 	req.Header.Set("User-Agent", c.userAgent)
 
 	c.applyAuth(req)
+	c.applyRequestHook(req)
 
 	return req, nil
 }
@@ -243,6 +250,12 @@ func (c *Client) applyAuth(req *http.Request) {
 		if c.username != "" || c.password != "" {
 			req.SetBasicAuth(c.username, c.password)
 		}
+	}
+}
+
+func (c *Client) applyRequestHook(req *http.Request) {
+	if c.requestHook != nil {
+		c.requestHook(req)
 	}
 }
 
@@ -765,6 +778,7 @@ func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, f
 	}
 
 	c.applyAuth(req)
+	c.applyRequestHook(req)
 
 	return req, nil
 }
