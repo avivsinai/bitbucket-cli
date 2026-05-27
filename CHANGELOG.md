@@ -6,6 +6,9 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 ### Fixed
+- Bitbucket Data Center mutating requests now send
+  `X-Atlassian-Token: no-check`, fixing 403 XSRF failures for first-class
+  commands such as `bkt pr approve` and `bkt pr merge`.
 - Corrected the `bkt` skill's structured-output example: piping
   `bkt pr list --json` to `jq '.[].title'` fails because the command
   returns an object keyed by `pull_requests`, not a bare array. The
