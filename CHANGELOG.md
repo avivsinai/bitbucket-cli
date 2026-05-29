@@ -5,10 +5,13 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.27.1] - 2026-05-29
 ### Fixed
 - Fixed `bkt pipeline view <build-number>` and `bkt pipeline logs <build-number>`
   so numeric build numbers use the Bitbucket Cloud build-number lookup without
   falling through to UUID validation.
+
 
 ## [0.27.0] - 2026-05-29
 ### Added
@@ -532,7 +535,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.7...v0.27.0
 [0.26.7]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.6...v0.26.7
 [0.26.6]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.5...v0.26.6
