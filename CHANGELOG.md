@@ -5,6 +5,10 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Fixed `bkt pipeline view <build-number>` and `bkt pipeline logs <build-number>`
+  so numeric build numbers use the Bitbucket Cloud build-number lookup without
+  falling through to UUID validation.
 
 ## [0.27.0] - 2026-05-29
 ### Added

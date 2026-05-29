@@ -461,7 +461,13 @@ func (c *Client) GetPipeline(ctx context.Context, workspace, repoSlug, uuid stri
 
 // GetPipelineByBuildNumber fetches a pipeline by its build number.
 func (c *Client) GetPipelineByBuildNumber(ctx context.Context, workspace, repoSlug string, buildNumber int) (*Pipeline, error) {
-	// Bitbucket Cloud API supports querying by build number via the same endpoint
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if buildNumber <= 0 {
+		return nil, fmt.Errorf("pipeline build number must be positive")
+	}
+
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%d",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
