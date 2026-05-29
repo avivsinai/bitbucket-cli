@@ -154,6 +154,57 @@ func TestPRTaskCompleteCloud(t *testing.T) {
 	}
 }
 
+// DC: reopen fetches the version then PUTs state=OPEN (the resolve=false path).
+func TestPRTaskReopenDC(t *testing.T) {
+	var putBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 99, "version": 4, "state": "RESOLVED"})
+		case http.MethodPut:
+			_ = json.NewDecoder(r.Body).Decode(&putBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 99, "version": 5, "state": "OPEN"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "task", "reopen", "42", "99")
+	if err != nil {
+		t.Fatalf("pr task reopen: %v (stderr=%s)", err, stderr)
+	}
+	if putBody["state"] != "OPEN" {
+		t.Errorf("PUT body = %#v, want state=OPEN", putBody)
+	}
+	if !strings.Contains(stdout, "Reopened task 99") {
+		t.Errorf("unexpected output: %s", stdout)
+	}
+}
+
+// Cloud: reopen PUTs state=UNRESOLVED to the task resource.
+func TestPRTaskReopenCloud(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 9, "state": "UNRESOLVED", "content": map[string]string{"raw": "x"}})
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "task", "reopen", "42", "9")
+	if err != nil {
+		t.Fatalf("pr task reopen: %v (stderr=%s)", err, stderr)
+	}
+	if gotBody["state"] != "UNRESOLVED" {
+		t.Errorf("body = %#v, want state=UNRESOLVED", gotBody)
+	}
+	if !strings.Contains(stdout, "Reopened task 9") {
+		t.Errorf("unexpected output: %s", stdout)
+	}
+}
+
 // --json is honored on create and complete, not just list (the whole command
 // family must emit the structured shape for automation).
 func TestPRTaskJSONOutput(t *testing.T) {
