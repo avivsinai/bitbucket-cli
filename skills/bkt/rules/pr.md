@@ -48,7 +48,7 @@ bkt pr <command> [flags]
 | [reopen](#bkt-pr-reopen) | Reopen a declined pull request | `--project`, `--repo`, `--workspace` |
 | [reviewer-group](#bkt-pr-reviewer-group) | Manage default reviewer groups *(DC)* | — |
 | [suggestion](#bkt-pr-suggestion) | Apply or preview a code suggestion *(DC)* | `--preview`, `--project`, `--repo` |
-| [task](#bkt-pr-task) | Manage pull request tasks *(DC)* | — |
+| [task](#bkt-pr-task) | Manage pull request tasks (DC and Cloud) | `--task-api` |
 | [view](#bkt-pr-view) | Show details for a pull request | `--project`, `--repo`, `--web`, `--workspace` |
 
 ## bkt pr approve
@@ -1192,10 +1192,17 @@ bkt pr suggestion <id> <comment-id> <suggestion-id> [flags]
 
 ## bkt pr task
 
-List, create, complete, or reopen tasks on a pull request. Tasks track
-action items that must be resolved before merging.
+List, create, complete, or reopen tasks on a pull request.
 
-Data Center only. Not yet supported on Cloud.
+Bitbucket Cloud exposes tasks as a first-class pull request resource. Bitbucket
+Data Center 7.2+ models them as blocker comments; older servers use the legacy
+/tasks API. The --task-api flag selects the Data Center model:
+
+  auto             detect the server version and pick automatically (default)
+  blocker-comments force the Data Center 7.2+ blocker-comments model
+  legacy           force the pre-7.2 /tasks model (create requires --comment-id)
+
+The flag is ignored on Cloud.
 
 ```
 bkt pr task <command> [flags]
@@ -1207,26 +1214,27 @@ bkt pr task <command> [flags]
 # List tasks on a pull request
   bkt pr task list 42
 
-  # Create a new task
+  # Create a task
   bkt pr task create 42 --text "Update the changelog"
 
-  # Mark a task as complete
-  bkt pr task complete 42 99
+  # Create a legacy DC task anchored to a comment
+  bkt pr task create 42 --text "Fix this" --task-api legacy --comment-id 1001
 
-  # Reopen a resolved task
+  # Complete / reopen a task
+  bkt pr task complete 42 99
   bkt pr task reopen 42 99
 ```
 
 | Subcommand | Description |
 |---|---|
-| complete | Complete a pull request task (DC only) |
-| create | Create a task on a pull request (DC only) |
-| list | List tasks for a pull request (DC only) |
-| reopen | Reopen a resolved task (DC only) |
+| complete | Complete (resolve) a pull request task |
+| create | Create a task on a pull request |
+| list | List tasks for a pull request |
+| reopen | Reopen a resolved pull request task |
 
 ## bkt pr task complete
 
-Mark a pull request task as completed (resolved). Data Center only.
+Complete (resolve) a pull request task
 
 ### Usage
 
@@ -1238,8 +1246,9 @@ bkt pr task complete <id> <task-id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
-| `--project` |  | Bitbucket project key override |
+| `--project` |  | Bitbucket project key override (DC) |
 | `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
 
@@ -1249,19 +1258,19 @@ bkt pr task complete <id> <task-id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
+| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 
 ### Examples
 
 ```bash
-# Complete task 99 on pull request #42
-  bkt pr task complete 42 99
+bkt pr task complete 42 99
 ```
 
 ## bkt pr task create
 
-Create a new task on a pull request with the specified text. Data Center only.
+Create a task on a pull request
 
 ### Usage
 
@@ -1273,9 +1282,11 @@ bkt pr task create <id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
-| `--project` |  | Bitbucket project key override |
+| `--comment-id` |  | Comment to anchor the task to (required for --task-api legacy) |
+| `--project` |  | Bitbucket project key override (DC) |
 | `--repo` |  | Repository slug override |
 | `--text` |  | Task text |
+| `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
 
@@ -1285,19 +1296,19 @@ bkt pr task create <id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
+| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 
 ### Examples
 
 ```bash
-# Create a task
-  bkt pr task create 42 --text "Add unit tests for the new endpoint"
+bkt pr task create 42 --text "Add unit tests"
 ```
 
 ## bkt pr task list
 
-List all tasks on a pull request, showing each task's state (OPEN/RESOLVED), ID, and text. Data Center only.
+List tasks for a pull request
 
 ### Usage
 
@@ -1309,8 +1320,9 @@ bkt pr task list <id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
-| `--project` |  | Bitbucket project key override |
+| `--project` |  | Bitbucket project key override (DC) |
 | `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
 
@@ -1320,19 +1332,19 @@ bkt pr task list <id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
+| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 
 ### Examples
 
 ```bash
-# List tasks on pull request #42
-  bkt pr task list 42
+bkt pr task list 42
 ```
 
 ## bkt pr task reopen
 
-Reopen a previously completed (resolved) task on a pull request. Data Center only.
+Reopen a resolved pull request task
 
 ### Usage
 
@@ -1344,8 +1356,9 @@ bkt pr task reopen <id> <task-id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
-| `--project` |  | Bitbucket project key override |
+| `--project` |  | Bitbucket project key override (DC) |
 | `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
 
@@ -1355,14 +1368,14 @@ bkt pr task reopen <id> <task-id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
+| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 
 ### Examples
 
 ```bash
-# Reopen task 99 on pull request #42
-  bkt pr task reopen 42 99
+bkt pr task reopen 42 99
 ```
 
 ## bkt pr view
