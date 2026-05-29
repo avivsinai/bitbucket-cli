@@ -41,16 +41,31 @@ func pullRequestTasksPath(workspace, repoSlug string, prID int) string {
 	)
 }
 
+func validatePullRequestTaskTarget(workspace, repoSlug string, prID int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if prID <= 0 {
+		return fmt.Errorf("pull request id must be positive")
+	}
+	return nil
+}
+
 // ListPullRequestTasks lists tasks on a pull request, following pagination. A
 // limit of 0 returns all tasks.
 func (c *Client) ListPullRequestTasks(ctx context.Context, workspace, repoSlug string, prID, limit int) ([]PullRequestTask, error) {
-	if workspace == "" || repoSlug == "" {
-		return nil, fmt.Errorf("workspace and repository slug are required")
+	if err := validatePullRequestTaskTarget(workspace, repoSlug, prID); err != nil {
+		return nil, err
 	}
 
+	// Bitbucket Cloud's pagelen ranges from 10 to 100. Request within that band
+	// and truncate the accumulated result to the caller's limit below.
 	pageLen := limit
-	if pageLen <= 0 || pageLen > 100 {
+	switch {
+	case pageLen <= 0 || pageLen > 100:
 		pageLen = 100
+	case pageLen < 10:
+		pageLen = 10
 	}
 
 	path := fmt.Sprintf("%s?pagelen=%d", pullRequestTasksPath(workspace, repoSlug, prID), pageLen)
@@ -90,8 +105,8 @@ func (c *Client) ListPullRequestTasks(ctx context.Context, workspace, repoSlug s
 
 // CreatePullRequestTask creates a standalone PR-level task with the given text.
 func (c *Client) CreatePullRequestTask(ctx context.Context, workspace, repoSlug string, prID int, text string) (*PullRequestTask, error) {
-	if workspace == "" || repoSlug == "" {
-		return nil, fmt.Errorf("workspace and repository slug are required")
+	if err := validatePullRequestTaskTarget(workspace, repoSlug, prID); err != nil {
+		return nil, err
 	}
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Errorf("task text is required")
@@ -117,8 +132,11 @@ func (c *Client) CreatePullRequestTask(ctx context.Context, workspace, repoSlug 
 // SetPullRequestTaskState resolves (resolved=true) or reopens (resolved=false)
 // a task by updating its state.
 func (c *Client) SetPullRequestTaskState(ctx context.Context, workspace, repoSlug string, prID, taskID int, resolved bool) (*PullRequestTask, error) {
-	if workspace == "" || repoSlug == "" {
-		return nil, fmt.Errorf("workspace and repository slug are required")
+	if err := validatePullRequestTaskTarget(workspace, repoSlug, prID); err != nil {
+		return nil, err
+	}
+	if taskID <= 0 {
+		return nil, fmt.Errorf("task id must be positive")
 	}
 
 	state := TaskStateUnresolved

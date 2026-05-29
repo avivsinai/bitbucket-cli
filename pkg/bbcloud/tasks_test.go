@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
@@ -128,6 +130,76 @@ func TestSetPullRequestTaskState(t *testing.T) {
 	}
 }
 
+// A small requested limit is clamped up to Bitbucket Cloud's minimum pagelen of
+// 10, while the returned slice is still truncated to the caller's limit.
+func TestListPullRequestTasksClampsPagelen(t *testing.T) {
+	var gotPagelen string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPagelen = r.URL.Query().Get("pagelen")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{"id": 1, "state": "UNRESOLVED", "content": map[string]string{"raw": "a"}},
+				{"id": 2, "state": "UNRESOLVED", "content": map[string]string{"raw": "b"}},
+			},
+		})
+	}))
+
+	tasks, err := client.ListPullRequestTasks(context.Background(), "ws", "repo", 42, 1)
+	if err != nil {
+		t.Fatalf("ListPullRequestTasks: %v", err)
+	}
+	if gotPagelen != "10" {
+		t.Errorf("pagelen = %q, want 10 (clamped minimum)", gotPagelen)
+	}
+	if len(tasks) != 1 {
+		t.Errorf("len(tasks) = %d, want 1 (truncated to limit)", len(tasks))
+	}
+}
+
+// Bitbucket Cloud returns an absolute next URL under /2.0; following it must not
+// double the base path (e.g. /2.0/2.0/...).
+func TestListPullRequestTasksFollowsAbsoluteNext(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "2" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{{"id": 2, "state": "RESOLVED", "content": map[string]string{"raw": "b"}}},
+			})
+			return
+		}
+		next := "http://" + r.Host + "/2.0/repositories/ws/repo/pullrequests/42/tasks?page=2&pagelen=100"
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{{"id": 1, "state": "UNRESOLVED", "content": map[string]string{"raw": "a"}}},
+			"next":   next,
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := bbcloud.New(bbcloud.Options{BaseURL: srv.URL + "/2.0", Username: "u", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := client.ListPullRequestTasks(context.Background(), "ws", "repo", 42, 0)
+	if err != nil {
+		t.Fatalf("ListPullRequestTasks: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("len(tasks) = %d, want 2", len(tasks))
+	}
+	for _, p := range paths {
+		if strings.Contains(p, "/2.0/2.0/") {
+			t.Errorf("base path doubled: %q", p)
+		}
+	}
+	if len(paths) != 2 || paths[1] != "/2.0/repositories/ws/repo/pullrequests/42/tasks" {
+		t.Errorf("paths = %v, want second page under a single /2.0", paths)
+	}
+}
+
 func TestCloudTaskValidation(t *testing.T) {
 	client, err := bbcloud.New(bbcloud.Options{BaseURL: "http://localhost", Username: "u", Token: "t"})
 	if err != nil {
@@ -141,5 +213,11 @@ func TestCloudTaskValidation(t *testing.T) {
 	}
 	if _, err := client.ListPullRequestTasks(context.Background(), "ws", "", 1, 0); err == nil {
 		t.Error("expected error for empty repo")
+	}
+	if _, err := client.ListPullRequestTasks(context.Background(), "ws", "repo", 0, 0); err == nil {
+		t.Error("expected error for non-positive pull request id")
+	}
+	if _, err := client.SetPullRequestTaskState(context.Background(), "ws", "repo", 42, 0, true); err == nil {
+		t.Error("expected error for non-positive task id")
 	}
 }

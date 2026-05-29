@@ -126,6 +126,95 @@ func TestPRTaskCompleteDC(t *testing.T) {
 	}
 }
 
+// Cloud: complete PUTs state=RESOLVED to the task resource.
+func TestPRTaskCompleteCloud(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 9, "state": "RESOLVED", "content": map[string]string{"raw": "x"}})
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "task", "complete", "42", "9")
+	if err != nil {
+		t.Fatalf("pr task complete: %v (stderr=%s)", err, stderr)
+	}
+	if gotMethod != http.MethodPut || gotPath != "/repositories/myworkspace/my-repo/pullrequests/42/tasks/9" {
+		t.Errorf("method/path = %s %q", gotMethod, gotPath)
+	}
+	if gotBody["state"] != "RESOLVED" {
+		t.Errorf("body = %#v, want state=RESOLVED", gotBody)
+	}
+	if !strings.Contains(stdout, "Completed task 9") {
+		t.Errorf("unexpected output: %s", stdout)
+	}
+}
+
+// --json is honored on create and complete, not just list (the whole command
+// family must emit the structured shape for automation).
+func TestPRTaskJSONOutput(t *testing.T) {
+	t.Run("dc create", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 77, "text": "x", "state": "OPEN"})
+		}))
+		t.Cleanup(srv.Close)
+		stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "--json", "pr", "task", "create", "42", "--text", "x")
+		if err != nil {
+			t.Fatalf("create --json: %v (stderr=%s)", err, stderr)
+		}
+		assertTaskJSON(t, stdout, 77, "OPEN")
+	})
+
+	t.Run("cloud complete", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 9, "state": "RESOLVED", "content": map[string]string{"raw": "x"}})
+		}))
+		t.Cleanup(srv.Close)
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "--json", "pr", "task", "complete", "42", "9")
+		if err != nil {
+			t.Fatalf("complete --json: %v (stderr=%s)", err, stderr)
+		}
+		assertTaskJSON(t, stdout, 9, "RESOLVED")
+	})
+}
+
+func assertTaskJSON(t *testing.T, stdout string, wantID int, wantState string) {
+	t.Helper()
+	var payload struct {
+		Task struct {
+			ID    int    `json:"id"`
+			State string `json:"state"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, stdout)
+	}
+	if payload.Task.ID != wantID || payload.Task.State != wantState {
+		t.Errorf("task = %+v, want id=%d state=%s", payload.Task, wantID, wantState)
+	}
+}
+
+// Non-positive PR and task IDs are rejected before any network call.
+func TestPRTaskRejectsNonPositiveIDs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request to %s %s", r.Method, r.URL.Path)
+	}))
+	t.Cleanup(srv.Close)
+
+	if _, _, err := runCLI(t, dcConfig(srv.URL), "pr", "task", "list", "0"); err == nil {
+		t.Error("expected error for PR id 0")
+	}
+	if _, _, err := runCLI(t, dcConfig(srv.URL), "pr", "task", "complete", "42", "0"); err == nil {
+		t.Error("expected error for task id 0")
+	}
+}
+
 // Regression: the task command must not define its own PersistentPreRunE, which
 // would shadow the root hook and skip global output-flag validation.
 func TestPRTaskRespectsRootOutputValidation(t *testing.T) {

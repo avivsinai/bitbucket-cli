@@ -33,10 +33,22 @@ type taskView struct {
 	Text  string `json:"text"`
 }
 
+func dcTaskView(t bbdc.PullRequestTask) taskView {
+	return taskView{ID: t.ID, State: t.State, Text: t.Text}
+}
+
+func cloudTaskView(t bbcloud.PullRequestTask) taskView {
+	state := t.State
+	if state == bbcloud.TaskStateUnresolved {
+		state = "OPEN"
+	}
+	return taskView{ID: t.ID, State: state, Text: t.Content.Raw}
+}
+
 func dcTaskViews(tasks []bbdc.PullRequestTask) []taskView {
 	views := make([]taskView, 0, len(tasks))
 	for _, t := range tasks {
-		views = append(views, taskView{ID: t.ID, State: t.State, Text: t.Text})
+		views = append(views, dcTaskView(t))
 	}
 	return views
 }
@@ -44,11 +56,7 @@ func dcTaskViews(tasks []bbdc.PullRequestTask) []taskView {
 func cloudTaskViews(tasks []bbcloud.PullRequestTask) []taskView {
 	views := make([]taskView, 0, len(tasks))
 	for _, t := range tasks {
-		state := t.State
-		if state == bbcloud.TaskStateUnresolved {
-			state = "OPEN"
-		}
-		views = append(views, taskView{ID: t.ID, State: state, Text: t.Content.Raw})
+		views = append(views, cloudTaskView(t))
 	}
 	return views
 }
@@ -159,7 +167,7 @@ func newTaskReopenCmd(f *cmdutil.Factory, opts *taskOptions) *cobra.Command {
 
 func parsePRID(arg string) (int, error) {
 	id, err := strconv.Atoi(arg)
-	if err != nil {
+	if err != nil || id <= 0 {
 		return 0, fmt.Errorf("invalid pull request id %q", arg)
 	}
 	return id, nil
@@ -171,7 +179,7 @@ func runTaskToggle(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, ar
 		return err
 	}
 	taskID, err := strconv.Atoi(args[1])
-	if err != nil {
+	if err != nil || taskID <= 0 {
 		return fmt.Errorf("invalid task id %q", args[1])
 	}
 	opts.ID = prID
@@ -284,7 +292,10 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 	ctx, cancel := context.WithTimeout(cmd.Context(), taskRequestTimeout)
 	defer cancel()
 
-	var created int
+	var (
+		view    taskView
+		payload = map[string]any{}
+	)
 
 	switch host.Kind {
 	case "dc":
@@ -300,7 +311,9 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		if err != nil {
 			return err
 		}
-		created = task.ID
+		view = dcTaskView(*task)
+		payload["project"] = projectKey
+		payload["repo"] = repoSlug
 	case "cloud":
 		workspace, repoSlug, err := cloudContext(opts, ctxCfg.Workspace, ctxCfg.DefaultRepo)
 		if err != nil {
@@ -314,13 +327,18 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		if err != nil {
 			return err
 		}
-		created = task.ID
+		view = cloudTaskView(*task)
+		payload["workspace"] = workspace
+		payload["repo"] = repoSlug
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
 
-	_, err = fmt.Fprintf(ios.Out, "✓ Created task %d\n", created)
-	return err
+	payload["task"] = view
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		_, err := fmt.Fprintf(ios.Out, "✓ Created task %d\n", view.ID)
+		return err
+	})
 }
 
 func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, resolve bool) error {
@@ -336,6 +354,11 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 	ctx, cancel := context.WithTimeout(cmd.Context(), taskRequestTimeout)
 	defer cancel()
 
+	var (
+		view    taskView
+		payload = map[string]any{}
+	)
+
 	switch host.Kind {
 	case "dc":
 		projectKey, repoSlug, err := dcContext(opts, ctxCfg.ProjectKey, ctxCfg.DefaultRepo)
@@ -346,9 +369,13 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 		if err != nil {
 			return err
 		}
-		if _, err := client.SetPullRequestTaskState(ctx, projectKey, repoSlug, opts.ID, opts.TaskID, resolve); err != nil {
+		task, err := client.SetPullRequestTaskState(ctx, projectKey, repoSlug, opts.ID, opts.TaskID, resolve)
+		if err != nil {
 			return err
 		}
+		view = dcTaskView(*task)
+		payload["project"] = projectKey
+		payload["repo"] = repoSlug
 	case "cloud":
 		workspace, repoSlug, err := cloudContext(opts, ctxCfg.Workspace, ctxCfg.DefaultRepo)
 		if err != nil {
@@ -358,9 +385,13 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 		if err != nil {
 			return err
 		}
-		if _, err := client.SetPullRequestTaskState(ctx, workspace, repoSlug, opts.ID, opts.TaskID, resolve); err != nil {
+		task, err := client.SetPullRequestTaskState(ctx, workspace, repoSlug, opts.ID, opts.TaskID, resolve)
+		if err != nil {
 			return err
 		}
+		view = cloudTaskView(*task)
+		payload["workspace"] = workspace
+		payload["repo"] = repoSlug
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
@@ -369,6 +400,9 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 	if resolve {
 		verb = "Completed"
 	}
-	_, err = fmt.Fprintf(ios.Out, "✓ %s task %d\n", verb, opts.TaskID)
-	return err
+	payload["task"] = view
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		_, err := fmt.Fprintf(ios.Out, "✓ %s task %d\n", verb, view.ID)
+		return err
+	})
 }
