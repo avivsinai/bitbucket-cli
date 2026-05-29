@@ -80,6 +80,32 @@ func TestPRTaskRespectsRootOutputValidation(t *testing.T) {
 	}
 }
 
+// --comment-id is rejected when it carries no meaning (Cloud, and DC
+// blocker-comments mode) rather than being silently ignored.
+func TestPRTaskCreateRejectsCommentIDOutsideLegacy(t *testing.T) {
+	t.Run("cloud", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("unexpected request to %s %s", r.Method, r.URL.Path)
+		}))
+		t.Cleanup(srv.Close)
+		_, _, err := runCLI(t, cloudConfig(srv.URL), "pr", "task", "create", "42", "--text", "x", "--comment-id", "7")
+		if err == nil || !strings.Contains(err.Error(), "comment-id") {
+			t.Fatalf("err = %v, want --comment-id rejection", err)
+		}
+	})
+
+	t.Run("dc blocker-comments", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("unexpected request to %s %s", r.Method, r.URL.Path)
+		}))
+		t.Cleanup(srv.Close)
+		_, _, err := runCLI(t, dcConfig(srv.URL), "pr", "task", "create", "42", "--text", "x", "--task-api", "blocker-comments", "--comment-id", "7")
+		if err == nil || !strings.Contains(err.Error(), "comment-id") {
+			t.Fatalf("err = %v, want --comment-id rejection", err)
+		}
+	})
+}
+
 // DC legacy create without --comment-id fails fast with a targeted error and
 // never reaches the network.
 func TestPRTaskCreateLegacyRequiresCommentID(t *testing.T) {

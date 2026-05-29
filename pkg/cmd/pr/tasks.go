@@ -16,6 +16,11 @@ import (
 
 const taskRequestTimeout = 10 * time.Second
 
+// errCommentIDOnlyLegacy is returned when --comment-id is supplied in a context
+// where it carries no meaning (Cloud tasks and DC blocker comments are not
+// anchored to a comment).
+var errCommentIDOnlyLegacy = fmt.Errorf("--comment-id only applies to legacy Data Center tasks (--task-api legacy)")
+
 type taskOptions struct {
 	Project   string
 	Repo      string
@@ -302,6 +307,7 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 	if strings.TrimSpace(opts.Text) == "" {
 		return fmt.Errorf("task text is required")
 	}
+	commentIDSet := cmd.Flags().Changed("comment-id")
 	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, cmdutil.FlagValue(cmd, "context"))
 	if err != nil {
 		return err
@@ -333,6 +339,9 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 			}
 			task, err = client.CreateLegacyTask(ctx, projectKey, repoSlug, opts.ID, opts.CommentID, opts.Text)
 		} else {
+			if commentIDSet {
+				return errCommentIDOnlyLegacy
+			}
 			task, err = client.CreateBlockerComment(ctx, projectKey, repoSlug, opts.ID, opts.Text)
 		}
 		if err != nil {
@@ -340,6 +349,9 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		}
 		created = task.ID
 	case "cloud":
+		if commentIDSet {
+			return errCommentIDOnlyLegacy
+		}
 		workspace, repoSlug, err := cloudContext(opts, ctxCfg.Workspace, ctxCfg.DefaultRepo)
 		if err != nil {
 			return err
