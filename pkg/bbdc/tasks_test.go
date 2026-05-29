@@ -206,6 +206,56 @@ func TestSetPullRequestTaskStateFetchesVersionBeforePUT(t *testing.T) {
 	}
 }
 
+func TestSetPullRequestTaskStateReopensWithOpenState(t *testing.T) {
+	var hits int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		switch count {
+		case 1:
+			if r.Method != http.MethodGet {
+				t.Fatalf("method = %s, want GET", r.Method)
+			}
+			if r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/blocker-comments/99" {
+				t.Fatalf("path = %q, want blocker-comments get path", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 99, "version": 7, "text": "fix docs", "state": "RESOLVED"})
+		case 2:
+			if r.Method != http.MethodPut {
+				t.Fatalf("method = %s, want PUT", r.Method)
+			}
+			if r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/blocker-comments/99" {
+				t.Fatalf("path = %q, want blocker-comments put path", r.URL.Path)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if int(body["version"].(float64)) != 7 || body["state"] != "OPEN" {
+				t.Fatalf("body = %#v, want version=7 state=OPEN", body)
+			}
+			if _, ok := body["text"]; ok {
+				t.Fatalf("body should not update text: %#v", body)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 99, "version": 8, "state": "OPEN"})
+		default:
+			t.Fatalf("unexpected request %d", count)
+		}
+	}))
+
+	task, err := client.SetPullRequestTaskState(context.Background(), "PROJ", "repo", 42, 99, false)
+	if err != nil {
+		t.Fatalf("SetPullRequestTaskState: %v", err)
+	}
+	if task.ID != 99 || task.State != "OPEN" {
+		t.Fatalf("task = %+v, want id=99 state=OPEN", task)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d, want 2", hits)
+	}
+}
+
 func TestSetPullRequestTaskStateWrapsPUTFailure(t *testing.T) {
 	var hits int32
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
