@@ -257,32 +257,6 @@ func (c *Client) DeleteLegacyTask(ctx context.Context, taskID int) error {
 	return c.http.Do(req, nil)
 }
 
-// CreatePullRequestTask creates a blocker comment for the pull request.
-//
-// Deprecated: use CreateBlockerComment for Data Center 7.2+ or CreateLegacyTask
-// for older servers after resolving the task API mode.
-func (c *Client) CreatePullRequestTask(ctx context.Context, projectKey, repoSlug string, prID int, text string) (*PullRequestTask, error) {
-	return c.CreateBlockerComment(ctx, projectKey, repoSlug, prID, text)
-}
-
-// CompletePullRequestTask marks a blocker comment as resolved.
-//
-// Deprecated: use SetBlockerCommentState or SetLegacyTaskState after resolving
-// the task API mode.
-func (c *Client) CompletePullRequestTask(ctx context.Context, projectKey, repoSlug string, prID, taskID int) error {
-	_, err := c.SetBlockerCommentState(ctx, projectKey, repoSlug, prID, taskID, true)
-	return err
-}
-
-// ReopenPullRequestTask reopens a blocker comment.
-//
-// Deprecated: use SetBlockerCommentState or SetLegacyTaskState after resolving
-// the task API mode.
-func (c *Client) ReopenPullRequestTask(ctx context.Context, projectKey, repoSlug string, prID, taskID int) error {
-	_, err := c.SetBlockerCommentState(ctx, projectKey, repoSlug, prID, taskID, false)
-	return err
-}
-
 func validatePullRequestTaskTarget(projectKey, repoSlug string, prID int) error {
 	if projectKey == "" || repoSlug == "" {
 		return fmt.Errorf("project key and repository slug are required")

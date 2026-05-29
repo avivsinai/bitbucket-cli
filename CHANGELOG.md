@@ -5,6 +5,17 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt pr task` now works on Bitbucket Cloud, using its first-class pull request
+  tasks API (`list`, `create`, `complete`, `reopen`).
+
+### Fixed
+- `bkt pr task` on Bitbucket Data Center no longer calls endpoints that never
+  existed (the old `create`, `complete`, and `reopen` paths returned 404). It
+  now uses blocker comments on DC 7.2+ and the legacy `/tasks` API on older
+  servers, selectable via `--task-api auto|blocker-comments|legacy`
+  (auto-detected from the server version by default). Legacy task creation
+  requires `--comment-id` to anchor the task to a comment.
 
 ## [0.26.7] - 2026-05-27
 ### Fixed
