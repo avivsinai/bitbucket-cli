@@ -16,19 +16,12 @@ import (
 
 const taskRequestTimeout = 10 * time.Second
 
-// errCommentIDOnlyLegacy is returned when --comment-id is supplied in a context
-// where it carries no meaning (Cloud tasks and DC blocker comments are not
-// anchored to a comment).
-var errCommentIDOnlyLegacy = fmt.Errorf("--comment-id only applies to legacy Data Center tasks (--task-api legacy)")
-
 type taskOptions struct {
 	Project   string
 	Repo      string
 	Workspace string
-	TaskAPI   string
 	ID        int
 	TaskID    int
-	CommentID int
 	Text      string
 }
 
@@ -48,12 +41,16 @@ func dcTaskViews(tasks []bbdc.PullRequestTask) []taskView {
 	return views
 }
 
-func cloudTaskView(t bbcloud.PullRequestTask) taskView {
-	state := t.State
-	if state == bbcloud.TaskStateUnresolved {
-		state = "OPEN"
+func cloudTaskViews(tasks []bbcloud.PullRequestTask) []taskView {
+	views := make([]taskView, 0, len(tasks))
+	for _, t := range tasks {
+		state := t.State
+		if state == bbcloud.TaskStateUnresolved {
+			state = "OPEN"
+		}
+		views = append(views, taskView{ID: t.ID, State: state, Text: t.Content.Raw})
 	}
-	return taskView{ID: t.ID, State: state, Text: t.Content.Raw}
+	return views
 }
 
 func newTaskCmd(f *cmdutil.Factory) *cobra.Command {
@@ -63,30 +60,20 @@ func newTaskCmd(f *cmdutil.Factory) *cobra.Command {
 		Short: "Manage pull request tasks (DC and Cloud)",
 		Long: `List, create, complete, or reopen tasks on a pull request.
 
-Bitbucket Cloud exposes tasks as a first-class pull request resource. Bitbucket
-Data Center 7.2+ models them as blocker comments; older servers use the legacy
-/tasks API. The --task-api flag selects the Data Center model:
-
-  auto             detect the server version and pick automatically (default)
-  blocker-comments force the Data Center 7.2+ blocker-comments model
-  legacy           force the pre-7.2 /tasks model (create requires --comment-id)
-
-The flag is ignored on Cloud.`,
+On Bitbucket Data Center, pull request tasks are implemented as blocker comments
+(Data Center 7.2+). "bkt pr comments --details" surfaces them in review context,
+while "bkt pr task" is the focused task workflow; the two overlap by design. On
+Bitbucket Cloud, tasks are a separate first-class pull request resource.`,
 		Example: `  # List tasks on a pull request
   bkt pr task list 42
 
   # Create a task
   bkt pr task create 42 --text "Update the changelog"
 
-  # Create a legacy DC task anchored to a comment
-  bkt pr task create 42 --text "Fix this" --task-api legacy --comment-id 1001
-
   # Complete / reopen a task
   bkt pr task complete 42 99
   bkt pr task reopen 42 99`,
 	}
-
-	cmd.PersistentFlags().StringVar(&opts.TaskAPI, "task-api", taskAPIAuto, "Data Center task model: auto, blocker-comments, or legacy")
 
 	cmd.AddCommand(newTaskListCmd(f, opts))
 	cmd.AddCommand(newTaskCreateCmd(f, opts))
@@ -138,7 +125,6 @@ func newTaskCreateCmd(f *cmdutil.Factory, opts *taskOptions) *cobra.Command {
 	}
 	registerTaskTargetFlags(cmd, opts)
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Task text")
-	cmd.Flags().IntVar(&opts.CommentID, "comment-id", 0, "Comment to anchor the task to (required for --task-api legacy)")
 	_ = cmd.MarkFlagRequired("text")
 	return cmd
 }
@@ -214,9 +200,6 @@ func cloudContext(opts *taskOptions, ctxWorkspace, ctxRepo string) (workspace, r
 }
 
 func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) error {
-	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
-		return err
-	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -242,16 +225,7 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 		if err != nil {
 			return err
 		}
-		mode, err := resolveDCTaskMode(opts.TaskAPI, func() (string, error) { return client.ServerVersion(ctx) }, false)
-		if err != nil {
-			return err
-		}
-		var dcTasks []bbdc.PullRequestTask
-		if mode == taskAPILegacy {
-			dcTasks, err = client.ListPullRequestTasks(ctx, projectKey, repoSlug, opts.ID)
-		} else {
-			dcTasks, err = client.ListBlockerComments(ctx, projectKey, repoSlug, opts.ID)
-		}
+		dcTasks, err := client.ListPullRequestTasks(ctx, projectKey, repoSlug, opts.ID)
 		if err != nil {
 			return err
 		}
@@ -271,9 +245,7 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 		if err != nil {
 			return err
 		}
-		for _, t := range cloudTasks {
-			tasks = append(tasks, cloudTaskView(t))
-		}
+		tasks = cloudTaskViews(cloudTasks)
 		payload["workspace"] = workspace
 		payload["repo"] = repoSlug
 	default:
@@ -297,9 +269,6 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 }
 
 func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) error {
-	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
-		return err
-	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -307,7 +276,6 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 	if strings.TrimSpace(opts.Text) == "" {
 		return fmt.Errorf("task text is required")
 	}
-	commentIDSet := cmd.Flags().Changed("comment-id")
 	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, cmdutil.FlagValue(cmd, "context"))
 	if err != nil {
 		return err
@@ -328,30 +296,12 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		if err != nil {
 			return err
 		}
-		mode, err := resolveDCTaskMode(opts.TaskAPI, func() (string, error) { return client.ServerVersion(ctx) }, true)
-		if err != nil {
-			return err
-		}
-		var task *bbdc.PullRequestTask
-		if mode == taskAPILegacy {
-			if opts.CommentID <= 0 {
-				return fmt.Errorf("legacy Data Center tasks must anchor to a comment; pass --comment-id <id>")
-			}
-			task, err = client.CreateLegacyTask(ctx, projectKey, repoSlug, opts.ID, opts.CommentID, opts.Text)
-		} else {
-			if commentIDSet {
-				return errCommentIDOnlyLegacy
-			}
-			task, err = client.CreateBlockerComment(ctx, projectKey, repoSlug, opts.ID, opts.Text)
-		}
+		task, err := client.CreatePullRequestTask(ctx, projectKey, repoSlug, opts.ID, opts.Text)
 		if err != nil {
 			return err
 		}
 		created = task.ID
 	case "cloud":
-		if commentIDSet {
-			return errCommentIDOnlyLegacy
-		}
 		workspace, repoSlug, err := cloudContext(opts, ctxCfg.Workspace, ctxCfg.DefaultRepo)
 		if err != nil {
 			return err
@@ -374,9 +324,6 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 }
 
 func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, resolve bool) error {
-	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
-		return err
-	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -399,16 +346,7 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 		if err != nil {
 			return err
 		}
-		mode, err := resolveDCTaskMode(opts.TaskAPI, func() (string, error) { return client.ServerVersion(ctx) }, true)
-		if err != nil {
-			return err
-		}
-		if mode == taskAPILegacy {
-			_, err = client.SetLegacyTaskState(ctx, opts.TaskID, resolve)
-		} else {
-			_, err = client.SetBlockerCommentState(ctx, projectKey, repoSlug, opts.ID, opts.TaskID, resolve)
-		}
-		if err != nil {
+		if _, err := client.SetPullRequestTaskState(ctx, projectKey, repoSlug, opts.ID, opts.TaskID, resolve); err != nil {
 			return err
 		}
 	case "cloud":
