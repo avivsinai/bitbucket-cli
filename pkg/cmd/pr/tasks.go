@@ -16,19 +16,12 @@ import (
 
 const taskRequestTimeout = 10 * time.Second
 
-// errCommentIDOnlyLegacy is returned when --comment-id is supplied in a context
-// where it carries no meaning (Cloud tasks and DC blocker comments are not
-// anchored to a comment).
-var errCommentIDOnlyLegacy = fmt.Errorf("--comment-id only applies to legacy Data Center tasks (--task-api legacy)")
-
 type taskOptions struct {
 	Project   string
 	Repo      string
 	Workspace string
-	TaskAPI   string
 	ID        int
 	TaskID    int
-	CommentID int
 	Text      string
 }
 
@@ -40,12 +33,8 @@ type taskView struct {
 	Text  string `json:"text"`
 }
 
-func dcTaskViews(tasks []bbdc.PullRequestTask) []taskView {
-	views := make([]taskView, 0, len(tasks))
-	for _, t := range tasks {
-		views = append(views, taskView{ID: t.ID, State: t.State, Text: t.Text})
-	}
-	return views
+func dcTaskView(t bbdc.PullRequestTask) taskView {
+	return taskView{ID: t.ID, State: t.State, Text: t.Text}
 }
 
 func cloudTaskView(t bbcloud.PullRequestTask) taskView {
@@ -56,6 +45,22 @@ func cloudTaskView(t bbcloud.PullRequestTask) taskView {
 	return taskView{ID: t.ID, State: state, Text: t.Content.Raw}
 }
 
+func dcTaskViews(tasks []bbdc.PullRequestTask) []taskView {
+	views := make([]taskView, 0, len(tasks))
+	for _, t := range tasks {
+		views = append(views, dcTaskView(t))
+	}
+	return views
+}
+
+func cloudTaskViews(tasks []bbcloud.PullRequestTask) []taskView {
+	views := make([]taskView, 0, len(tasks))
+	for _, t := range tasks {
+		views = append(views, cloudTaskView(t))
+	}
+	return views
+}
+
 func newTaskCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &taskOptions{}
 	cmd := &cobra.Command{
@@ -63,30 +68,20 @@ func newTaskCmd(f *cmdutil.Factory) *cobra.Command {
 		Short: "Manage pull request tasks (DC and Cloud)",
 		Long: `List, create, complete, or reopen tasks on a pull request.
 
-Bitbucket Cloud exposes tasks as a first-class pull request resource. Bitbucket
-Data Center 7.2+ models them as blocker comments; older servers use the legacy
-/tasks API. The --task-api flag selects the Data Center model:
-
-  auto             detect the server version and pick automatically (default)
-  blocker-comments force the Data Center 7.2+ blocker-comments model
-  legacy           force the pre-7.2 /tasks model (create requires --comment-id)
-
-The flag is ignored on Cloud.`,
+On Bitbucket Data Center, pull request tasks are implemented as blocker comments
+(Data Center 7.2+). "bkt pr comments --details" surfaces them in review context,
+while "bkt pr task" is the focused task workflow; the two overlap by design. On
+Bitbucket Cloud, tasks are a separate first-class pull request resource.`,
 		Example: `  # List tasks on a pull request
   bkt pr task list 42
 
   # Create a task
   bkt pr task create 42 --text "Update the changelog"
 
-  # Create a legacy DC task anchored to a comment
-  bkt pr task create 42 --text "Fix this" --task-api legacy --comment-id 1001
-
   # Complete / reopen a task
   bkt pr task complete 42 99
   bkt pr task reopen 42 99`,
 	}
-
-	cmd.PersistentFlags().StringVar(&opts.TaskAPI, "task-api", taskAPIAuto, "Data Center task model: auto, blocker-comments, or legacy")
 
 	cmd.AddCommand(newTaskListCmd(f, opts))
 	cmd.AddCommand(newTaskCreateCmd(f, opts))
@@ -138,7 +133,6 @@ func newTaskCreateCmd(f *cmdutil.Factory, opts *taskOptions) *cobra.Command {
 	}
 	registerTaskTargetFlags(cmd, opts)
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Task text")
-	cmd.Flags().IntVar(&opts.CommentID, "comment-id", 0, "Comment to anchor the task to (required for --task-api legacy)")
 	_ = cmd.MarkFlagRequired("text")
 	return cmd
 }
@@ -173,7 +167,7 @@ func newTaskReopenCmd(f *cmdutil.Factory, opts *taskOptions) *cobra.Command {
 
 func parsePRID(arg string) (int, error) {
 	id, err := strconv.Atoi(arg)
-	if err != nil {
+	if err != nil || id <= 0 {
 		return 0, fmt.Errorf("invalid pull request id %q", arg)
 	}
 	return id, nil
@@ -185,7 +179,7 @@ func runTaskToggle(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, ar
 		return err
 	}
 	taskID, err := strconv.Atoi(args[1])
-	if err != nil {
+	if err != nil || taskID <= 0 {
 		return fmt.Errorf("invalid task id %q", args[1])
 	}
 	opts.ID = prID
@@ -214,9 +208,6 @@ func cloudContext(opts *taskOptions, ctxWorkspace, ctxRepo string) (workspace, r
 }
 
 func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) error {
-	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
-		return err
-	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -242,16 +233,7 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 		if err != nil {
 			return err
 		}
-		mode, err := resolveDCTaskMode(opts.TaskAPI, func() (string, error) { return client.ServerVersion(ctx) }, false)
-		if err != nil {
-			return err
-		}
-		var dcTasks []bbdc.PullRequestTask
-		if mode == taskAPILegacy {
-			dcTasks, err = client.ListPullRequestTasks(ctx, projectKey, repoSlug, opts.ID)
-		} else {
-			dcTasks, err = client.ListBlockerComments(ctx, projectKey, repoSlug, opts.ID)
-		}
+		dcTasks, err := client.ListPullRequestTasks(ctx, projectKey, repoSlug, opts.ID)
 		if err != nil {
 			return err
 		}
@@ -271,9 +253,7 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 		if err != nil {
 			return err
 		}
-		for _, t := range cloudTasks {
-			tasks = append(tasks, cloudTaskView(t))
-		}
+		tasks = cloudTaskViews(cloudTasks)
 		payload["workspace"] = workspace
 		payload["repo"] = repoSlug
 	default:
@@ -297,9 +277,6 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 }
 
 func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) error {
-	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
-		return err
-	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -307,7 +284,6 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 	if strings.TrimSpace(opts.Text) == "" {
 		return fmt.Errorf("task text is required")
 	}
-	commentIDSet := cmd.Flags().Changed("comment-id")
 	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, cmdutil.FlagValue(cmd, "context"))
 	if err != nil {
 		return err
@@ -316,7 +292,10 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 	ctx, cancel := context.WithTimeout(cmd.Context(), taskRequestTimeout)
 	defer cancel()
 
-	var created int
+	var (
+		view    taskView
+		payload = map[string]any{}
+	)
 
 	switch host.Kind {
 	case "dc":
@@ -328,30 +307,14 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		if err != nil {
 			return err
 		}
-		mode, err := resolveDCTaskMode(opts.TaskAPI, func() (string, error) { return client.ServerVersion(ctx) }, true)
+		task, err := client.CreatePullRequestTask(ctx, projectKey, repoSlug, opts.ID, opts.Text)
 		if err != nil {
 			return err
 		}
-		var task *bbdc.PullRequestTask
-		if mode == taskAPILegacy {
-			if opts.CommentID <= 0 {
-				return fmt.Errorf("legacy Data Center tasks must anchor to a comment; pass --comment-id <id>")
-			}
-			task, err = client.CreateLegacyTask(ctx, projectKey, repoSlug, opts.ID, opts.CommentID, opts.Text)
-		} else {
-			if commentIDSet {
-				return errCommentIDOnlyLegacy
-			}
-			task, err = client.CreateBlockerComment(ctx, projectKey, repoSlug, opts.ID, opts.Text)
-		}
-		if err != nil {
-			return err
-		}
-		created = task.ID
+		view = dcTaskView(*task)
+		payload["project"] = projectKey
+		payload["repo"] = repoSlug
 	case "cloud":
-		if commentIDSet {
-			return errCommentIDOnlyLegacy
-		}
 		workspace, repoSlug, err := cloudContext(opts, ctxCfg.Workspace, ctxCfg.DefaultRepo)
 		if err != nil {
 			return err
@@ -364,19 +327,21 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		if err != nil {
 			return err
 		}
-		created = task.ID
+		view = cloudTaskView(*task)
+		payload["workspace"] = workspace
+		payload["repo"] = repoSlug
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
 
-	_, err = fmt.Fprintf(ios.Out, "✓ Created task %d\n", created)
-	return err
+	payload["task"] = view
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		_, err := fmt.Fprintf(ios.Out, "✓ Created task %d\n", view.ID)
+		return err
+	})
 }
 
 func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, resolve bool) error {
-	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
-		return err
-	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -389,6 +354,11 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 	ctx, cancel := context.WithTimeout(cmd.Context(), taskRequestTimeout)
 	defer cancel()
 
+	var (
+		view    taskView
+		payload = map[string]any{}
+	)
+
 	switch host.Kind {
 	case "dc":
 		projectKey, repoSlug, err := dcContext(opts, ctxCfg.ProjectKey, ctxCfg.DefaultRepo)
@@ -399,18 +369,13 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 		if err != nil {
 			return err
 		}
-		mode, err := resolveDCTaskMode(opts.TaskAPI, func() (string, error) { return client.ServerVersion(ctx) }, true)
+		task, err := client.SetPullRequestTaskState(ctx, projectKey, repoSlug, opts.ID, opts.TaskID, resolve)
 		if err != nil {
 			return err
 		}
-		if mode == taskAPILegacy {
-			_, err = client.SetLegacyTaskState(ctx, opts.TaskID, resolve)
-		} else {
-			_, err = client.SetBlockerCommentState(ctx, projectKey, repoSlug, opts.ID, opts.TaskID, resolve)
-		}
-		if err != nil {
-			return err
-		}
+		view = dcTaskView(*task)
+		payload["project"] = projectKey
+		payload["repo"] = repoSlug
 	case "cloud":
 		workspace, repoSlug, err := cloudContext(opts, ctxCfg.Workspace, ctxCfg.DefaultRepo)
 		if err != nil {
@@ -420,9 +385,13 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 		if err != nil {
 			return err
 		}
-		if _, err := client.SetPullRequestTaskState(ctx, workspace, repoSlug, opts.ID, opts.TaskID, resolve); err != nil {
+		task, err := client.SetPullRequestTaskState(ctx, workspace, repoSlug, opts.ID, opts.TaskID, resolve)
+		if err != nil {
 			return err
 		}
+		view = cloudTaskView(*task)
+		payload["workspace"] = workspace
+		payload["repo"] = repoSlug
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
@@ -431,6 +400,9 @@ func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, 
 	if resolve {
 		verb = "Completed"
 	}
-	_, err = fmt.Fprintf(ios.Out, "✓ %s task %d\n", verb, opts.TaskID)
-	return err
+	payload["task"] = view
+	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		_, err := fmt.Fprintf(ios.Out, "✓ %s task %d\n", verb, view.ID)
+		return err
+	})
 }

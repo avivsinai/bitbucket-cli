@@ -48,7 +48,7 @@ bkt pr <command> [flags]
 | [reopen](#bkt-pr-reopen) | Reopen a declined pull request | `--project`, `--repo`, `--workspace` |
 | [reviewer-group](#bkt-pr-reviewer-group) | Manage default reviewer groups *(DC)* | — |
 | [suggestion](#bkt-pr-suggestion) | Apply or preview a code suggestion *(DC)* | `--preview`, `--project`, `--repo` |
-| [task](#bkt-pr-task) | Manage pull request tasks (DC and Cloud) | `--task-api` |
+| [task](#bkt-pr-task) | Manage pull request tasks (DC and Cloud) | — |
 | [view](#bkt-pr-view) | Show details for a pull request | `--project`, `--repo`, `--web`, `--workspace` |
 
 ## bkt pr approve
@@ -1194,15 +1194,10 @@ bkt pr suggestion <id> <comment-id> <suggestion-id> [flags]
 
 List, create, complete, or reopen tasks on a pull request.
 
-Bitbucket Cloud exposes tasks as a first-class pull request resource. Bitbucket
-Data Center 7.2+ models them as blocker comments; older servers use the legacy
-/tasks API. The --task-api flag selects the Data Center model:
-
-  auto             detect the server version and pick automatically (default)
-  blocker-comments force the Data Center 7.2+ blocker-comments model
-  legacy           force the pre-7.2 /tasks model (create requires --comment-id)
-
-The flag is ignored on Cloud.
+On Bitbucket Data Center, pull request tasks are implemented as blocker comments
+(Data Center 7.2+). "bkt pr comments --details" surfaces them in review context,
+while "bkt pr task" is the focused task workflow; the two overlap by design. On
+Bitbucket Cloud, tasks are a separate first-class pull request resource.
 
 ```
 bkt pr task <command> [flags]
@@ -1216,9 +1211,6 @@ bkt pr task <command> [flags]
 
   # Create a task
   bkt pr task create 42 --text "Update the changelog"
-
-  # Create a legacy DC task anchored to a comment
-  bkt pr task create 42 --text "Fix this" --task-api legacy --comment-id 1001
 
   # Complete / reopen a task
   bkt pr task complete 42 99
@@ -1258,7 +1250,6 @@ bkt pr task complete <id> <task-id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
-| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 
@@ -1282,7 +1273,6 @@ bkt pr task create <id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
-| `--comment-id` |  | Comment to anchor the task to (required for --task-api legacy) |
 | `--project` |  | Bitbucket project key override (DC) |
 | `--repo` |  | Repository slug override |
 | `--text` |  | Task text |
@@ -1296,7 +1286,6 @@ bkt pr task create <id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
-| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 
@@ -1332,7 +1321,6 @@ bkt pr task list <id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
-| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 
@@ -1368,7 +1356,6 @@ bkt pr task reopen <id> <task-id> [flags]
 | `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
 | `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
 | `--json` |  | Output in JSON format when supported |
-| `--task-api` |  | Data Center task model: auto, blocker-comments, or legacy |
 | `--template` |  | Render output using Go templates |
 | `--yaml` |  | Output in YAML format when supported |
 

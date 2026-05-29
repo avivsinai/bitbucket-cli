@@ -12,10 +12,10 @@ All notable changes to this project will be documented here. The format follows
 ### Fixed
 - `bkt pr task` on Bitbucket Data Center no longer calls endpoints that never
   existed (the old `create`, `complete`, and `reopen` paths returned 404). It
-  now uses blocker comments on DC 7.2+ and the legacy `/tasks` API on older
-  servers, selectable via `--task-api auto|blocker-comments|legacy`
-  (auto-detected from the server version by default). Legacy task creation
-  requires `--comment-id` to anchor the task to a comment.
+  now uses the blocker-comments API (Bitbucket Data Center 7.2+); a task request
+  against an older server surfaces a clear hint. On Data Center, tasks and
+  `bkt pr comments --details` overlap by design, since tasks are blocker
+  comments there.
 
 ## [0.26.7] - 2026-05-27
 ### Fixed
