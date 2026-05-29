@@ -11,6 +11,7 @@ import (
 
 const (
 	pullRequestTaskPageSize = 25
+	pullRequestTaskAPIHint  = "DC tasks use the blocker-comments API introduced in Bitbucket Data Center 7.2+"
 
 	TaskStateOpen     = "OPEN"
 	TaskStateResolved = "RESOLVED"
@@ -47,40 +48,10 @@ func (comment blockerComment) task() PullRequestTask {
 	}
 }
 
-// ListPullRequestTasks lists legacy tasks for the pull request.
+// ListPullRequestTasks lists pull request tasks.
+//
+// Bitbucket Data Center exposes pull request tasks as blocker comments.
 func (c *Client) ListPullRequestTasks(ctx context.Context, projectKey, repoSlug string, prID int) ([]PullRequestTask, error) {
-	if err := validatePullRequestTaskTarget(projectKey, repoSlug, prID); err != nil {
-		return nil, err
-	}
-
-	var (
-		start int
-		tasks []PullRequestTask
-	)
-
-	for {
-		req, err := c.http.NewRequest(ctx, http.MethodGet, pagedTaskPath(legacyPullRequestTasksPath(projectKey, repoSlug, prID), start), nil)
-		if err != nil {
-			return nil, err
-		}
-
-		var resp paged[PullRequestTask]
-		if err := c.http.Do(req, &resp); err != nil {
-			return nil, err
-		}
-
-		tasks = append(tasks, resp.Values...)
-		if resp.IsLastPage || len(resp.Values) == 0 {
-			break
-		}
-		start = resp.NextPageStart
-	}
-
-	return tasks, nil
-}
-
-// ListBlockerComments lists blocker comments for the pull request.
-func (c *Client) ListBlockerComments(ctx context.Context, projectKey, repoSlug string, prID int) ([]PullRequestTask, error) {
 	if err := validatePullRequestTaskTarget(projectKey, repoSlug, prID); err != nil {
 		return nil, err
 	}
@@ -98,7 +69,7 @@ func (c *Client) ListBlockerComments(ctx context.Context, projectKey, repoSlug s
 
 		var resp paged[blockerComment]
 		if err := c.http.Do(req, &resp); err != nil {
-			return nil, err
+			return nil, wrapPullRequestTaskAPIError("list pull request tasks", err)
 		}
 
 		for _, comment := range resp.Values {
@@ -113,8 +84,10 @@ func (c *Client) ListBlockerComments(ctx context.Context, projectKey, repoSlug s
 	return tasks, nil
 }
 
-// CreateBlockerComment creates a blocker comment for the pull request.
-func (c *Client) CreateBlockerComment(ctx context.Context, projectKey, repoSlug string, prID int, text string) (*PullRequestTask, error) {
+// CreatePullRequestTask creates a pull request task.
+//
+// Bitbucket Data Center exposes pull request tasks as blocker comments.
+func (c *Client) CreatePullRequestTask(ctx context.Context, projectKey, repoSlug string, prID int, text string) (*PullRequestTask, error) {
 	if err := validatePullRequestTaskTarget(projectKey, repoSlug, prID); err != nil {
 		return nil, err
 	}
@@ -133,23 +106,23 @@ func (c *Client) CreateBlockerComment(ctx context.Context, projectKey, repoSlug 
 
 	var comment blockerComment
 	if err := c.http.Do(req, &comment); err != nil {
-		return nil, err
+		return nil, wrapPullRequestTaskAPIError("create pull request task", err)
 	}
 
 	task := comment.task()
 	return &task, nil
 }
 
-// SetBlockerCommentState updates a blocker comment state and returns the updated task.
-func (c *Client) SetBlockerCommentState(ctx context.Context, projectKey, repoSlug string, prID, commentID int, resolved bool) (*PullRequestTask, error) {
+// SetPullRequestTaskState updates a pull request task state and returns the updated task.
+func (c *Client) SetPullRequestTaskState(ctx context.Context, projectKey, repoSlug string, prID, taskID int, resolved bool) (*PullRequestTask, error) {
 	if err := validatePullRequestTaskTarget(projectKey, repoSlug, prID); err != nil {
 		return nil, err
 	}
-	if commentID <= 0 {
-		return nil, fmt.Errorf("comment id must be positive")
+	if taskID <= 0 {
+		return nil, fmt.Errorf("task id must be positive")
 	}
 
-	current, err := c.getBlockerComment(ctx, projectKey, repoSlug, prID, commentID)
+	current, err := c.getBlockerComment(ctx, projectKey, repoSlug, prID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -159,14 +132,14 @@ func (c *Client) SetBlockerCommentState(ctx context.Context, projectKey, repoSlu
 		"state":   taskState(resolved),
 	}
 
-	req, err := c.http.NewRequest(ctx, http.MethodPut, blockerCommentPath(projectKey, repoSlug, prID, commentID), body)
+	req, err := c.http.NewRequest(ctx, http.MethodPut, blockerCommentPath(projectKey, repoSlug, prID, taskID), body)
 	if err != nil {
 		return nil, err
 	}
 
 	var updated blockerComment
 	if err := c.http.Do(req, &updated); err != nil {
-		return nil, err
+		return nil, wrapPullRequestTaskAPIError("set pull request task state", err)
 	}
 
 	task := updated.task()
@@ -181,80 +154,10 @@ func (c *Client) getBlockerComment(ctx context.Context, projectKey, repoSlug str
 
 	var comment blockerComment
 	if err := c.http.Do(req, &comment); err != nil {
-		return nil, err
+		return nil, wrapPullRequestTaskAPIError("get pull request task", err)
 	}
 
 	return &comment, nil
-}
-
-// CreateLegacyTask creates a legacy task anchored to an existing comment.
-func (c *Client) CreateLegacyTask(ctx context.Context, projectKey, repoSlug string, prID, commentID int, text string) (*PullRequestTask, error) {
-	if err := validatePullRequestTaskTarget(projectKey, repoSlug, prID); err != nil {
-		return nil, err
-	}
-	if commentID <= 0 {
-		return nil, fmt.Errorf("comment id must be positive")
-	}
-	if err := validateTaskText(text); err != nil {
-		return nil, err
-	}
-
-	body := map[string]any{
-		"anchor": map[string]any{
-			"id":   commentID,
-			"type": "COMMENT",
-		},
-		"text": text,
-	}
-
-	req, err := c.http.NewRequest(ctx, http.MethodPost, "/rest/api/1.0/tasks", body)
-	if err != nil {
-		return nil, err
-	}
-
-	var task PullRequestTask
-	if err := c.http.Do(req, &task); err != nil {
-		return nil, err
-	}
-
-	return &task, nil
-}
-
-// SetLegacyTaskState updates a legacy task state and returns the updated task.
-func (c *Client) SetLegacyTaskState(ctx context.Context, taskID int, resolved bool) (*PullRequestTask, error) {
-	if taskID <= 0 {
-		return nil, fmt.Errorf("task id must be positive")
-	}
-
-	body := map[string]any{
-		"state": taskState(resolved),
-	}
-
-	req, err := c.http.NewRequest(ctx, http.MethodPut, fmt.Sprintf("/rest/api/1.0/tasks/%d", taskID), body)
-	if err != nil {
-		return nil, err
-	}
-
-	var task PullRequestTask
-	if err := c.http.Do(req, &task); err != nil {
-		return nil, err
-	}
-
-	return &task, nil
-}
-
-// DeleteLegacyTask deletes a legacy task.
-func (c *Client) DeleteLegacyTask(ctx context.Context, taskID int) error {
-	if taskID <= 0 {
-		return fmt.Errorf("task id must be positive")
-	}
-
-	req, err := c.http.NewRequest(ctx, http.MethodDelete, fmt.Sprintf("/rest/api/1.0/tasks/%d", taskID), nil)
-	if err != nil {
-		return err
-	}
-
-	return c.http.Do(req, nil)
 }
 
 func validatePullRequestTaskTarget(projectKey, repoSlug string, prID int) error {
@@ -281,10 +184,6 @@ func taskState(resolved bool) string {
 	return TaskStateOpen
 }
 
-func legacyPullRequestTasksPath(projectKey, repoSlug string, prID int) string {
-	return pullRequestPath(projectKey, repoSlug, prID, "/tasks")
-}
-
 func blockerCommentsPath(projectKey, repoSlug string, prID int) string {
 	return pullRequestPath(projectKey, repoSlug, prID, "/blocker-comments")
 }
@@ -308,4 +207,11 @@ func pagedTaskPath(path string, start int) string {
 	query.Set("limit", strconv.Itoa(pullRequestTaskPageSize))
 	query.Set("start", strconv.Itoa(start))
 	return path + "?" + query.Encode()
+}
+
+func wrapPullRequestTaskAPIError(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w. Hint: %s", op, err, pullRequestTaskAPIHint)
 }
