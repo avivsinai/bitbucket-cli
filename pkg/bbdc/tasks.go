@@ -75,8 +75,11 @@ func (c *Client) ListPullRequestTasks(ctx context.Context, projectKey, repoSlug 
 		for _, comment := range resp.Values {
 			tasks = append(tasks, comment.task())
 		}
-		if resp.IsLastPage || len(resp.Values) == 0 {
+		if resp.IsLastPage {
 			break
+		}
+		if resp.NextPageStart <= start {
+			return nil, fmt.Errorf("invalid pagination response: nextPageStart %d did not advance from %d", resp.NextPageStart, start)
 		}
 		start = resp.NextPageStart
 	}

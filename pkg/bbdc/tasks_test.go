@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
 )
@@ -57,6 +58,73 @@ func TestListPullRequestTasksPaginatesBlockerComments(t *testing.T) {
 	}
 	if hits != 2 {
 		t.Fatalf("hits = %d, want 2", hits)
+	}
+}
+
+func TestListPullRequestTasksAdvancesEmptyNonLastPage(t *testing.T) {
+	var hits int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		switch count {
+		case 1:
+			if r.URL.Query().Get("start") != "0" {
+				t.Fatalf("first start = %q, want 0", r.URL.Query().Get("start"))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"isLastPage":    false,
+				"nextPageStart": 25,
+				"values":        []map[string]any{},
+			})
+		case 2:
+			if r.URL.Query().Get("start") != "25" {
+				t.Fatalf("second start = %q, want 25", r.URL.Query().Get("start"))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"isLastPage": true,
+				"values":     []map[string]any{{"id": 2, "text": "second", "state": "RESOLVED"}},
+			})
+		default:
+			t.Fatalf("unexpected request %d", count)
+		}
+	}))
+
+	tasks, err := client.ListPullRequestTasks(context.Background(), "PROJ", "repo", 42)
+	if err != nil {
+		t.Fatalf("ListPullRequestTasks: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != 2 {
+		t.Fatalf("tasks = %+v, want only task 2", tasks)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d, want 2", hits)
+	}
+}
+
+func TestListPullRequestTasksRejectsNonAdvancingPagination(t *testing.T) {
+	var hits int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isLastPage":    false,
+			"nextPageStart": 0,
+			"values":        []map[string]any{{"id": 1, "text": "first", "state": "OPEN"}},
+		})
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := client.ListPullRequestTasks(ctx, "PROJ", "repo", 42)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "invalid pagination response") {
+		t.Fatalf("error = %q, want invalid pagination response", err)
+	}
+	if hits != 1 {
+		t.Fatalf("hits = %d, want one request before pagination validation error", hits)
 	}
 }
 
@@ -135,6 +203,46 @@ func TestSetPullRequestTaskStateFetchesVersionBeforePUT(t *testing.T) {
 	}
 	if hits != 2 {
 		t.Fatalf("hits = %d, want 2", hits)
+	}
+}
+
+func TestSetPullRequestTaskStateWrapsPUTFailure(t *testing.T) {
+	var hits int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		switch count {
+		case 1:
+			if r.Method != http.MethodGet {
+				t.Fatalf("method = %s, want GET", r.Method)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 99, "version": 7, "text": "fix docs", "state": "OPEN"})
+		case 2:
+			if r.Method != http.MethodPut {
+				t.Fatalf("method = %s, want PUT", r.Method)
+			}
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errors": []map[string]any{{"message": "stale version"}},
+			})
+		default:
+			t.Fatalf("unexpected request %d", count)
+		}
+	}))
+
+	_, err := client.SetPullRequestTaskState(context.Background(), "PROJ", "repo", 42, 99, true)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "409 Conflict: stale version") {
+		t.Fatalf("error = %q, want original PUT error", got)
+	}
+	if !strings.Contains(got, "DC tasks use the blocker-comments API introduced in Bitbucket Data Center 7.2+") {
+		t.Fatalf("error = %q, want DC task API hint", got)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d, want GET then PUT", hits)
 	}
 }
 
