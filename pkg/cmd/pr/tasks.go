@@ -79,12 +79,6 @@ The flag is ignored on Cloud.`,
   # Complete / reopen a task
   bkt pr task complete 42 99
   bkt pr task reopen 42 99`,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if opts.TaskAPI == "" {
-				opts.TaskAPI = taskAPIAuto
-			}
-			return validateTaskAPIMode(opts.TaskAPI)
-		},
 	}
 
 	cmd.PersistentFlags().StringVar(&opts.TaskAPI, "task-api", taskAPIAuto, "Data Center task model: auto, blocker-comments, or legacy")
@@ -215,6 +209,9 @@ func cloudContext(opts *taskOptions, ctxWorkspace, ctxRepo string) (workspace, r
 }
 
 func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) error {
+	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
+		return err
+	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -295,6 +292,9 @@ func runTaskList(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) erro
 }
 
 func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) error {
+	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
+		return err
+	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -362,6 +362,9 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 }
 
 func runTaskSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions, resolve bool) error {
+	if err := validateTaskAPIMode(opts.TaskAPI); err != nil {
+		return err
+	}
 	ios, err := f.Streams()
 	if err != nil {
 		return err

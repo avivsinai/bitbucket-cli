@@ -68,6 +68,18 @@ func TestPRTaskCreateDCAutoUsesBlockerComments(t *testing.T) {
 	}
 }
 
+// Regression: the task command must not define its own PersistentPreRunE, which
+// would shadow the root hook and skip global output-flag validation.
+func TestPRTaskRespectsRootOutputValidation(t *testing.T) {
+	_, _, err := runCLI(t, dcConfig("http://127.0.0.1:0"), "--json", "--yaml", "pr", "task", "list", "42")
+	if err == nil {
+		t.Fatal("expected --json --yaml to be rejected before reaching the task command")
+	}
+	if !strings.Contains(err.Error(), "json") || !strings.Contains(err.Error(), "yaml") {
+		t.Errorf("error = %v, want a json/yaml conflict error", err)
+	}
+}
+
 // DC legacy create without --comment-id fails fast with a targeted error and
 // never reaches the network.
 func TestPRTaskCreateLegacyRequiresCommentID(t *testing.T) {
