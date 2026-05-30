@@ -460,6 +460,9 @@ bkt pr comments <command> [flags]
   # List deleted comments (Cloud only)
   bkt pr comments 42 --state deleted
 
+  # Delete a comment
+  bkt pr comments delete 42 1001
+
   # Resolve a comment thread
   bkt pr comments resolve 42 1001
 
@@ -469,8 +472,46 @@ bkt pr comments <command> [flags]
 
 | Subcommand | Description |
 |---|---|
+| delete | Delete a pull request comment |
 | reopen | Reopen a resolved pull request comment thread |
 | resolve | Resolve a pull request comment thread |
+
+## bkt pr comments delete
+
+Delete a pull request comment
+
+**Alias:** `rm`
+
+### Usage
+
+```
+bkt pr comments delete <id> <comment-id> [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--project` |  | Bitbucket project key override |
+| `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+bkt pr comments delete 42 1001
+```
 
 ## bkt pr comments reopen
 

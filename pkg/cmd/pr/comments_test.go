@@ -59,13 +59,25 @@ func TestCommentsCommandValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("help includes resolve and reopen examples", func(t *testing.T) {
+	t.Run("invalid delete comment ID", func(t *testing.T) {
+		_, _, err := runCLI(t, cfg, "pr", "comments", "delete", "42", "abc")
+		if err == nil {
+			t.Fatal("expected error for invalid comment ID")
+		}
+		if !strings.Contains(err.Error(), "invalid comment id") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("help includes thread action examples", func(t *testing.T) {
 		stdout, _, err := runCLI(t, cfg, "pr", "comments", "--help")
 		if err != nil {
 			t.Fatalf("help: %v", err)
 		}
-		if !strings.Contains(stdout, "bkt pr comments resolve 42 1001") || !strings.Contains(stdout, "bkt pr comments reopen 42 1001") {
-			t.Errorf("help missing resolve/reopen examples:\n%s", stdout)
+		if !strings.Contains(stdout, "bkt pr comments delete 42 1001") ||
+			!strings.Contains(stdout, "bkt pr comments resolve 42 1001") ||
+			!strings.Contains(stdout, "bkt pr comments reopen 42 1001") {
+			t.Errorf("help missing thread action examples:\n%s", stdout)
 		}
 	})
 }
@@ -442,6 +454,60 @@ func TestCommentsThreadResolveCloud(t *testing.T) {
 	})
 }
 
+func TestCommentsDeleteCloud(t *testing.T) {
+	t.Run("delete human output", func(t *testing.T) {
+		var gotMethod, gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "comments", "delete", "42", "9")
+		if err != nil {
+			t.Fatalf("delete: %v (stderr=%s)", err, stderr)
+		}
+		if gotMethod != http.MethodDelete {
+			t.Errorf("method = %s, want DELETE", gotMethod)
+		}
+		if gotPath != "/repositories/myworkspace/my-repo/pullrequests/42/comments/9" {
+			t.Errorf("path = %q", gotPath)
+		}
+		if !strings.Contains(stdout, "Deleted comment 9 on pull request #42") {
+			t.Errorf("unexpected output: %s", stdout)
+		}
+	})
+
+	t.Run("delete json output", func(t *testing.T) {
+		var gotMethod string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod = r.Method
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "--json", "pr", "comments", "delete", "42", "9")
+		if err != nil {
+			t.Fatalf("delete --json: %v (stderr=%s)", err, stderr)
+		}
+		if gotMethod != http.MethodDelete {
+			t.Errorf("method = %s, want DELETE", gotMethod)
+		}
+		var payload struct {
+			PullRequest int  `json:"pull_request"`
+			CommentID   int  `json:"comment_id"`
+			Deleted     bool `json:"deleted"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("output is not JSON: %v\n%s", err, stdout)
+		}
+		if payload.PullRequest != 42 || payload.CommentID != 9 || !payload.Deleted {
+			t.Errorf("payload = %+v, want pr=42 comment=9 deleted=true", payload)
+		}
+	})
+}
+
 func TestCommentsThreadResolveDC(t *testing.T) {
 	var gotBody map[string]any
 	var gotPutPath string
@@ -489,6 +555,30 @@ func TestCommentsThreadResolveDC(t *testing.T) {
 		t.Errorf("body = %#v, want version=3 threadResolved=true", gotBody)
 	}
 	if !strings.Contains(stdout, "Resolved comment thread 9 on pull request #42") {
+		t.Errorf("unexpected output: %s", stdout)
+	}
+}
+
+func TestCommentsDeleteDC(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "comments", "delete", "42", "9")
+	if err != nil {
+		t.Fatalf("delete: %v (stderr=%s)", err, stderr)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %s, want DELETE", gotMethod)
+	}
+	if gotPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments/9" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if !strings.Contains(stdout, "Deleted comment 9 on pull request #42") {
 		t.Errorf("unexpected output: %s", stdout)
 	}
 }

@@ -29,6 +29,12 @@ type commentThreadStateResult struct {
 	Resolution  *bbcloud.PullRequestCommentResolution `json:"resolution,omitempty" yaml:"resolution,omitempty"`
 }
 
+type commentDeleteResult struct {
+	PullRequest int  `json:"pull_request" yaml:"pull_request"`
+	CommentID   int  `json:"comment_id" yaml:"comment_id"`
+	Deleted     bool `json:"deleted" yaml:"deleted"`
+}
+
 func newCommentsCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &commentsOptions{}
 	cmd := &cobra.Command{
@@ -50,6 +56,9 @@ Works on both Data Center and Cloud.`,
 
   # List deleted comments (Cloud only)
   bkt pr comments 42 --state deleted
+
+  # Delete a comment
+  bkt pr comments delete 42 1001
 
   # Resolve a comment thread
   bkt pr comments resolve 42 1001
@@ -74,6 +83,7 @@ Works on both Data Center and Cloud.`,
 
 	cmd.AddCommand(newCommentsResolveCmd(f))
 	cmd.AddCommand(newCommentsReopenCmd(f))
+	cmd.AddCommand(newCommentsDeleteCmd(f))
 
 	return cmd
 }
@@ -110,6 +120,26 @@ func newCommentsReopenCmd(f *cmdutil.Factory) *cobra.Command {
 				return err
 			}
 			return runCommentThreadSetState(cmd, f, opts, prID, commentID, false)
+		},
+	}
+	registerCommentsTargetFlags(cmd, opts)
+	return cmd
+}
+
+func newCommentsDeleteCmd(f *cmdutil.Factory) *cobra.Command {
+	opts := &commentsOptions{}
+	cmd := &cobra.Command{
+		Use:     "delete <id> <comment-id>",
+		Aliases: []string{"rm"},
+		Short:   "Delete a pull request comment",
+		Example: "  bkt pr comments delete 42 1001",
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			prID, commentID, err := parseCommentThreadArgs(args)
+			if err != nil {
+				return err
+			}
+			return runCommentDelete(cmd, f, opts, prID, commentID)
 		},
 	}
 	registerCommentsTargetFlags(cmd, opts)
@@ -469,6 +499,62 @@ func runCommentThreadSetState(cmd *cobra.Command, f *cmdutil.Factory, opts *comm
 			verb = "Resolved"
 		}
 		_, err := fmt.Fprintf(ios.Out, "✓ %s comment thread %d on pull request #%d\n", verb, commentID, prID)
+		return err
+	})
+}
+
+func runCommentDelete(cmd *cobra.Command, f *cmdutil.Factory, opts *commentsOptions, prID, commentID int) error {
+	ios, err := f.Streams()
+	if err != nil {
+		return err
+	}
+
+	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, cmdutil.FlagValue(cmd, "context"))
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), timeoutWrite)
+	defer cancel()
+
+	switch host.Kind {
+	case "dc":
+		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if projectKey == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
+		}
+		client, err := cmdutil.NewDCClient(host)
+		if err != nil {
+			return err
+		}
+		if err := client.DeletePullRequestComment(ctx, projectKey, repoSlug, prID, commentID); err != nil {
+			return err
+		}
+	case "cloud":
+		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
+		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
+		if workspace == "" || repoSlug == "" {
+			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+		}
+		client, err := cmdutil.NewCloudClient(host)
+		if err != nil {
+			return err
+		}
+		if err := client.DeletePullRequestComment(ctx, workspace, repoSlug, prID, commentID); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported host kind %q", host.Kind)
+	}
+
+	result := commentDeleteResult{
+		PullRequest: prID,
+		CommentID:   commentID,
+		Deleted:     true,
+	}
+	return cmdutil.WriteOutput(cmd, ios.Out, result, func() error {
+		_, err := fmt.Fprintf(ios.Out, "✓ Deleted comment %d on pull request #%d\n", commentID, prID)
 		return err
 	})
 }

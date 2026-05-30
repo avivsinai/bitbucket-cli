@@ -677,6 +677,31 @@ func (c *Client) GetPullRequestComment(ctx context.Context, workspace, repoSlug 
 	return &comment, nil
 }
 
+// DeletePullRequestComment deletes a pull request comment.
+func (c *Client) DeletePullRequestComment(ctx context.Context, workspace, repoSlug string, prID, commentID int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if prID <= 0 {
+		return fmt.Errorf("pull request id must be positive")
+	}
+	if commentID <= 0 {
+		return fmt.Errorf("comment id must be positive")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments/%d",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+		commentID,
+	)
+	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+	return c.http.Do(req, nil)
+}
+
 // SetPullRequestCommentThreadResolved resolves or reopens a top-level pull
 // request comment thread. Resolve returns Bitbucket Cloud's resolution object
 // when provided; reopen returns nil on success.

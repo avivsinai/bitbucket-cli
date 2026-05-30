@@ -1105,6 +1105,54 @@ func TestGetPullRequestComment(t *testing.T) {
 	}
 }
 
+func TestDeletePullRequestComment(t *testing.T) {
+	var gotMethod, gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	if err := client.DeletePullRequestComment(context.Background(), "ws", "repo", 42, 9); err != nil {
+		t.Fatalf("DeletePullRequestComment: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %s, want DELETE", gotMethod)
+	}
+	if gotPath != "/repositories/ws/repo/pullrequests/42/comments/9" {
+		t.Errorf("path = %q", gotPath)
+	}
+}
+
+func TestDeletePullRequestCommentErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"forbidden", http.StatusForbidden, `{"error":{"message":"Forbidden"}}`, "403 Forbidden: Forbidden"},
+		{"not found", http.StatusNotFound, `{"error":{"message":"Comment not found"}}`, "404 Not Found: Comment not found"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+
+			err := client.DeletePullRequestComment(context.Background(), "ws", "repo", 42, 9)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if err.Error() != tt.want {
+				t.Fatalf("error = %q, want %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
 func TestListPullRequestCommentsPaginates(t *testing.T) {
 	var hits int32
 	var serverURL string

@@ -570,6 +570,25 @@ func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 	}
 }
 
+func TestDeletePullRequestComment(t *testing.T) {
+	var gotMethod, gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	if err := client.DeletePullRequestComment(context.Background(), "PROJ", "repo", 42, 9); err != nil {
+		t.Fatalf("DeletePullRequestComment: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %s, want DELETE", gotMethod)
+	}
+	if gotPath != "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/comments/9" {
+		t.Errorf("path = %q", gotPath)
+	}
+}
+
 func TestSetPullRequestCommentThreadResolvedAlreadyResolvedSkipsPUT(t *testing.T) {
 	var putCalled bool
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

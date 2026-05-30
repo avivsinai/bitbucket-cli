@@ -158,6 +158,31 @@ func (c *Client) SetPullRequestCommentThreadResolved(ctx context.Context, projec
 	return &updated, nil
 }
 
+// DeletePullRequestComment deletes a pull request comment.
+func (c *Client) DeletePullRequestComment(ctx context.Context, projectKey, repoSlug string, prID, commentID int) error {
+	if projectKey == "" || repoSlug == "" {
+		return fmt.Errorf("project key and repository slug are required")
+	}
+	if prID <= 0 {
+		return fmt.Errorf("pull request id must be positive")
+	}
+	if commentID <= 0 {
+		return fmt.Errorf("comment id must be positive")
+	}
+
+	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments/%d",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		prID,
+		commentID,
+	)
+	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+	return c.http.Do(req, nil)
+}
+
 // flattenComments walks a comment tree depth-first, returning a flat slice
 // with Depth set on each node.
 func flattenComments(c PullRequestComment, depth int) []PullRequestComment {
