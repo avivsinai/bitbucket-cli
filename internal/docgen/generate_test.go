@@ -71,6 +71,24 @@ func newTestTree() *cobra.Command {
 	prTaskCreate.Flags().String("text", "", "Task text")
 	prTask.AddCommand(prTaskList, prTaskCreate)
 
+	// Runnable subcommand with its own children (pr comments -> resolve/reopen)
+	prComments := &cobra.Command{
+		Use:   "comments <id>",
+		Short: "List comments on a pull request",
+		Example: `  # List unresolved comments
+  bkt pr comments 42 --state unresolved
+
+  # Resolve a comment thread
+  bkt pr comments resolve 42 1001`,
+		Run: func(cmd *cobra.Command, args []string) {},
+	}
+	prComments.Flags().String("state", "all", "Filter by state")
+	prComments.Flags().Bool("details", false, "Show full comment details")
+	prComments.AddCommand(
+		&cobra.Command{Use: "resolve <id> <comment-id>", Short: "Resolve a comment thread"},
+		&cobra.Command{Use: "reopen <id> <comment-id>", Short: "Reopen a comment thread"},
+	)
+
 	// DC-only subcommand
 	prReaction := &cobra.Command{
 		Use:   "reaction",
@@ -85,7 +103,7 @@ func newTestTree() *cobra.Command {
 		Long:  "Show pipeline status for a pull request.",
 	}
 
-	pr.AddCommand(prList, prCreate, prTask, prReaction, prPipeline)
+	pr.AddCommand(prList, prCreate, prTask, prComments, prReaction, prPipeline)
 
 	// Root persistent flags (inherited by all commands)
 	root.PersistentFlags().StringP("context", "c", "", "Active context name")
@@ -299,6 +317,34 @@ func TestNestedSubcommands(t *testing.T) {
 	// Nested child flags should appear
 	if !strings.Contains(got, "`--text`") {
 		t.Error("missing --text flag from nested task create")
+	}
+}
+
+func TestRunnableSubcommandWithChildren(t *testing.T) {
+	root := newTestTree()
+	pr, _, _ := root.Find([]string{"pr"})
+
+	var buf strings.Builder
+	writeGroupFile(&buf, "bkt", pr, true)
+	got := buf.String()
+
+	if !strings.Contains(got, "## bkt pr comments") {
+		t.Fatal("missing comments section")
+	}
+	if !strings.Contains(got, "bkt pr comments <id> [flags]\nbkt pr comments <command> [flags]") {
+		t.Error("runnable command with children should show both parent and child usage forms")
+	}
+	if !strings.Contains(got, "`--state`") {
+		t.Error("missing parent runnable command flag --state")
+	}
+	if !strings.Contains(got, "`--details`") {
+		t.Error("missing parent runnable command flag --details")
+	}
+	if !strings.Contains(got, "bkt pr comments 42 --state unresolved") {
+		t.Error("missing parent runnable command examples")
+	}
+	if !strings.Contains(got, "## bkt pr comments resolve") {
+		t.Error("missing nested resolve section")
 	}
 }
 

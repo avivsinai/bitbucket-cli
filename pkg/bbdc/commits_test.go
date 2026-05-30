@@ -78,7 +78,7 @@ func TestCommitDiffValidation(t *testing.T) {
 	}
 }
 
-func TestCommitDiffHandlesHTTPError(t *testing.T) {
+func TestCommitDiffHandlesErrorResponse(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("Repository not found"))

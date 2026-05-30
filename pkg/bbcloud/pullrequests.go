@@ -572,6 +572,7 @@ type PullRequestComment struct {
 	User       *Account `json:"user"`
 	CreatedOn  string   `json:"created_on"`
 	UpdatedOn  string   `json:"updated_on"`
+	Deleted    bool     `json:"deleted"`
 	Resolution *struct {
 		User      *Account `json:"user"`
 		CreatedOn string   `json:"created_on"`
@@ -585,6 +586,10 @@ type PullRequestComment struct {
 		To   *int   `json:"to"`
 	} `json:"inline,omitempty"`
 }
+
+// PullRequestCommentResolution preserves Bitbucket Cloud's resolution response
+// for a resolve operation.
+type PullRequestCommentResolution map[string]any
 
 type pullRequestCommentListPage struct {
 	Values []PullRequestComment `json:"values"`
@@ -640,6 +645,103 @@ func (c *Client) ListPullRequestComments(ctx context.Context, workspace, repoSlu
 	}
 
 	return comments, nil
+}
+
+// GetPullRequestComment retrieves a single pull request comment.
+func (c *Client) GetPullRequestComment(ctx context.Context, workspace, repoSlug string, prID, commentID int) (*PullRequestComment, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if prID <= 0 {
+		return nil, fmt.Errorf("pull request id must be positive")
+	}
+	if commentID <= 0 {
+		return nil, fmt.Errorf("comment id must be positive")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments/%d",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+		commentID,
+	)
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var comment PullRequestComment
+	if err := c.http.Do(req, &comment); err != nil {
+		return nil, err
+	}
+	return &comment, nil
+}
+
+// DeletePullRequestComment deletes a pull request comment.
+func (c *Client) DeletePullRequestComment(ctx context.Context, workspace, repoSlug string, prID, commentID int) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if prID <= 0 {
+		return fmt.Errorf("pull request id must be positive")
+	}
+	if commentID <= 0 {
+		return fmt.Errorf("comment id must be positive")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments/%d",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+		commentID,
+	)
+	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+	return c.http.Do(req, nil)
+}
+
+// SetPullRequestCommentThreadResolved resolves or reopens a top-level pull
+// request comment thread. Resolve returns Bitbucket Cloud's resolution object
+// when provided; reopen returns nil on success.
+func (c *Client) SetPullRequestCommentThreadResolved(ctx context.Context, workspace, repoSlug string, prID, commentID int, resolved bool) (*PullRequestCommentResolution, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if prID <= 0 {
+		return nil, fmt.Errorf("pull request id must be positive")
+	}
+	if commentID <= 0 {
+		return nil, fmt.Errorf("comment id must be positive")
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments/%d/resolve",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+		commentID,
+	)
+
+	method := "DELETE"
+	if resolved {
+		method = "POST"
+	}
+
+	req, err := c.http.NewRequest(ctx, method, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if !resolved {
+		return nil, c.http.Do(req, nil)
+	}
+
+	var resolution PullRequestCommentResolution
+	if err := c.http.Do(req, &resolution); err != nil {
+		return nil, err
+	}
+	return &resolution, nil
 }
 
 // ApprovePullRequest approves the given pull request.

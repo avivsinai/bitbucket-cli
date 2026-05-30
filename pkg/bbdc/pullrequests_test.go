@@ -3,6 +3,7 @@ package bbdc_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -513,6 +514,216 @@ func TestListPullRequestCommentsFlattensReplies(t *testing.T) {
 		if c.Depth != wantDepths[i] {
 			t.Errorf("comments[%d].Depth = %d, want %d", i, c.Depth, wantDepths[i])
 		}
+	}
+}
+
+func TestSetPullRequestCommentThreadResolved(t *testing.T) {
+	var gotPutPath string
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pull-requests/42/activities"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"isLastPage": true,
+				"values": []map[string]any{
+					{
+						"action": "COMMENTED",
+						"comment": map[string]any{
+							"id":             9,
+							"version":        3,
+							"text":           "root",
+							"severity":       "NORMAL",
+							"state":          "OPEN",
+							"properties":     map[string]any{"keep": "me"},
+							"threadResolved": false,
+							"author":         map[string]any{"displayName": "Reviewer"},
+							"permittedOperations": map[string]any{
+								"editable": true,
+							},
+							"anchor": map[string]any{
+								"path": map[string]any{
+									"components": []string{"src", "main.go"},
+									"name":       "main.go",
+									"parent":     "src",
+								},
+								"line":     10,
+								"lineType": "ADDED",
+								"fileType": "TO",
+							},
+							"comments": []map[string]any{
+								{"id": 10, "version": 1, "text": "reply"},
+							},
+						},
+					},
+				},
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/comments/9":
+			gotPutPath = r.URL.Path
+			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":             9,
+				"version":        4,
+				"text":           "root",
+				"threadResolved": true,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	comment, err := client.SetPullRequestCommentThreadResolved(context.Background(), "PROJ", "repo", 42, 9, true)
+	if err != nil {
+		t.Fatalf("SetPullRequestCommentThreadResolved: %v", err)
+	}
+	if gotPutPath == "" {
+		t.Fatal("expected PUT request")
+	}
+	if gotBody["version"] != float64(3) {
+		t.Errorf("version = %v, want 3", gotBody["version"])
+	}
+	if gotBody["id"] != float64(9) {
+		t.Errorf("id = %v, want 9", gotBody["id"])
+	}
+	if gotBody["text"] != "root" {
+		t.Errorf("text = %v, want root", gotBody["text"])
+	}
+	if gotBody["severity"] != "NORMAL" {
+		t.Errorf("severity = %v, want NORMAL", gotBody["severity"])
+	}
+	if gotBody["state"] != "OPEN" {
+		t.Errorf("state = %v, want OPEN", gotBody["state"])
+	}
+	props, ok := gotBody["properties"].(map[string]any)
+	if !ok || props["keep"] != "me" {
+		t.Errorf("properties = %#v, want keep=me", gotBody["properties"])
+	}
+	anchor, ok := gotBody["anchor"].(map[string]any)
+	path, _ := anchor["path"].(map[string]any)
+	if !ok || path["parent"] != "src" || anchor["line"] != float64(10) {
+		t.Errorf("anchor = %#v, want raw src/main.go anchor", gotBody["anchor"])
+	}
+	replies, ok := gotBody["comments"].([]any)
+	if !ok || len(replies) != 1 {
+		t.Errorf("comments = %#v, want preserved replies", gotBody["comments"])
+	}
+	if _, ok := gotBody["author"]; ok {
+		t.Errorf("author should not be sent in update body: %#v", gotBody["author"])
+	}
+	if _, ok := gotBody["permittedOperations"]; ok {
+		t.Errorf("permittedOperations should not be sent in update body: %#v", gotBody["permittedOperations"])
+	}
+	if gotBody["threadResolved"] != true {
+		t.Errorf("threadResolved = %v, want true", gotBody["threadResolved"])
+	}
+	if !comment.ThreadResolved {
+		t.Errorf("updated comment ThreadResolved = false, want true")
+	}
+}
+
+func TestDeletePullRequestComment(t *testing.T) {
+	var gotMethod, gotPath, gotQuery string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pull-requests/42/activities"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"isLastPage": true,
+				"values": []map[string]any{
+					{
+						"action": "COMMENTED",
+						"comment": map[string]any{
+							"id":      9,
+							"version": 3,
+							"text":    "root",
+						},
+					},
+				},
+			})
+		case r.Method == http.MethodDelete:
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			gotQuery = r.URL.RawQuery
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	if err := client.DeletePullRequestComment(context.Background(), "PROJ", "repo", 42, 9); err != nil {
+		t.Fatalf("DeletePullRequestComment: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %s, want DELETE", gotMethod)
+	}
+	if gotPath != "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/comments/9" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotQuery != "version=3" {
+		t.Errorf("query = %q, want version=3", gotQuery)
+	}
+}
+
+func TestSetPullRequestCommentThreadResolvedAlreadyResolvedSkipsPUT(t *testing.T) {
+	var putCalled bool
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			putCalled = true
+			t.Fatalf("unexpected PUT to %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isLastPage": true,
+			"values": []map[string]any{
+				{
+					"action": "COMMENTED",
+					"comment": map[string]any{
+						"id":             9,
+						"version":        3,
+						"text":           "root",
+						"threadResolved": true,
+					},
+				},
+			},
+		})
+	}))
+
+	comment, err := client.SetPullRequestCommentThreadResolved(context.Background(), "PROJ", "repo", 42, 9, true)
+	if err != nil {
+		t.Fatalf("SetPullRequestCommentThreadResolved: %v", err)
+	}
+	if putCalled {
+		t.Fatal("PUT should not be called")
+	}
+	if !comment.ThreadResolved {
+		t.Fatal("comment should remain resolved")
+	}
+}
+
+func TestSetPullRequestCommentThreadResolvedRejectsReply(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isLastPage": true,
+			"values": []map[string]any{
+				{
+					"action": "COMMENTED",
+					"comment": map[string]any{
+						"id":      1,
+						"version": 1,
+						"text":    "root",
+						"comments": []map[string]any{
+							{"id": 2, "version": 1, "text": "reply"},
+						},
+					},
+				},
+			},
+		})
+	}))
+
+	_, err := client.SetPullRequestCommentThreadResolved(context.Background(), "PROJ", "repo", 42, 2, true)
+	if !errors.Is(err, bbdc.ErrPullRequestCommentNotTopLevel) {
+		t.Fatalf("error = %v, want ErrPullRequestCommentNotTopLevel", err)
 	}
 }
 

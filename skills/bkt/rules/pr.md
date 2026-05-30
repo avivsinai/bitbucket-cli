@@ -414,15 +414,18 @@ bkt pr comment <id> --text <message> [flags]
 ## bkt pr comments
 
 List all comments on a pull request. On Cloud, use --state to filter by
-resolution status (resolved or unresolved). The --state flag is not supported
+resolution status (resolved, unresolved, or deleted). The --state flag is not supported
 on Data Center because the DC API does not expose resolution status.
 
 Works on both Data Center and Cloud.
 
-### Usage
+Resolve and reopen subcommands require the top-level thread comment ID, not a
+reply ID. Use --details when listing comments to inspect thread structure before
+changing thread state.
 
 ```
 bkt pr comments <id> [flags]
+bkt pr comments <command> [flags]
 ```
 
 ### Flags
@@ -432,7 +435,7 @@ bkt pr comments <id> [flags]
 | `--details` |  | Show full comment details (file, resolved, task status) |
 | `--project` |  | Bitbucket project key override |
 | `--repo` |  | Repository slug override |
-| `--state` |  | Filter by state: all, resolved, unresolved (Cloud only) |
+| `--state` |  | Filter by state: all, resolved, unresolved, deleted (Cloud only) |
 | `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
@@ -457,6 +460,156 @@ bkt pr comments <id> [flags]
 
   # List resolved comments (Cloud only)
   bkt pr comments 42 --state resolved
+
+  # List deleted comments (Cloud only)
+  bkt pr comments 42 --state deleted
+
+  # Delete a comment
+  bkt pr comments delete 42 1001
+
+  # Resolve a comment thread
+  bkt pr comments resolve 42 1001
+
+  # Reopen a resolved comment thread
+  bkt pr comments reopen 42 1001
+```
+
+| Subcommand | Description |
+|---|---|
+| delete | Delete a pull request comment |
+| reopen | Reopen a resolved pull request comment thread |
+| resolve | Resolve a pull request comment thread |
+
+## bkt pr comments delete
+
+Delete a pull request comment on Bitbucket Cloud or Data Center.
+
+Use bkt pr comments <id> or bkt pr comments <id> --details to find the comment
+ID before deleting it. On Bitbucket Cloud, deleted comments can still be listed
+with --state deleted when the API returns them. On Data Center, bkt fetches the
+current comment version before deleting because the API requires it.
+
+**Alias:** `rm`
+
+### Usage
+
+```
+bkt pr comments delete <id> <comment-id> [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--project` |  | Bitbucket project key override |
+| `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+# Delete comment 1001 from pull request 42
+  bkt pr comments delete 42 1001
+
+  # Delete a comment in a specific repository
+  bkt pr comments delete 42 1001 --repo platform-api
+```
+
+## bkt pr comments reopen
+
+Reopen a resolved pull request comment thread on Bitbucket Cloud or Data Center.
+
+The comment-id must be the top-level comment for the thread. Replies cannot be
+reopened directly; pass the parent comment ID instead. Deleted comments cannot
+be reopened.
+
+### Usage
+
+```
+bkt pr comments reopen <id> <comment-id> [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--project` |  | Bitbucket project key override |
+| `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+# Reopen thread 1001 on pull request 42
+  bkt pr comments reopen 42 1001
+
+  # Reopen a thread in a specific repository
+  bkt pr comments reopen 42 1001 --repo platform-api
+```
+
+## bkt pr comments resolve
+
+Resolve a pull request comment thread on Bitbucket Cloud or Data Center.
+
+The comment-id must be the top-level comment for the thread. Replies cannot be
+resolved directly; pass the parent comment ID instead. Deleted comments cannot
+be resolved.
+
+### Usage
+
+```
+bkt pr comments resolve <id> <comment-id> [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--project` |  | Bitbucket project key override |
+| `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+# Resolve thread 1001 on pull request 42
+  bkt pr comments resolve 42 1001
+
+  # Resolve a thread in a specific repository
+  bkt pr comments resolve 42 1001 --repo platform-api
 ```
 
 ## bkt pr create
