@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,6 +15,8 @@ type defaultReviewersOptions struct {
 	Workspace string
 	Project   string
 	Repo      string
+	Source    string
+	Target    string
 }
 
 func newDefaultReviewersCmd(f *cmdutil.Factory) *cobra.Command {
@@ -23,8 +26,8 @@ func newDefaultReviewersCmd(f *cmdutil.Factory) *cobra.Command {
 		Long: `Manage default reviewers configured for a repository.
 
 On Cloud, returns the effective default reviewers (merged from workspace and
-repository-level settings). On Data Center, returns the default reviewers
-configured at the repository level within the project.`,
+repository-level settings). On Data Center, returns the effective default
+reviewers for a pull request from --source to --target.`,
 	}
 	cmd.AddCommand(newDefaultReviewersListCmd(f))
 	return cmd
@@ -39,8 +42,9 @@ func newDefaultReviewersListCmd(f *cmdutil.Factory) *cobra.Command {
 
 On Cloud, this returns the effective default reviewers that would be automatically
 added to new pull requests, including reviewers inherited from workspace-level
-settings. On Data Center, this returns the default reviewer conditions set at the
-repository level within the project.
+settings. On Data Center, this returns the effective default reviewers that would
+be added to a pull request from --source to --target. Data Center requires
+source and target branch or tag names.
 
 The workspace/project and repository are resolved from the active context unless
 overridden with flags.`,
@@ -51,7 +55,7 @@ overridden with flags.`,
   bkt repo default-reviewers list --workspace my-team --repo api-service
 
   # List default reviewers for a Data Center repository
-  bkt repo default-reviewers list --project PLATFORM --repo backend`,
+  bkt repo default-reviewers list --project PLATFORM --repo backend --source feature/auth --target main`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDefaultReviewersList(cmd, f, opts)
 		},
@@ -59,6 +63,8 @@ overridden with flags.`,
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().StringVar(&opts.Source, "source", "", "Data Center source branch or tag")
+	cmd.Flags().StringVar(&opts.Target, "target", "", "Data Center target branch or tag")
 	return cmd
 }
 
@@ -76,6 +82,9 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 
 	switch host.Kind {
 	case "cloud":
+		if cmd.Flags().Changed("source") || cmd.Flags().Changed("target") {
+			return fmt.Errorf("--source and --target are only supported for Data Center default reviewer lookup")
+		}
 		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
 		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 		if workspace == "" || repoSlug == "" {
@@ -142,6 +151,11 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 		if projectKey == "" || repoSlug == "" {
 			return fmt.Errorf("context must supply project and repo; use --project/--repo if needed")
 		}
+		sourceRef := strings.TrimSpace(opts.Source)
+		targetRef := strings.TrimSpace(opts.Target)
+		if sourceRef == "" || targetRef == "" {
+			return fmt.Errorf("data center default reviewers require --source and --target refs")
+		}
 
 		client, err := cmdutil.NewDCClient(host)
 		if err != nil {
@@ -151,7 +165,7 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
-		users, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, "", "")
+		users, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, sourceRef, targetRef)
 		if err != nil {
 			return err
 		}
@@ -174,10 +188,14 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 		payload := struct {
 			Project   string            `json:"project"`
 			Repo      string            `json:"repo"`
+			Source    string            `json:"source"`
+			Target    string            `json:"target"`
 			Reviewers []reviewerSummary `json:"reviewers"`
 		}{
 			Project:   projectKey,
 			Repo:      repoSlug,
+			Source:    sourceRef,
+			Target:    targetRef,
 			Reviewers: summaries,
 		}
 

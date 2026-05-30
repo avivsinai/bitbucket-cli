@@ -3530,20 +3530,24 @@ func TestRunEditDataCenterReviewers(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "GET" && r.URL.Path == "/rest/api/1.0/projects/PROJ/repos/repo" {
+					_ = json.NewEncoder(w).Encode(bbdc.Repository{Slug: "repo", ID: 77})
+					return
+				}
 				if r.Method == "GET" && strings.Contains(r.URL.Path, "/default-reviewers/") {
-					if got := r.URL.Query().Get("sourceRefId"); got != "refs/heads/feature/auth" {
-						t.Fatalf("sourceRefId = %q, want refs/heads/feature/auth", got)
+					if got := r.URL.Query().Get("sourceRepoId"); got != "77" {
+						t.Fatalf("sourceRepoId = %q, want 77", got)
 					}
-					if got := r.URL.Query().Get("targetRefId"); got != "refs/heads/main" {
-						t.Fatalf("targetRefId = %q, want refs/heads/main", got)
+					if got := r.URL.Query().Get("targetRepoId"); got != "77" {
+						t.Fatalf("targetRepoId = %q, want 77", got)
 					}
-					_ = json.NewEncoder(w).Encode([]map[string]any{
-						{
-							"reviewers": []map[string]any{
-								{"users": tt.defaultUsers},
-							},
-						},
-					})
+					if got := r.URL.Query().Get("sourceRefId"); got != "feature/auth" {
+						t.Fatalf("sourceRefId = %q, want feature/auth", got)
+					}
+					if got := r.URL.Query().Get("targetRefId"); got != "main" {
+						t.Fatalf("targetRefId = %q, want main", got)
+					}
+					_ = json.NewEncoder(w).Encode(tt.defaultUsers)
 					return
 				}
 				if r.Method == "GET" {
@@ -4941,6 +4945,83 @@ func TestRunCreateDataCenter(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRunCreateDataCenterWithDefaultReviewers(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/rest/api/1.0/projects/PROJ/repos/repo":
+			_ = json.NewEncoder(w).Encode(bbdc.Repository{Slug: "repo", ID: 456})
+		case r.Method == "GET" && strings.Contains(r.URL.Path, "/default-reviewers/"):
+			query := r.URL.Query()
+			if got := query.Get("sourceRepoId"); got != "456" {
+				t.Fatalf("sourceRepoId = %q, want 456", got)
+			}
+			if got := query.Get("targetRepoId"); got != "456" {
+				t.Fatalf("targetRepoId = %q, want 456", got)
+			}
+			if got := query.Get("sourceRefId"); got != "feature/auth" {
+				t.Fatalf("sourceRefId = %q, want feature/auth", got)
+			}
+			if got := query.Get("targetRefId"); got != "main" {
+				t.Fatalf("targetRefId = %q, want main", got)
+			}
+			_ = json.NewEncoder(w).Encode([]bbdc.User{
+				{Name: "alice"},
+				{Name: "bob"},
+			})
+		case r.Method == "POST" && strings.Contains(r.URL.Path, "/pull-requests"):
+			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.NewEncoder(w).Encode(bbdc.PullRequest{ID: 42, Title: "Test PR"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newCreateCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--title", "Test PR", "--source", "feature/auth", "--target", "main", "--with-default-reviewers"})
+	cmd.SetContext(context.Background())
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reviewers, ok := gotBody["reviewers"].([]any)
+	if !ok {
+		t.Fatalf("reviewers not found or wrong type in POST body")
+	}
+	if len(reviewers) != 2 {
+		t.Fatalf("expected 2 reviewers, got %d", len(reviewers))
+	}
+	for i, want := range []string{"alice", "bob"} {
+		reviewer := reviewers[i].(map[string]any)
+		user := reviewer["user"].(map[string]any)
+		if got := user["name"]; got != want {
+			t.Fatalf("reviewer[%d] name = %v, want %s", i, got, want)
+		}
 	}
 }
 

@@ -129,6 +129,140 @@ func TestBrowseWithoutRepoDefaults(t *testing.T) {
 	}
 }
 
+func TestDefaultReviewersListDataCenterRequiresRefs(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: "https://bitbucket.example.com", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config: func() (*config.Config, error) {
+			return cfg, nil
+		},
+	}
+
+	cmd := newDefaultReviewersListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when Data Center source/target refs are missing")
+	}
+	if !strings.Contains(err.Error(), "data center default reviewers require --source and --target refs") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDefaultReviewersListDataCenterUsesEffectiveReviewersEndpoint(t *testing.T) {
+	var sawReviewersRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/rest/api/1.0/projects/PROJ/repos/repo":
+			_ = json.NewEncoder(w).Encode(bbdc.Repository{Slug: "repo", ID: 123})
+		case "/rest/default-reviewers/1.0/projects/PROJ/repos/repo/reviewers":
+			sawReviewersRequest = true
+			query := r.URL.Query()
+			if got := query.Get("sourceRepoId"); got != "123" {
+				t.Fatalf("sourceRepoId = %q, want 123", got)
+			}
+			if got := query.Get("targetRepoId"); got != "123" {
+				t.Fatalf("targetRepoId = %q, want 123", got)
+			}
+			if got := query.Get("sourceRefId"); got != "feature/auth" {
+				t.Fatalf("sourceRefId = %q, want feature/auth", got)
+			}
+			if got := query.Get("targetRefId"); got != "main" {
+				t.Fatalf("targetRefId = %q, want main", got)
+			}
+			_ = json.NewEncoder(w).Encode([]bbdc.User{
+				{Name: "alice", FullName: "Alice", ID: 7},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: server.URL, Token: "test-token"},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+		Config: func() (*config.Config, error) {
+			return cfg, nil
+		},
+	}
+
+	cmd := newDefaultReviewersListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--source", "refs/heads/feature/auth", "--target", "main"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sawReviewersRequest {
+		t.Fatal("expected default reviewers request")
+	}
+	if !strings.Contains(stdout.String(), "Alice") || !strings.Contains(stdout.String(), "alice") {
+		t.Fatalf("expected reviewer output, got %q", stdout.String())
+	}
+}
+
+func TestDefaultReviewersListCloudRejectsRefFlags(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "cloud", BaseURL: "https://api.bitbucket.org/2.0", Token: "test-token"},
+		},
+	}
+
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &strings.Builder{}, ErrOut: &strings.Builder{}},
+		Config: func() (*config.Config, error) {
+			return cfg, nil
+		},
+	}
+
+	cmd := newDefaultReviewersListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--source", "feature", "--target", "main"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when Cloud source/target refs are provided")
+	}
+	if !strings.Contains(err.Error(), "--source and --target are only supported for Data Center") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRepoCreateRejectsHostNoOpFlags(t *testing.T) {
 	tests := []struct {
 		name          string

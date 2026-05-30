@@ -188,8 +188,8 @@ bkt repo create <repository> [flags]
 Manage default reviewers configured for a repository.
 
 On Cloud, returns the effective default reviewers (merged from workspace and
-repository-level settings). On Data Center, returns the default reviewers
-configured at the repository level within the project.
+repository-level settings). On Data Center, returns the effective default
+reviewers for a pull request from --source to --target.
 
 ```
 bkt repo default-reviewers <command> [flags]
@@ -205,8 +205,9 @@ List the default reviewers configured for a repository.
 
 On Cloud, this returns the effective default reviewers that would be automatically
 added to new pull requests, including reviewers inherited from workspace-level
-settings. On Data Center, this returns the default reviewer conditions set at the
-repository level within the project.
+settings. On Data Center, this returns the effective default reviewers that would
+be added to a pull request from --source to --target. Data Center requires
+source and target branch or tag names.
 
 The workspace/project and repository are resolved from the active context unless
 overridden with flags.
@@ -223,6 +224,8 @@ bkt repo default-reviewers list [flags]
 |---|---|---|
 | `--project` |  | Bitbucket project key override |
 | `--repo` |  | Repository slug override |
+| `--source` |  | Data Center source branch or tag |
+| `--target` |  | Data Center target branch or tag |
 | `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
@@ -246,7 +249,7 @@ bkt repo default-reviewers list [flags]
   bkt repo default-reviewers list --workspace my-team --repo api-service
 
   # List default reviewers for a Data Center repository
-  bkt repo default-reviewers list --project PLATFORM --repo backend
+  bkt repo default-reviewers list --project PLATFORM --repo backend --source feature/auth --target main
 ```
 
 ## bkt repo list
