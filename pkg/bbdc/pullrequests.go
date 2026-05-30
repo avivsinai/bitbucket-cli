@@ -28,13 +28,14 @@ type PullRequestParticipant struct {
 
 // PullRequestComment represents a PR comment.
 type PullRequestComment struct {
-	ID             int    `json:"id"`
-	Version        int    `json:"version"`
-	Text           string `json:"text"`
-	Severity       string `json:"severity"` // "NORMAL" or "BLOCKER" (task)
-	State          string `json:"state"`    // "OPEN" or "RESOLVED"
-	Author         User   `json:"author"`
-	ThreadResolved bool   `json:"threadResolved"`
+	ID             int            `json:"id"`
+	Version        int            `json:"version"`
+	Text           string         `json:"text"`
+	Severity       string         `json:"severity"` // "NORMAL" or "BLOCKER" (task)
+	State          string         `json:"state"`    // "OPEN" or "RESOLVED"
+	Properties     map[string]any `json:"properties,omitempty"`
+	Author         User           `json:"author"`
+	ThreadResolved bool           `json:"threadResolved"`
 	Anchor         *struct {
 		Path     string `json:"path"`
 		Line     int    `json:"line"`
@@ -132,9 +133,21 @@ func (c *Client) SetPullRequestCommentThreadResolved(ctx context.Context, projec
 		return current, nil
 	}
 
+	properties := current.Properties
+	if properties == nil {
+		properties = map[string]any{}
+	}
 	body := map[string]any{
+		"id":             current.ID,
 		"version":        current.Version,
+		"text":           current.Text,
+		"severity":       current.Severity,
+		"state":          current.State,
+		"properties":     properties,
 		"threadResolved": resolved,
+	}
+	if current.Anchor != nil {
+		body["anchor"] = current.Anchor
 	}
 	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments/%d",
 		url.PathEscape(projectKey),

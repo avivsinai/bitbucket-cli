@@ -524,6 +524,9 @@ func TestCommentsThreadResolveDC(t *testing.T) {
 							"id":             9,
 							"version":        3,
 							"text":           "root",
+							"severity":       "NORMAL",
+							"state":          "OPEN",
+							"properties":     map[string]any{"keep": "me"},
 							"threadResolved": false,
 						},
 					},
@@ -551,8 +554,14 @@ func TestCommentsThreadResolveDC(t *testing.T) {
 	if gotPutPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments/9" {
 		t.Errorf("PUT path = %q", gotPutPath)
 	}
-	if gotBody["version"] != float64(3) || gotBody["threadResolved"] != true {
-		t.Errorf("body = %#v, want version=3 threadResolved=true", gotBody)
+	if gotBody["version"] != float64(3) || gotBody["id"] != float64(9) ||
+		gotBody["text"] != "root" || gotBody["severity"] != "NORMAL" ||
+		gotBody["state"] != "OPEN" || gotBody["threadResolved"] != true {
+		t.Errorf("body = %#v, want full comment payload with threadResolved=true", gotBody)
+	}
+	props, ok := gotBody["properties"].(map[string]any)
+	if !ok || props["keep"] != "me" {
+		t.Errorf("properties = %#v, want keep=me", gotBody["properties"])
 	}
 	if !strings.Contains(stdout, "Resolved comment thread 9 on pull request #42") {
 		t.Errorf("unexpected output: %s", stdout)

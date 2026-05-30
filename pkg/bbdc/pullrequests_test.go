@@ -533,7 +533,16 @@ func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 							"id":             9,
 							"version":        3,
 							"text":           "root",
+							"severity":       "NORMAL",
+							"state":          "OPEN",
+							"properties":     map[string]any{"keep": "me"},
 							"threadResolved": false,
+							"anchor": map[string]any{
+								"path":     "src/main.go",
+								"line":     10,
+								"lineType": "ADDED",
+								"fileType": "TO",
+							},
 						},
 					},
 				},
@@ -561,6 +570,26 @@ func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 	}
 	if gotBody["version"] != float64(3) {
 		t.Errorf("version = %v, want 3", gotBody["version"])
+	}
+	if gotBody["id"] != float64(9) {
+		t.Errorf("id = %v, want 9", gotBody["id"])
+	}
+	if gotBody["text"] != "root" {
+		t.Errorf("text = %v, want root", gotBody["text"])
+	}
+	if gotBody["severity"] != "NORMAL" {
+		t.Errorf("severity = %v, want NORMAL", gotBody["severity"])
+	}
+	if gotBody["state"] != "OPEN" {
+		t.Errorf("state = %v, want OPEN", gotBody["state"])
+	}
+	props, ok := gotBody["properties"].(map[string]any)
+	if !ok || props["keep"] != "me" {
+		t.Errorf("properties = %#v, want keep=me", gotBody["properties"])
+	}
+	anchor, ok := gotBody["anchor"].(map[string]any)
+	if !ok || anchor["path"] != "src/main.go" || anchor["line"] != float64(10) {
+		t.Errorf("anchor = %#v, want src/main.go:10", gotBody["anchor"])
 	}
 	if gotBody["threadResolved"] != true {
 		t.Errorf("threadResolved = %v, want true", gotBody["threadResolved"])
