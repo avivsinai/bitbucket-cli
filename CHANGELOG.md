@@ -5,6 +5,17 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt pr comments resolve`, `bkt pr comments reopen`, and
+  `bkt pr comments delete` now manage pull request comment threads/comments on
+  Bitbucket Cloud and Data Center. Resolve/reopen require the top-level thread
+  comment ID and support structured output.
+
+### Fixed
+- `bkt pr comments --state deleted` can now list deleted pull request comments
+  returned by Bitbucket Cloud, making deletion verification explicit.
+- `bkt pr comments delete` now includes the current comment version required by
+  Bitbucket Data Center delete-comment requests.
 
 ## [0.27.1] - 2026-05-29
 ### Fixed

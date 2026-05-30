@@ -2,6 +2,7 @@ package bbdc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -28,22 +29,91 @@ type PullRequestParticipant struct {
 
 // PullRequestComment represents a PR comment.
 type PullRequestComment struct {
-	ID             int            `json:"id"`
-	Version        int            `json:"version"`
-	Text           string         `json:"text"`
-	Severity       string         `json:"severity"` // "NORMAL" or "BLOCKER" (task)
-	State          string         `json:"state"`    // "OPEN" or "RESOLVED"
-	Properties     map[string]any `json:"properties,omitempty"`
-	Author         User           `json:"author"`
-	ThreadResolved bool           `json:"threadResolved"`
-	Anchor         *struct {
-		Path     string `json:"path"`
-		Line     int    `json:"line"`
-		LineType string `json:"lineType"`
-		FileType string `json:"fileType"`
-	} `json:"anchor,omitempty"`
-	Comments []PullRequestComment `json:"comments,omitempty"`
-	Depth    int                  `json:"-"` // nesting depth, set during flattening
+	ID             int                       `json:"id"`
+	Version        int                       `json:"version"`
+	Text           string                    `json:"text"`
+	Severity       string                    `json:"severity"` // "NORMAL" or "BLOCKER" (task)
+	State          string                    `json:"state"`    // "OPEN" or "RESOLVED"
+	Properties     map[string]any            `json:"properties,omitempty"`
+	Author         User                      `json:"author"`
+	ThreadResolved bool                      `json:"threadResolved"`
+	Anchor         *PullRequestCommentAnchor `json:"anchor,omitempty"`
+	Comments       []PullRequestComment      `json:"comments,omitempty"`
+	Depth          int                       `json:"-"` // nesting depth, set during flattening
+	raw            map[string]any
+}
+
+type PullRequestCommentAnchor struct {
+	Path     string `json:"path"`
+	Line     int    `json:"line"`
+	LineType string `json:"lineType"`
+	FileType string `json:"fileType"`
+}
+
+func (a *PullRequestCommentAnchor) UnmarshalJSON(data []byte) error {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if value, ok := raw["path"]; ok {
+		a.Path = commentAnchorPath(value)
+	}
+	if value, ok := raw["line"].(float64); ok {
+		a.Line = int(value)
+	}
+	if value, ok := raw["lineType"].(string); ok {
+		a.LineType = value
+	}
+	if value, ok := raw["fileType"].(string); ok {
+		a.FileType = value
+	}
+	return nil
+}
+
+func commentAnchorPath(value any) string {
+	switch path := value.(type) {
+	case string:
+		return path
+	case map[string]any:
+		if parent, _ := path["parent"].(string); parent != "" {
+			if name, _ := path["name"].(string); name != "" {
+				return strings.TrimSuffix(parent, "/") + "/" + name
+			}
+			return parent
+		}
+		if components, ok := path["components"].([]any); ok {
+			parts := make([]string, 0, len(components))
+			for _, component := range components {
+				if s, ok := component.(string); ok && s != "" {
+					parts = append(parts, s)
+				}
+			}
+			if len(parts) > 0 {
+				return strings.Join(parts, "/")
+			}
+		}
+		if name, _ := path["name"].(string); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// UnmarshalJSON keeps the typed fields used by callers while preserving the
+// mutable comment fields needed by Bitbucket's update-comment endpoint.
+func (c *PullRequestComment) UnmarshalJSON(data []byte) error {
+	type alias PullRequestComment
+	var parsed alias
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*c = PullRequestComment(parsed)
+	c.raw = raw
+	return nil
 }
 
 // pullRequestActivity represents a single entry from the PR activities endpoint.
@@ -116,15 +186,9 @@ func (c *Client) SetPullRequestCommentThreadResolved(ctx context.Context, projec
 		return nil, err
 	}
 
-	var current *PullRequestComment
-	for i := range comments {
-		if comments[i].ID == commentID {
-			current = &comments[i]
-			break
-		}
-	}
-	if current == nil {
-		return nil, fmt.Errorf("pull request comment %d not found", commentID)
+	current, err := findPullRequestComment(comments, commentID)
+	if err != nil {
+		return nil, err
 	}
 	if current.Depth > 0 {
 		return nil, ErrPullRequestCommentNotTopLevel
@@ -133,22 +197,7 @@ func (c *Client) SetPullRequestCommentThreadResolved(ctx context.Context, projec
 		return current, nil
 	}
 
-	properties := current.Properties
-	if properties == nil {
-		properties = map[string]any{}
-	}
-	body := map[string]any{
-		"id":             current.ID,
-		"version":        current.Version,
-		"text":           current.Text,
-		"severity":       current.Severity,
-		"state":          current.State,
-		"properties":     properties,
-		"threadResolved": resolved,
-	}
-	if current.Anchor != nil {
-		body["anchor"] = current.Anchor
-	}
+	body := current.updatePayload(resolved)
 	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments/%d",
 		url.PathEscape(projectKey),
 		url.PathEscape(repoSlug),
@@ -171,6 +220,48 @@ func (c *Client) SetPullRequestCommentThreadResolved(ctx context.Context, projec
 	return &updated, nil
 }
 
+func (c PullRequestComment) updatePayload(resolved bool) map[string]any {
+	body := map[string]any{}
+	for _, key := range []string{"anchor", "comments", "id", "properties", "severity", "state", "text", "version"} {
+		if value, ok := c.raw[key]; ok {
+			body[key] = value
+		}
+	}
+	if _, ok := body["id"]; !ok {
+		body["id"] = c.ID
+	}
+	if _, ok := body["version"]; !ok {
+		body["version"] = c.Version
+	}
+	if _, ok := body["text"]; !ok {
+		body["text"] = c.Text
+	}
+	if _, ok := body["severity"]; !ok {
+		body["severity"] = c.Severity
+	}
+	if _, ok := body["state"]; !ok {
+		body["state"] = c.State
+	}
+	if _, ok := body["properties"]; !ok {
+		if c.Properties != nil {
+			body["properties"] = c.Properties
+		} else {
+			body["properties"] = map[string]any{}
+		}
+	}
+	body["threadResolved"] = resolved
+	return body
+}
+
+func findPullRequestComment(comments []PullRequestComment, commentID int) (*PullRequestComment, error) {
+	for i := range comments {
+		if comments[i].ID == commentID {
+			return &comments[i], nil
+		}
+	}
+	return nil, fmt.Errorf("pull request comment %d not found", commentID)
+}
+
 // DeletePullRequestComment deletes a pull request comment.
 func (c *Client) DeletePullRequestComment(ctx context.Context, projectKey, repoSlug string, prID, commentID int) error {
 	if projectKey == "" || repoSlug == "" {
@@ -183,11 +274,23 @@ func (c *Client) DeletePullRequestComment(ctx context.Context, projectKey, repoS
 		return fmt.Errorf("comment id must be positive")
 	}
 
-	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments/%d",
+	comments, err := c.ListPullRequestComments(ctx, projectKey, repoSlug, prID)
+	if err != nil {
+		return err
+	}
+	current, err := findPullRequestComment(comments, commentID)
+	if err != nil {
+		return err
+	}
+
+	query := url.Values{}
+	query.Set("version", fmt.Sprint(current.Version))
+	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments/%d?%s",
 		url.PathEscape(projectKey),
 		url.PathEscape(repoSlug),
 		prID,
 		commentID,
+		query.Encode(),
 	)
 	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
 	if err != nil {

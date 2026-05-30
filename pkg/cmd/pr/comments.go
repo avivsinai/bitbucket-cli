@@ -44,7 +44,11 @@ func newCommentsCmd(f *cmdutil.Factory) *cobra.Command {
 resolution status (resolved, unresolved, or deleted). The --state flag is not supported
 on Data Center because the DC API does not expose resolution status.
 
-Works on both Data Center and Cloud.`,
+Works on both Data Center and Cloud.
+
+Resolve and reopen subcommands require the top-level thread comment ID, not a
+reply ID. Use --details when listing comments to inspect thread structure before
+changing thread state.`,
 		Example: `  # List all comments
   bkt pr comments 42
 
@@ -91,10 +95,19 @@ Works on both Data Center and Cloud.`,
 func newCommentsResolveCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &commentsOptions{}
 	cmd := &cobra.Command{
-		Use:     "resolve <id> <comment-id>",
-		Short:   "Resolve a pull request comment thread",
-		Example: "  bkt pr comments resolve 42 1001",
-		Args:    cobra.ExactArgs(2),
+		Use:   "resolve <id> <comment-id>",
+		Short: "Resolve a pull request comment thread",
+		Long: `Resolve a pull request comment thread on Bitbucket Cloud or Data Center.
+
+The comment-id must be the top-level comment for the thread. Replies cannot be
+resolved directly; pass the parent comment ID instead. Deleted comments cannot
+be resolved.`,
+		Example: `  # Resolve thread 1001 on pull request 42
+  bkt pr comments resolve 42 1001
+
+  # Resolve a thread in a specific repository
+  bkt pr comments resolve 42 1001 --repo platform-api`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prID, commentID, err := parseCommentThreadArgs(args)
 			if err != nil {
@@ -110,10 +123,19 @@ func newCommentsResolveCmd(f *cmdutil.Factory) *cobra.Command {
 func newCommentsReopenCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &commentsOptions{}
 	cmd := &cobra.Command{
-		Use:     "reopen <id> <comment-id>",
-		Short:   "Reopen a resolved pull request comment thread",
-		Example: "  bkt pr comments reopen 42 1001",
-		Args:    cobra.ExactArgs(2),
+		Use:   "reopen <id> <comment-id>",
+		Short: "Reopen a resolved pull request comment thread",
+		Long: `Reopen a resolved pull request comment thread on Bitbucket Cloud or Data Center.
+
+The comment-id must be the top-level comment for the thread. Replies cannot be
+reopened directly; pass the parent comment ID instead. Deleted comments cannot
+be reopened.`,
+		Example: `  # Reopen thread 1001 on pull request 42
+  bkt pr comments reopen 42 1001
+
+  # Reopen a thread in a specific repository
+  bkt pr comments reopen 42 1001 --repo platform-api`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prID, commentID, err := parseCommentThreadArgs(args)
 			if err != nil {
@@ -132,8 +154,18 @@ func newCommentsDeleteCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:     "delete <id> <comment-id>",
 		Aliases: []string{"rm"},
 		Short:   "Delete a pull request comment",
-		Example: "  bkt pr comments delete 42 1001",
-		Args:    cobra.ExactArgs(2),
+		Long: `Delete a pull request comment on Bitbucket Cloud or Data Center.
+
+Use bkt pr comments <id> or bkt pr comments <id> --details to find the comment
+ID before deleting it. On Bitbucket Cloud, deleted comments can still be listed
+with --state deleted when the API returns them. On Data Center, bkt fetches the
+current comment version before deleting because the API requires it.`,
+		Example: `  # Delete comment 1001 from pull request 42
+  bkt pr comments delete 42 1001
+
+  # Delete a comment in a specific repository
+  bkt pr comments delete 42 1001 --repo platform-api`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prID, commentID, err := parseCommentThreadArgs(args)
 			if err != nil {

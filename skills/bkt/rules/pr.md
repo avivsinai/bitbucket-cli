@@ -419,6 +419,10 @@ on Data Center because the DC API does not expose resolution status.
 
 Works on both Data Center and Cloud.
 
+Resolve and reopen subcommands require the top-level thread comment ID, not a
+reply ID. Use --details when listing comments to inspect thread structure before
+changing thread state.
+
 ```
 bkt pr comments <id> [flags]
 bkt pr comments <command> [flags]
@@ -478,7 +482,12 @@ bkt pr comments <command> [flags]
 
 ## bkt pr comments delete
 
-Delete a pull request comment
+Delete a pull request comment on Bitbucket Cloud or Data Center.
+
+Use bkt pr comments <id> or bkt pr comments <id> --details to find the comment
+ID before deleting it. On Bitbucket Cloud, deleted comments can still be listed
+with --state deleted when the API returns them. On Data Center, bkt fetches the
+current comment version before deleting because the API requires it.
 
 **Alias:** `rm`
 
@@ -510,12 +519,20 @@ bkt pr comments delete <id> <comment-id> [flags]
 ### Examples
 
 ```bash
-bkt pr comments delete 42 1001
+# Delete comment 1001 from pull request 42
+  bkt pr comments delete 42 1001
+
+  # Delete a comment in a specific repository
+  bkt pr comments delete 42 1001 --repo platform-api
 ```
 
 ## bkt pr comments reopen
 
-Reopen a resolved pull request comment thread
+Reopen a resolved pull request comment thread on Bitbucket Cloud or Data Center.
+
+The comment-id must be the top-level comment for the thread. Replies cannot be
+reopened directly; pass the parent comment ID instead. Deleted comments cannot
+be reopened.
 
 ### Usage
 
@@ -545,12 +562,20 @@ bkt pr comments reopen <id> <comment-id> [flags]
 ### Examples
 
 ```bash
-bkt pr comments reopen 42 1001
+# Reopen thread 1001 on pull request 42
+  bkt pr comments reopen 42 1001
+
+  # Reopen a thread in a specific repository
+  bkt pr comments reopen 42 1001 --repo platform-api
 ```
 
 ## bkt pr comments resolve
 
-Resolve a pull request comment thread
+Resolve a pull request comment thread on Bitbucket Cloud or Data Center.
+
+The comment-id must be the top-level comment for the thread. Replies cannot be
+resolved directly; pass the parent comment ID instead. Deleted comments cannot
+be resolved.
 
 ### Usage
 
@@ -580,7 +605,11 @@ bkt pr comments resolve <id> <comment-id> [flags]
 ### Examples
 
 ```bash
-bkt pr comments resolve 42 1001
+# Resolve thread 1001 on pull request 42
+  bkt pr comments resolve 42 1001
+
+  # Resolve a thread in a specific repository
+  bkt pr comments resolve 42 1001 --repo platform-api
 ```
 
 ## bkt pr create

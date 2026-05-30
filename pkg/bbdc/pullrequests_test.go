@@ -537,11 +537,22 @@ func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 							"state":          "OPEN",
 							"properties":     map[string]any{"keep": "me"},
 							"threadResolved": false,
+							"author":         map[string]any{"displayName": "Reviewer"},
+							"permittedOperations": map[string]any{
+								"editable": true,
+							},
 							"anchor": map[string]any{
-								"path":     "src/main.go",
+								"path": map[string]any{
+									"components": []string{"src", "main.go"},
+									"name":       "main.go",
+									"parent":     "src",
+								},
 								"line":     10,
 								"lineType": "ADDED",
 								"fileType": "TO",
+							},
+							"comments": []map[string]any{
+								{"id": 10, "version": 1, "text": "reply"},
 							},
 						},
 					},
@@ -588,8 +599,19 @@ func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 		t.Errorf("properties = %#v, want keep=me", gotBody["properties"])
 	}
 	anchor, ok := gotBody["anchor"].(map[string]any)
-	if !ok || anchor["path"] != "src/main.go" || anchor["line"] != float64(10) {
-		t.Errorf("anchor = %#v, want src/main.go:10", gotBody["anchor"])
+	path, _ := anchor["path"].(map[string]any)
+	if !ok || path["parent"] != "src" || anchor["line"] != float64(10) {
+		t.Errorf("anchor = %#v, want raw src/main.go anchor", gotBody["anchor"])
+	}
+	replies, ok := gotBody["comments"].([]any)
+	if !ok || len(replies) != 1 {
+		t.Errorf("comments = %#v, want preserved replies", gotBody["comments"])
+	}
+	if _, ok := gotBody["author"]; ok {
+		t.Errorf("author should not be sent in update body: %#v", gotBody["author"])
+	}
+	if _, ok := gotBody["permittedOperations"]; ok {
+		t.Errorf("permittedOperations should not be sent in update body: %#v", gotBody["permittedOperations"])
 	}
 	if gotBody["threadResolved"] != true {
 		t.Errorf("threadResolved = %v, want true", gotBody["threadResolved"])
@@ -600,11 +622,32 @@ func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 }
 
 func TestDeletePullRequestComment(t *testing.T) {
-	var gotMethod, gotPath string
+	var gotMethod, gotPath, gotQuery string
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod = r.Method
-		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusNoContent)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pull-requests/42/activities"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"isLastPage": true,
+				"values": []map[string]any{
+					{
+						"action": "COMMENTED",
+						"comment": map[string]any{
+							"id":      9,
+							"version": 3,
+							"text":    "root",
+						},
+					},
+				},
+			})
+		case r.Method == http.MethodDelete:
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			gotQuery = r.URL.RawQuery
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 
 	if err := client.DeletePullRequestComment(context.Background(), "PROJ", "repo", 42, 9); err != nil {
@@ -615,6 +658,9 @@ func TestDeletePullRequestComment(t *testing.T) {
 	}
 	if gotPath != "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/comments/9" {
 		t.Errorf("path = %q", gotPath)
+	}
+	if gotQuery != "version=3" {
+		t.Errorf("query = %q, want version=3", gotQuery)
 	}
 }
 

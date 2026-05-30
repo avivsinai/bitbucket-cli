@@ -569,11 +569,32 @@ func TestCommentsThreadResolveDC(t *testing.T) {
 }
 
 func TestCommentsDeleteDC(t *testing.T) {
-	var gotMethod, gotPath string
+	var gotMethod, gotPath, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod = r.Method
-		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusNoContent)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pull-requests/42/activities"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"isLastPage": true,
+				"values": []map[string]any{
+					{
+						"action": "COMMENTED",
+						"comment": map[string]any{
+							"id":      9,
+							"version": 3,
+							"text":    "root",
+						},
+					},
+				},
+			})
+		case r.Method == http.MethodDelete:
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			gotQuery = r.URL.RawQuery
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -586,6 +607,9 @@ func TestCommentsDeleteDC(t *testing.T) {
 	}
 	if gotPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments/9" {
 		t.Errorf("path = %q", gotPath)
+	}
+	if gotQuery != "version=3" {
+		t.Errorf("query = %q, want version=3", gotQuery)
 	}
 	if !strings.Contains(stdout, "Deleted comment 9 on pull request #42") {
 		t.Errorf("unexpected output: %s", stdout)
