@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.28.0] - 2026-05-30
 ### Added
 - `bkt pr comments resolve`, `bkt pr comments reopen`, and
   `bkt pr comments delete` now manage pull request comment threads/comments on
@@ -16,6 +18,7 @@ All notable changes to this project will be documented here. The format follows
   returned by Bitbucket Cloud, making deletion verification explicit.
 - `bkt pr comments delete` now includes the current comment version required by
   Bitbucket Data Center delete-comment requests.
+
 
 ## [0.27.1] - 2026-05-29
 ### Fixed
@@ -546,7 +549,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.7...v0.27.0
 [0.26.7]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.6...v0.26.7
