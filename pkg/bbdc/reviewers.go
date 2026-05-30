@@ -13,31 +13,6 @@ type ReviewerGroup struct {
 	ID   int    `json:"id"`
 }
 
-type defaultReviewerCondition struct {
-	ID                int                       `json:"id"`
-	SourceRefMatcher  defaultReviewerRefMatcher `json:"sourceRefMatcher"`
-	TargetRefMatcher  defaultReviewerRefMatcher `json:"targetRefMatcher"`
-	Reviewers         []defaultReviewerGroup    `json:"reviewers"`
-	ReviewerGroups    []defaultReviewerGroup    `json:"reviewerGroups"`
-	RequiredApprovals int                       `json:"requiredApprovals"`
-}
-
-type defaultReviewerRefMatcher struct {
-	ID        string `json:"id"`
-	DisplayID string `json:"displayId"`
-	Type      struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"type"`
-}
-
-type defaultReviewerGroup struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Users       []User `json:"users"`
-}
-
 // ListReviewerGroups returns reviewer groups associated with a repository's default reviewers.
 func (c *Client) ListReviewerGroups(ctx context.Context, projectKey, repoSlug string) ([]ReviewerGroup, error) {
 	if projectKey == "" || repoSlug == "" {
@@ -68,6 +43,16 @@ func (c *Client) GetDefaultReviewers(ctx context.Context, projectKey, repoSlug, 
 	if projectKey == "" || repoSlug == "" {
 		return nil, fmt.Errorf("project key and repository slug are required")
 	}
+	sourceRef = strings.TrimSpace(sourceRef)
+	targetRef = strings.TrimSpace(targetRef)
+	if sourceRef == "" || targetRef == "" {
+		return nil, fmt.Errorf("source and target refs are required")
+	}
+
+	repo, err := c.GetRepository(ctx, projectKey, repoSlug)
+	if err != nil {
+		return nil, fmt.Errorf("fetch repository: %w", err)
+	}
 
 	endpoint := fmt.Sprintf("/rest/default-reviewers/1.0/projects/%s/repos/%s/reviewers",
 		url.PathEscape(projectKey),
@@ -75,40 +60,20 @@ func (c *Client) GetDefaultReviewers(ctx context.Context, projectKey, repoSlug, 
 	)
 
 	params := url.Values{}
-	if sourceRef != "" {
-		params.Set("sourceRefId", normalizeRefID(sourceRef))
-	}
-	if targetRef != "" {
-		params.Set("targetRefId", normalizeRefID(targetRef))
-	}
-	if len(params) > 0 {
-		endpoint += "?" + params.Encode()
-	}
+	params.Set("sourceRepoId", fmt.Sprintf("%d", repo.ID))
+	params.Set("targetRepoId", fmt.Sprintf("%d", repo.ID))
+	params.Set("sourceRefId", defaultReviewerRefID(sourceRef))
+	params.Set("targetRefId", defaultReviewerRefID(targetRef))
+	endpoint += "?" + params.Encode()
 
 	req, err := c.http.NewRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create default reviewers request: %w", err)
 	}
 
-	var conditions []defaultReviewerCondition
-	if err := c.http.Do(req, &conditions); err != nil {
+	var reviewers []User
+	if err := c.http.Do(req, &reviewers); err != nil {
 		return nil, fmt.Errorf("fetch default reviewers: %w", err)
-	}
-
-	reviewers := make([]User, 0)
-	seen := make(map[string]struct{})
-	for _, condition := range conditions {
-		groups := append([]defaultReviewerGroup{}, condition.Reviewers...)
-		groups = append(groups, condition.ReviewerGroups...)
-		for _, group := range groups {
-			for _, user := range group.Users {
-				if _, ok := seen[user.Name]; ok {
-					continue
-				}
-				seen[user.Name] = struct{}{}
-				reviewers = append(reviewers, user)
-			}
-		}
 	}
 
 	return reviewers, nil
@@ -152,9 +117,8 @@ func (c *Client) RemoveReviewerGroup(ctx context.Context, projectKey, repoSlug, 
 	return c.http.Do(req, nil)
 }
 
-func normalizeRefID(ref string) string {
-	if strings.HasPrefix(ref, "refs/") {
-		return ref
-	}
-	return "refs/heads/" + ref
+func defaultReviewerRefID(ref string) string {
+	ref = strings.TrimPrefix(ref, "refs/heads/")
+	ref = strings.TrimPrefix(ref, "refs/tags/")
+	return ref
 }

@@ -24,6 +24,10 @@ All notable changes to this project will be documented here. The format follows
   `--forkable`, `--default-branch`, `--scm`, and `--project` on Cloud or
   `--workspace` and `--cloud-project` on Data Center, instead of silently
   ignoring them.
+- `bkt pr create --with-default-reviewers`, `bkt pr edit --with-default-reviewers`,
+  and Data Center `bkt repo default-reviewers list --source/--target` now call
+  the effective default reviewers API with repository IDs and branch/tag refs,
+  and decode the direct user response returned by Bitbucket Data Center.
 
 ## [0.28.0] - 2026-05-30
 ### Added
