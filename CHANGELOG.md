@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.28.1] - 2026-05-30
 ### Fixed
 - `bkt branch create --from` on Bitbucket Data Center no longer wraps commit
   hashes in `refs/heads/`, so creating a branch from a commit hash works.
@@ -28,6 +30,7 @@ All notable changes to this project will be documented here. The format follows
   and Data Center `bkt repo default-reviewers list --source/--target` now call
   the effective default reviewers API with repository IDs and branch/tag refs,
   and decode the direct user response returned by Bitbucket Data Center.
+
 
 ## [0.28.0] - 2026-05-30
 ### Added
@@ -572,7 +575,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.1...HEAD
+[0.28.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.26.7...v0.27.0
