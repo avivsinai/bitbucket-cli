@@ -389,7 +389,7 @@ func TestCommentsThreadResolveCloud(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "Only top-level pull request comment threads can be resolved.") {
+		if !strings.Contains(err.Error(), "only top-level pull request comment threads can be resolved") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -413,7 +413,7 @@ func TestCommentsThreadResolveCloud(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "Pull request comment 10 has been deleted and cannot be resolved.") {
+		if !strings.Contains(err.Error(), "pull request comment 10 has been deleted and cannot be resolved") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})

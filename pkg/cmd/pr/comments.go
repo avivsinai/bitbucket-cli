@@ -581,7 +581,7 @@ func deletedCommentThreadError(commentID int, resolved bool) error {
 	if !resolved {
 		action = "reopened"
 	}
-	return fmt.Errorf("Pull request comment %d has been deleted and cannot be %s.", commentID, action)
+	return fmt.Errorf("pull request comment %d has been deleted and cannot be %s", commentID, action)
 }
 
 func topLevelCommentThreadError(resolved bool) error {
@@ -589,7 +589,7 @@ func topLevelCommentThreadError(resolved bool) error {
 	if !resolved {
 		action = "reopened"
 	}
-	return fmt.Errorf("Only top-level pull request comment threads can be %s.", action)
+	return fmt.Errorf("only top-level pull request comment threads can be %s", action)
 }
 
 // truncate shortens s to at most maxLen runes, appending "..." if truncated.
