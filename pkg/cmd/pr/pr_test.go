@@ -671,8 +671,8 @@ func TestListRepositoryCloudMineUsesCurrentUserUUID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		switch {
-		case r.URL.Path == "/user":
+		switch r.URL.Path {
+		case "/user":
 			sawCurrentUser = true
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"uuid":        userUUID,
@@ -680,7 +680,7 @@ func TestListRepositoryCloudMineUsesCurrentUserUUID(t *testing.T) {
 				"account_id":  "557058:12345678-1234-1234-1234-123456789abc",
 				"displayName": "Actual User",
 			})
-		case r.URL.Path == "/repositories/workspace/repo1/pullrequests":
+		case "/repositories/workspace/repo1/pullrequests":
 			gotQuery = r.URL.Query().Get("q")
 			_ = json.NewEncoder(w).Encode(map[string]any{"values": []map[string]any{}})
 		default:
