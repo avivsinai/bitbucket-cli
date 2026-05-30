@@ -2,11 +2,16 @@ package bbdc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"strings"
 )
+
+// ErrPullRequestCommentNotTopLevel is returned when a thread-level operation is
+// attempted on a reply instead of the thread's top-level comment.
+var ErrPullRequestCommentNotTopLevel = errors.New("only top-level pull request comment threads can be changed")
 
 // PullRequestReviewer represents a reviewer assignment.
 type PullRequestReviewer struct {
@@ -24,6 +29,7 @@ type PullRequestParticipant struct {
 // PullRequestComment represents a PR comment.
 type PullRequestComment struct {
 	ID             int    `json:"id"`
+	Version        int    `json:"version"`
 	Text           string `json:"text"`
 	Severity       string `json:"severity"` // "NORMAL" or "BLOCKER" (task)
 	State          string `json:"state"`    // "OPEN" or "RESOLVED"
@@ -89,6 +95,67 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 	}
 
 	return all, nil
+}
+
+// SetPullRequestCommentThreadResolved resolves or reopens a top-level pull
+// request comment thread.
+func (c *Client) SetPullRequestCommentThreadResolved(ctx context.Context, projectKey, repoSlug string, prID, commentID int, resolved bool) (*PullRequestComment, error) {
+	if projectKey == "" || repoSlug == "" {
+		return nil, fmt.Errorf("project key and repository slug are required")
+	}
+	if prID <= 0 {
+		return nil, fmt.Errorf("pull request id must be positive")
+	}
+	if commentID <= 0 {
+		return nil, fmt.Errorf("comment id must be positive")
+	}
+
+	comments, err := c.ListPullRequestComments(ctx, projectKey, repoSlug, prID)
+	if err != nil {
+		return nil, err
+	}
+
+	var current *PullRequestComment
+	for i := range comments {
+		if comments[i].ID == commentID {
+			current = &comments[i]
+			break
+		}
+	}
+	if current == nil {
+		return nil, fmt.Errorf("pull request comment %d not found", commentID)
+	}
+	if current.Depth > 0 {
+		return nil, ErrPullRequestCommentNotTopLevel
+	}
+	if current.ThreadResolved == resolved {
+		return current, nil
+	}
+
+	body := map[string]any{
+		"version":        current.Version,
+		"threadResolved": resolved,
+	}
+	path := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments/%d",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		prID,
+		commentID,
+	)
+	req, err := c.http.NewRequest(ctx, "PUT", path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var updated PullRequestComment
+	if err := c.http.Do(req, &updated); err != nil {
+		return nil, err
+	}
+	if updated.ID == 0 {
+		updated = *current
+		updated.ThreadResolved = resolved
+	}
+	return &updated, nil
 }
 
 // flattenComments walks a comment tree depth-first, returning a flat slice

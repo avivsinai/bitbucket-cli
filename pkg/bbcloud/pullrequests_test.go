@@ -1028,6 +1028,15 @@ func TestListPullRequestComments(t *testing.T) {
 					"updated_on": "2024-01-11T10:00:00.000000+00:00",
 					"resolution": resolution,
 				},
+				{
+					"id":      3,
+					"deleted": true,
+					"content": map[string]string{"raw": ""},
+					"user": map[string]any{
+						"display_name": "Deleted User",
+						"nickname":     "deleted",
+					},
+				},
 			},
 		})
 	}))
@@ -1042,8 +1051,8 @@ func TestListPullRequestComments(t *testing.T) {
 	if gotPath != "/repositories/myworkspace/my-repo/pullrequests/42/comments" {
 		t.Errorf("path = %q, want /repositories/myworkspace/my-repo/pullrequests/42/comments", gotPath)
 	}
-	if len(comments) != 2 {
-		t.Fatalf("expected 2 comments, got %d", len(comments))
+	if len(comments) != 3 {
+		t.Fatalf("expected 3 comments, got %d", len(comments))
 	}
 	if comments[0].ID != 1 {
 		t.Errorf("comments[0].ID = %d, want 1", comments[0].ID)
@@ -1062,6 +1071,37 @@ func TestListPullRequestComments(t *testing.T) {
 	}
 	if comments[1].Resolution == nil {
 		t.Fatal("comments[1].Resolution should not be nil")
+	}
+	if !comments[2].Deleted {
+		t.Fatal("comments[2].Deleted = false, want true")
+	}
+}
+
+func TestGetPullRequestComment(t *testing.T) {
+	var gotMethod, gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":      9,
+			"deleted": true,
+			"content": map[string]string{"raw": ""},
+		})
+	}))
+
+	comment, err := client.GetPullRequestComment(context.Background(), "ws", "repo", 42, 9)
+	if err != nil {
+		t.Fatalf("GetPullRequestComment: %v", err)
+	}
+	if gotMethod != http.MethodGet {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	if gotPath != "/repositories/ws/repo/pullrequests/42/comments/9" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if comment.ID != 9 || !comment.Deleted {
+		t.Fatalf("comment = %+v, want id=9 deleted=true", comment)
 	}
 }
 
@@ -1125,6 +1165,99 @@ func TestListPullRequestCommentsValidation(t *testing.T) {
 			_, err := client.ListPullRequestComments(context.Background(), tt.workspace, tt.repo, 1, 0)
 			if err == nil {
 				t.Error("expected error")
+			}
+		})
+	}
+}
+
+func TestSetPullRequestCommentThreadResolved(t *testing.T) {
+	tests := []struct {
+		name       string
+		resolved   bool
+		wantMethod string
+		status     int
+		body       map[string]any
+	}{
+		{
+			name:       "resolve",
+			resolved:   true,
+			wantMethod: http.MethodPost,
+			status:     http.StatusOK,
+			body: map[string]any{
+				"user":       map[string]string{"display_name": "Alice"},
+				"created_on": "2026-01-01T00:00:00+00:00",
+			},
+		},
+		{
+			name:       "reopen",
+			resolved:   false,
+			wantMethod: http.MethodDelete,
+			status:     http.StatusNoContent,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMethod, gotPath string
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				if gotPath != "/repositories/ws/repo/pullrequests/42/comments/9/resolve" {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				if tt.body != nil {
+					_ = json.NewEncoder(w).Encode(tt.body)
+				}
+			}))
+
+			resolution, err := client.SetPullRequestCommentThreadResolved(context.Background(), "ws", "repo", 42, 9, tt.resolved)
+			if err != nil {
+				t.Fatalf("SetPullRequestCommentThreadResolved: %v", err)
+			}
+			if gotMethod != tt.wantMethod {
+				t.Errorf("method = %s, want %s", gotMethod, tt.wantMethod)
+			}
+			if gotPath != "/repositories/ws/repo/pullrequests/42/comments/9/resolve" {
+				t.Errorf("path = %q", gotPath)
+			}
+			if tt.resolved {
+				if resolution == nil || (*resolution)["created_on"] == "" {
+					t.Fatalf("resolution = %#v, want decoded resolution", resolution)
+				}
+			} else if resolution != nil {
+				t.Fatalf("resolution = %#v, want nil", resolution)
+			}
+		})
+	}
+}
+
+func TestSetPullRequestCommentThreadResolvedErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"forbidden", http.StatusForbidden, `{"error":{"message":"Comment is not a top-level comment"}}`, "403 Forbidden: Comment is not a top-level comment"},
+		{"not found", http.StatusNotFound, `{"error":{"message":"Not found"}}`, "404 Not Found: Not found"},
+		{"conflict", http.StatusConflict, `{"error":{"message":"Already resolved"}}`, "409 Conflict: Already resolved"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+
+			_, err := client.SetPullRequestCommentThreadResolved(context.Background(), "ws", "repo", 42, 9, true)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if err.Error() != tt.want {
+				t.Fatalf("error = %q, want %q", err.Error(), tt.want)
 			}
 		})
 	}

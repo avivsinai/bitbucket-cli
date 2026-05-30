@@ -48,6 +48,26 @@ func TestCommentsCommandValidation(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
+
+	t.Run("invalid resolve comment ID", func(t *testing.T) {
+		_, _, err := runCLI(t, cfg, "pr", "comments", "resolve", "42", "abc")
+		if err == nil {
+			t.Fatal("expected error for invalid comment ID")
+		}
+		if !strings.Contains(err.Error(), "invalid comment id") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("help includes resolve and reopen examples", func(t *testing.T) {
+		stdout, _, err := runCLI(t, cfg, "pr", "comments", "--help")
+		if err != nil {
+			t.Fatalf("help: %v", err)
+		}
+		if !strings.Contains(stdout, "bkt pr comments resolve 42 1001") || !strings.Contains(stdout, "bkt pr comments reopen 42 1001") {
+			t.Errorf("help missing resolve/reopen examples:\n%s", stdout)
+		}
+	})
 }
 
 func TestCommentsDC(t *testing.T) {
@@ -142,6 +162,12 @@ func TestCommentsCloud(t *testing.T) {
 				"created_on": "2025-01-01T00:00:00+00:00",
 			},
 		},
+		{
+			"id":      3,
+			"deleted": true,
+			"content": map[string]string{"raw": ""},
+			"user":    map[string]string{"display_name": "Deleted User", "nickname": "deleted"},
+		},
 	}
 
 	t.Run("state all", func(t *testing.T) {
@@ -157,6 +183,9 @@ func TestCommentsCloud(t *testing.T) {
 		}
 		if !strings.Contains(stdout, "Resolved comment") {
 			t.Errorf("expected resolved comment in output, got: %s", stdout)
+		}
+		if !strings.Contains(stdout, "3\tDeleted User\t[deleted]") {
+			t.Errorf("expected deleted marker in output, got: %s", stdout)
 		}
 	})
 
@@ -174,6 +203,9 @@ func TestCommentsCloud(t *testing.T) {
 		if strings.Contains(stdout, "Unresolved comment") {
 			t.Errorf("should not contain unresolved comment, got: %s", stdout)
 		}
+		if strings.Contains(stdout, "[deleted]") {
+			t.Errorf("should not contain deleted comment, got: %s", stdout)
+		}
 	})
 
 	t.Run("state unresolved", func(t *testing.T) {
@@ -190,6 +222,47 @@ func TestCommentsCloud(t *testing.T) {
 		if strings.Contains(stdout, "Resolved comment") {
 			t.Errorf("should not contain resolved comment, got: %s", stdout)
 		}
+		if strings.Contains(stdout, "[deleted]") {
+			t.Errorf("should not contain deleted comment, got: %s", stdout)
+		}
+	})
+
+	t.Run("state deleted", func(t *testing.T) {
+		srv := makeServer(allComments)
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "comments", "42", "--state", "deleted")
+		if err != nil {
+			t.Fatalf("unexpected error: %v (stderr=%s)", err, stderr)
+		}
+		if !strings.Contains(stdout, "3\tDeleted User\t[deleted]") {
+			t.Errorf("expected deleted comment in output, got: %s", stdout)
+		}
+		if strings.Contains(stdout, "Unresolved comment") || strings.Contains(stdout, "Resolved comment") {
+			t.Errorf("should only contain deleted comments, got: %s", stdout)
+		}
+	})
+
+	t.Run("deleted json output", func(t *testing.T) {
+		srv := makeServer(allComments)
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "--json", "pr", "comments", "42", "--state", "deleted")
+		if err != nil {
+			t.Fatalf("unexpected error: %v (stderr=%s)", err, stderr)
+		}
+		var payload struct {
+			Comments []struct {
+				ID      int  `json:"id"`
+				Deleted bool `json:"deleted"`
+			} `json:"comments"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("output is not JSON: %v\n%s", err, stdout)
+		}
+		if len(payload.Comments) != 1 || payload.Comments[0].ID != 3 || !payload.Comments[0].Deleted {
+			t.Errorf("comments = %+v, want only deleted comment 3", payload.Comments)
+		}
 	})
 
 	t.Run("default state is all", func(t *testing.T) {
@@ -200,10 +273,224 @@ func TestCommentsCloud(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v (stderr=%s)", err, stderr)
 		}
-		if !strings.Contains(stdout, "Unresolved comment") || !strings.Contains(stdout, "Resolved comment") {
-			t.Errorf("expected both comments in output (default state=all), got: %s", stdout)
+		if !strings.Contains(stdout, "Unresolved comment") || !strings.Contains(stdout, "Resolved comment") || !strings.Contains(stdout, "[deleted]") {
+			t.Errorf("expected all comments in output (default state=all), got: %s", stdout)
 		}
 	})
+}
+
+func TestCommentsThreadResolveCloud(t *testing.T) {
+	t.Run("resolve human output", func(t *testing.T) {
+		var gotMethod, gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/comments/9"):
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"id":      9,
+					"content": map[string]string{"raw": "Needs a tweak"},
+				})
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/comments/9/resolve"):
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"user":       map[string]string{"display_name": "Alice"},
+					"created_on": "2026-01-01T00:00:00+00:00",
+				})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "comments", "resolve", "42", "9")
+		if err != nil {
+			t.Fatalf("resolve: %v (stderr=%s)", err, stderr)
+		}
+		if gotMethod != http.MethodPost {
+			t.Errorf("method = %s, want POST", gotMethod)
+		}
+		if gotPath != "/repositories/myworkspace/my-repo/pullrequests/42/comments/9/resolve" {
+			t.Errorf("path = %q", gotPath)
+		}
+		if !strings.Contains(stdout, "Resolved comment thread 9 on pull request #42") {
+			t.Errorf("unexpected output: %s", stdout)
+		}
+	})
+
+	t.Run("reopen json output", func(t *testing.T) {
+		var gotMethod string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/comments/9"):
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"id":         9,
+					"content":    map[string]string{"raw": "Needs a tweak"},
+					"resolution": map[string]string{"created_on": "2026-01-01T00:00:00+00:00"},
+				})
+			case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/comments/9/resolve"):
+				gotMethod = r.Method
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "--json", "pr", "comments", "reopen", "42", "9")
+		if err != nil {
+			t.Fatalf("reopen --json: %v (stderr=%s)", err, stderr)
+		}
+		if gotMethod != http.MethodDelete {
+			t.Errorf("method = %s, want DELETE", gotMethod)
+		}
+		var payload struct {
+			PullRequest int  `json:"pull_request"`
+			CommentID   int  `json:"comment_id"`
+			Resolved    bool `json:"resolved"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("output is not JSON: %v\n%s", err, stdout)
+		}
+		if payload.PullRequest != 42 || payload.CommentID != 9 || payload.Resolved {
+			t.Errorf("payload = %+v, want pr=42 comment=9 resolved=false", payload)
+		}
+	})
+
+	t.Run("reply maps to top-level error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/comments/10") {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"id":      10,
+					"parent":  map[string]int{"id": 9},
+					"content": map[string]string{"raw": "A reply"},
+				})
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		t.Cleanup(srv.Close)
+
+		_, _, err := runCLI(t, cloudConfig(srv.URL), "pr", "comments", "resolve", "42", "10")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "Only top-level pull request comment threads can be resolved.") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("deleted comment maps to deleted error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/comments/10") {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"id":      10,
+					"deleted": true,
+					"content": map[string]string{"raw": ""},
+				})
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		t.Cleanup(srv.Close)
+
+		_, _, err := runCLI(t, cloudConfig(srv.URL), "pr", "comments", "resolve", "42", "10")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "Pull request comment 10 has been deleted and cannot be resolved.") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("conflict is idempotent success", func(t *testing.T) {
+		getCount := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/comments/9"):
+				getCount++
+				comment := map[string]any{
+					"id":      9,
+					"content": map[string]string{"raw": "Needs a tweak"},
+				}
+				if getCount > 1 {
+					comment["resolution"] = map[string]string{"created_on": "2026-01-01T00:00:00+00:00"}
+				}
+				_ = json.NewEncoder(w).Encode(comment)
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/comments/9/resolve"):
+				w.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": map[string]string{"message": "Already resolved"},
+				})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "comments", "resolve", "42", "9")
+		if err != nil {
+			t.Fatalf("resolve conflict: %v (stderr=%s)", err, stderr)
+		}
+		if !strings.Contains(stdout, "already resolved") {
+			t.Errorf("unexpected output: %s", stdout)
+		}
+	})
+}
+
+func TestCommentsThreadResolveDC(t *testing.T) {
+	var gotBody map[string]any
+	var gotPutPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pull-requests/42/activities"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"isLastPage": true,
+				"values": []map[string]any{
+					{
+						"action": "COMMENTED",
+						"comment": map[string]any{
+							"id":             9,
+							"version":        3,
+							"text":           "root",
+							"threadResolved": false,
+						},
+					},
+				},
+			})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/pull-requests/42/comments/9"):
+			gotPutPath = r.URL.Path
+			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":             9,
+				"version":        4,
+				"text":           "root",
+				"threadResolved": true,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, dcConfig(srv.URL), "pr", "comments", "resolve", "42", "9")
+	if err != nil {
+		t.Fatalf("dc resolve: %v (stderr=%s)", err, stderr)
+	}
+	if gotPutPath != "/rest/api/1.0/projects/PROJ/repos/my-repo/pull-requests/42/comments/9" {
+		t.Errorf("PUT path = %q", gotPutPath)
+	}
+	if gotBody["version"] != float64(3) || gotBody["threadResolved"] != true {
+		t.Errorf("body = %#v, want version=3 threadResolved=true", gotBody)
+	}
+	if !strings.Contains(stdout, "Resolved comment thread 9 on pull request #42") {
+		t.Errorf("unexpected output: %s", stdout)
+	}
 }
 
 func TestCommentsEmpty(t *testing.T) {

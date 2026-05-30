@@ -414,15 +414,14 @@ bkt pr comment <id> --text <message> [flags]
 ## bkt pr comments
 
 List all comments on a pull request. On Cloud, use --state to filter by
-resolution status (resolved or unresolved). The --state flag is not supported
+resolution status (resolved, unresolved, or deleted). The --state flag is not supported
 on Data Center because the DC API does not expose resolution status.
 
 Works on both Data Center and Cloud.
 
-### Usage
-
 ```
 bkt pr comments <id> [flags]
+bkt pr comments <command> [flags]
 ```
 
 ### Flags
@@ -432,7 +431,7 @@ bkt pr comments <id> [flags]
 | `--details` |  | Show full comment details (file, resolved, task status) |
 | `--project` |  | Bitbucket project key override |
 | `--repo` |  | Repository slug override |
-| `--state` |  | Filter by state: all, resolved, unresolved (Cloud only) |
+| `--state` |  | Filter by state: all, resolved, unresolved, deleted (Cloud only) |
 | `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
@@ -457,6 +456,90 @@ bkt pr comments <id> [flags]
 
   # List resolved comments (Cloud only)
   bkt pr comments 42 --state resolved
+
+  # List deleted comments (Cloud only)
+  bkt pr comments 42 --state deleted
+
+  # Resolve a comment thread
+  bkt pr comments resolve 42 1001
+
+  # Reopen a resolved comment thread
+  bkt pr comments reopen 42 1001
+```
+
+| Subcommand | Description |
+|---|---|
+| reopen | Reopen a resolved pull request comment thread |
+| resolve | Resolve a pull request comment thread |
+
+## bkt pr comments reopen
+
+Reopen a resolved pull request comment thread
+
+### Usage
+
+```
+bkt pr comments reopen <id> <comment-id> [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--project` |  | Bitbucket project key override |
+| `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+bkt pr comments reopen 42 1001
+```
+
+## bkt pr comments resolve
+
+Resolve a pull request comment thread
+
+### Usage
+
+```
+bkt pr comments resolve <id> <comment-id> [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--project` |  | Bitbucket project key override |
+| `--repo` |  | Repository slug override |
+| `--workspace` |  | Bitbucket Cloud workspace override |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+bkt pr comments resolve 42 1001
 ```
 
 ## bkt pr create

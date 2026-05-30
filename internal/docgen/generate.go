@@ -255,7 +255,7 @@ func writeGroupFile(w io.Writer, binName string, cmd *cobra.Command, emitHeader 
 
 	// Usage
 	if cmd.HasSubCommands() {
-		fmt.Fprintf(w, "```\n%s <command> [flags]\n```\n\n", fullName)
+		writeCommandGroupUsage(w, binName, cmd, fullName)
 	} else {
 		useLine := formatUseLine(binName, cmd)
 		fmt.Fprintf(w, "%s Usage\n\n```\n%s\n```\n\n", heading(h1+1), useLine)
@@ -266,6 +266,12 @@ func writeGroupFile(w io.Writer, binName string, cmd *cobra.Command, emitHeader 
 		writeFlagsAtDepth(w, cmd, h1+2)
 		writeExamplesAtDepth(w, cmd, h1+2)
 		return
+	}
+
+	// Runnable group command — show the parent command's own flags in addition
+	// to the subcommand table.
+	if cmd.Runnable() {
+		writeFlagsAtDepth(w, cmd, h1+2)
 	}
 
 	// Group command — show examples before subcommand table if present
@@ -319,7 +325,11 @@ func writeSubcommandSection(w io.Writer, parentPath string, sub *cobra.Command) 
 	// and recurse into each child instead of showing usage/flags for the parent.
 	nested := visibleSubcommands(sub)
 	if len(nested) > 0 {
-		fmt.Fprintf(w, "```\n%s <command> [flags]\n```\n\n", subFull)
+		writeCommandGroupUsage(w, parentPath, sub, subFull)
+
+		if sub.Runnable() {
+			writeFlags(w, sub)
+		}
 
 		writeExamples(w, sub)
 
@@ -342,6 +352,16 @@ func writeSubcommandSection(w io.Writer, parentPath string, sub *cobra.Command) 
 
 	writeFlags(w, sub)
 	writeExamples(w, sub)
+}
+
+func writeCommandGroupUsage(w io.Writer, parentPath string, cmd *cobra.Command, fullName string) {
+	fmt.Fprintln(w, "```")
+	if cmd.Runnable() {
+		fmt.Fprintln(w, formatUseLine(parentPath, cmd))
+	}
+	fmt.Fprintf(w, "%s <command> [flags]\n", fullName)
+	fmt.Fprintln(w, "```")
+	fmt.Fprintln(w)
 }
 
 func writeFlags(w io.Writer, cmd *cobra.Command) {
