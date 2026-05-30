@@ -127,10 +127,15 @@ bkt repo clone <repository> [flags]
 Create a new repository in a Bitbucket project (Data Center) or workspace (Cloud).
 
 On Data Center, the repository is created under the specified project with optional
-flags for visibility, forking policy, and default branch. On Cloud, the repository
-is created in the specified workspace; use --cloud-project to assign it to a
-Bitbucket Cloud project. Repositories are private by default on Cloud; pass
---public to make them public.
+flags for visibility, forking policy, SCM, and default branch. On Cloud, the
+repository is created in the specified workspace; use --cloud-project to assign
+it to a Bitbucket Cloud project. Repositories are private by default on Cloud;
+pass --public to make them public.
+
+Host-specific flags are validated before any API request. Data Center accepts
+--project, --forkable, --default-branch, and --scm. Cloud accepts --workspace
+and --cloud-project. Passing a flag that only applies to the other host kind
+returns an error instead of silently ignoring it.
 
 ### Usage
 
@@ -143,13 +148,13 @@ bkt repo create <repository> [flags]
 | Flag | Short | Description |
 |---|---|---|
 | `--cloud-project` |  | Bitbucket Cloud project key |
-| `--default-branch` |  | Default branch to set after creation |
+| `--default-branch` |  | Data Center default branch to set after creation |
 | `--description` |  | Repository description |
-| `--forkable` |  | Allow forking of the repository |
-| `--project` |  | Bitbucket project key override |
+| `--forkable` |  | Allow forking of the Data Center repository |
+| `--project` |  | Bitbucket Data Center project key override |
 | `--public` |  | Create repository as public |
-| `--scm` |  | SCM type (git) |
-| `--workspace` |  | Bitbucket workspace override (Cloud) |
+| `--scm` |  | Data Center SCM type (git) |
+| `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
 

@@ -373,10 +373,11 @@ func runPipelineLogs(cmd *cobra.Command, f *cmdutil.Factory, opts *logsOptions) 
 		if err != nil {
 			return err
 		}
-		if len(steps) == 0 {
+		var ok bool
+		stepID, ok = defaultPipelineLogStepID(steps)
+		if !ok {
 			return fmt.Errorf("pipeline #%d has no steps yet", pipeline.BuildNumber)
 		}
-		stepID = steps[len(steps)-1].UUID
 	}
 
 	logs, err := client.GetPipelineLogs(ctx, workspace, repo, pipeline.UUID, stepID)
@@ -388,6 +389,13 @@ func runPipelineLogs(cmd *cobra.Command, f *cmdutil.Factory, opts *logsOptions) 
 		return err
 	}
 	return nil
+}
+
+func defaultPipelineLogStepID(steps []bbcloud.PipelineStep) (string, bool) {
+	if len(steps) == 0 {
+		return "", false
+	}
+	return steps[len(steps)-1].UUID, true
 }
 
 func resolveCloudRepo(cmd *cobra.Command, f *cmdutil.Factory, workspaceOverride, repoOverride string) (string, string, *config.Host, error) {

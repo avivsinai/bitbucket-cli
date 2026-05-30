@@ -89,7 +89,7 @@ func (c *Client) CreateBranch(ctx context.Context, projectKey, repoSlug string, 
 
 	body := map[string]any{
 		"name":       ensureRef(in.Name),
-		"startPoint": ensureRef(in.StartPoint),
+		"startPoint": normalizeStartPoint(in.StartPoint),
 	}
 	if in.Message != "" {
 		body["message"] = in.Message
@@ -158,6 +158,26 @@ func ensureRef(ref string) string {
 		return ref
 	}
 	return "refs/heads/" + ref
+}
+
+func normalizeStartPoint(startPoint string) string {
+	if strings.HasPrefix(startPoint, "refs/") || isCommitSHA(startPoint) {
+		return startPoint
+	}
+	return ensureRef(startPoint)
+}
+
+func isCommitSHA(value string) bool {
+	if len(value) < 7 || len(value) > 40 {
+		return false
+	}
+	for _, ch := range value {
+		if (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func valueOrPositive(value, fallback int) int {
