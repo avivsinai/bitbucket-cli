@@ -652,6 +652,96 @@ func TestListRepositoryCloudIncludesCreationTimestamp(t *testing.T) {
 	}
 }
 
+func TestListRepositoryCloudMineUsesCurrentUserUUID(t *testing.T) {
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	const userUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+	var gotQuery string
+	var sawCurrentUser bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case r.URL.Path == "/user":
+			sawCurrentUser = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"uuid":        userUUID,
+				"username":    "actual-user",
+				"account_id":  "557058:12345678-1234-1234-1234-123456789abc",
+				"displayName": "Actual User",
+			})
+		case r.URL.Path == "/repositories/workspace/repo1/pullrequests":
+			gotQuery = r.URL.Query().Get("q")
+			_ = json.NewEncoder(w).Encode(map[string]any{"values": []map[string]any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Host:        "cloud",
+				Workspace:   "workspace",
+				DefaultRepo: "repo1",
+			},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {
+				Kind:     "cloud",
+				BaseURL:  server.URL,
+				Username: "email@example.com",
+				Token:    "test-token",
+			},
+		},
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: stderr},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	cmd := newListCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--mine"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sawCurrentUser {
+		t.Fatal("expected --mine to resolve the current user before listing repository PRs")
+	}
+	if gotQuery != `author.uuid = "`+userUUID+`"` {
+		t.Fatalf("q = %q, want author.uuid query", gotQuery)
+	}
+}
+
+func TestCloudMergeTimeoutCoversAsyncPollBudget(t *testing.T) {
+	if cloudMergeTimeout < 5*time.Minute {
+		t.Fatalf("cloudMergeTimeout = %s, want at least 5m for async Cloud merge polling", cloudMergeTimeout)
+	}
+	if cloudMergeTimeout <= timeoutRead {
+		t.Fatalf("cloudMergeTimeout = %s, must exceed read timeout %s", cloudMergeTimeout, timeoutRead)
+	}
+}
+
 // failingWriter returns an error on every Write. It exercises the error-return
 // branches after the per-PR Fprintf calls in the list rendering paths.
 type failingWriter struct{}

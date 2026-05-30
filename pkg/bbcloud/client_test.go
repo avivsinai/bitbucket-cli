@@ -922,6 +922,86 @@ func TestListPipelineStepsNormalizesUUID(t *testing.T) {
 	}
 }
 
+func TestListPipelineStepsPaginates(t *testing.T) {
+	const pipelineUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+	var hits int32
+	var serverURL string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		if !strings.Contains(r.URL.Path, pipelineUUID) {
+			t.Fatalf("expected normalized pipeline UUID in path, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+
+		switch count {
+		case 1:
+			if r.URL.Query().Get("pagelen") != "100" {
+				t.Fatalf("expected pagelen=100 on first request, got %q", r.URL.Query().Get("pagelen"))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{
+					{"uuid": "{11111111-1111-4111-8111-111111111111}", "name": "Build"},
+				},
+				"next": serverURL + "/repositories/work/repo/pipelines/%7B550e8400-e29b-41d4-a716-446655440000%7D/steps/?pagelen=100&page=2",
+			})
+		case 2:
+			if r.URL.Query().Get("page") != "2" {
+				t.Fatalf("expected page=2 on second request, got %q", r.URL.Query().Get("page"))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{
+					{"uuid": "{22222222-2222-4222-8222-222222222222}", "name": "Deploy"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected extra request %d", count)
+		}
+	}))
+	serverURL = server.URL
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	steps, err := client.ListPipelineSteps(context.Background(), "work", "repo", pipelineUUID)
+	if err != nil {
+		t.Fatalf("ListPipelineSteps: %v", err)
+	}
+	if len(steps) != 2 {
+		t.Fatalf("expected 2 steps, got %d", len(steps))
+	}
+	if steps[0].Name != "Build" || steps[1].Name != "Deploy" {
+		t.Fatalf("unexpected steps: %+v", steps)
+	}
+	if hits != 2 {
+		t.Fatalf("expected 2 requests, got %d", hits)
+	}
+}
+
+func TestListPipelineStepsRejectsInvalidNextURL(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{"uuid": "{11111111-1111-4111-8111-111111111111}", "name": "Build"},
+			},
+			"next": "%",
+		})
+	})
+
+	client := newTestClient(t, handler)
+	_, err := client.ListPipelineSteps(context.Background(), "work", "repo", "{550e8400-e29b-41d4-a716-446655440000}")
+	if err == nil {
+		t.Fatal("expected invalid next URL error")
+	}
+	if !strings.Contains(err.Error(), "parse pipeline steps next URL") {
+		t.Fatalf("error = %q, want pipeline steps next URL context", err)
+	}
+}
+
 func TestGetPipelineLogsNormalizesUUIDs(t *testing.T) {
 	const pipelineUUID = "{550e8400-e29b-41d4-a716-446655440000}"
 	const stepUUID = "{123e4567-e89b-12d3-a456-426614174000}"

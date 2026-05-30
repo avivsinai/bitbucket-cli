@@ -95,7 +95,7 @@ func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug strin
 		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
 	}
 	if mine := strings.TrimSpace(opts.Mine); mine != "" {
-		params = append(params, "q="+url.QueryEscape(bbqlEquals("author.username", mine)))
+		params = append(params, "q="+url.QueryEscape(bbqlEquals(authorFilterField(mine), mine)))
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests?%s",
@@ -134,6 +134,17 @@ func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug strin
 	}
 
 	return prs, nil
+}
+
+func authorFilterField(identity string) string {
+	switch {
+	case LooksLikeUUID(identity):
+		return "author.uuid"
+	case LooksLikeAccountID(identity):
+		return "author.account_id"
+	default:
+		return "author.username"
+	}
 }
 
 // GetPullRequest fetches a pull request by ID.
@@ -538,7 +549,7 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 	for attempt := 0; attempt < maxMergePollAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("merge task timed out: %w", ctx.Err())
+			return fmt.Errorf("merge task %s for pull request #%d may still be running; polling timed out: %w", taskID, prID, ctx.Err())
 		case <-time.After(c.mergePollInterval):
 		}
 
@@ -549,18 +560,21 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 
 		var status mergeTaskStatus
 		if err := c.http.Do(req, &status); err != nil {
-			return fmt.Errorf("polling merge task: %w", err)
+			if ctx.Err() != nil {
+				return fmt.Errorf("merge task %s for pull request #%d may still be running; polling timed out: %w", taskID, prID, ctx.Err())
+			}
+			return fmt.Errorf("polling merge task %s for pull request #%d: %w", taskID, prID, err)
 		}
 
 		if status.Status == "SUCCESS" {
 			return nil
 		}
 		if status.Status != "PENDING" {
-			return fmt.Errorf("merge task failed with status: %s", status.Status)
+			return fmt.Errorf("merge task %s for pull request #%d failed with status: %s", taskID, prID, status.Status)
 		}
 	}
 
-	return fmt.Errorf("merge task %s did not complete after %d poll attempts", taskID, maxMergePollAttempts)
+	return fmt.Errorf("merge task %s for pull request #%d may still be running; did not complete after %d poll attempts", taskID, prID, maxMergePollAttempts)
 }
 
 // PullRequestComment models a comment on a Bitbucket Cloud pull request.

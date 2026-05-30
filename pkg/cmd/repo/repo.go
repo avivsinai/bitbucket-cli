@@ -668,10 +668,15 @@ func newCreateCmd(f *cmdutil.Factory) *cobra.Command {
 		Long: `Create a new repository in a Bitbucket project (Data Center) or workspace (Cloud).
 
 On Data Center, the repository is created under the specified project with optional
-flags for visibility, forking policy, and default branch. On Cloud, the repository
-is created in the specified workspace; use --cloud-project to assign it to a
-Bitbucket Cloud project. Repositories are private by default on Cloud; pass
---public to make them public.`,
+flags for visibility, forking policy, SCM, and default branch. On Cloud, the
+repository is created in the specified workspace; use --cloud-project to assign
+it to a Bitbucket Cloud project. Repositories are private by default on Cloud;
+pass --public to make them public.
+
+Host-specific flags are validated before any API request. Data Center accepts
+--project, --forkable, --default-branch, and --scm. Cloud accepts --workspace
+and --cloud-project. Passing a flag that only applies to the other host kind
+returns an error instead of silently ignoring it.`,
 		Example: `  # Create a repository in the active context
   bkt repo create my-new-service
 
@@ -690,14 +695,14 @@ Bitbucket Cloud project. Repositories are private by default on Cloud; pass
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
-	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
+	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket Data Center project key override")
+	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.CloudProject, "cloud-project", "", "Bitbucket Cloud project key")
 	cmd.Flags().StringVar(&opts.Description, "description", "", "Repository description")
 	cmd.Flags().BoolVar(&opts.Public, "public", false, "Create repository as public")
-	cmd.Flags().BoolVar(&opts.Forkable, "forkable", false, "Allow forking of the repository")
-	cmd.Flags().StringVar(&opts.DefaultBranch, "default-branch", "", "Default branch to set after creation")
-	cmd.Flags().StringVar(&opts.SCM, "scm", "git", "SCM type (git)")
+	cmd.Flags().BoolVar(&opts.Forkable, "forkable", false, "Allow forking of the Data Center repository")
+	cmd.Flags().StringVar(&opts.DefaultBranch, "default-branch", "", "Data Center default branch to set after creation")
+	cmd.Flags().StringVar(&opts.SCM, "scm", "git", "Data Center SCM type (git)")
 
 	return cmd
 }
@@ -716,6 +721,10 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, slug string, opts createO
 
 	switch host.Kind {
 	case "dc":
+		if err := rejectRepoCreateNoOpFlags(cmd, host.Kind); err != nil {
+			return err
+		}
+
 		projectKey := strings.TrimSpace(opts.Project)
 		if projectKey == "" {
 			projectKey = ctxCfg.ProjectKey
@@ -762,6 +771,10 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, slug string, opts createO
 		return nil
 
 	case "cloud":
+		if err := rejectRepoCreateNoOpFlags(cmd, host.Kind); err != nil {
+			return err
+		}
+
 		workspace := strings.TrimSpace(opts.Workspace)
 		if workspace == "" {
 			workspace = ctxCfg.Workspace
@@ -804,6 +817,32 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, slug string, opts createO
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
+}
+
+func rejectRepoCreateNoOpFlags(cmd *cobra.Command, hostKind string) error {
+	switch hostKind {
+	case "dc":
+		if cmd.Flags().Changed("workspace") {
+			return fmt.Errorf("--workspace is not supported for Data Center repo create; use --project")
+		}
+		if cmd.Flags().Changed("cloud-project") {
+			return fmt.Errorf("--cloud-project is not supported for Data Center repo create; use --project")
+		}
+	case "cloud":
+		if cmd.Flags().Changed("project") {
+			return fmt.Errorf("--project is not supported for Cloud repo create; use --cloud-project")
+		}
+		if cmd.Flags().Changed("forkable") {
+			return fmt.Errorf("--forkable is not supported for Cloud repo create")
+		}
+		if cmd.Flags().Changed("default-branch") {
+			return fmt.Errorf("--default-branch is not supported for Cloud repo create; set the default branch after creating the repository")
+		}
+		if cmd.Flags().Changed("scm") {
+			return fmt.Errorf("--scm is not supported for Cloud repo create; Bitbucket Cloud repositories use git")
+		}
+	}
+	return nil
 }
 
 func newCloneCmd(f *cmdutil.Factory) *cobra.Command {

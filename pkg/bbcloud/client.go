@@ -562,23 +562,48 @@ func (c *Client) ListPipelineSteps(ctx context.Context, workspace, repoSlug, pip
 		return nil, err
 	}
 
-	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/",
+	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s/steps/?pagelen=100",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
 		url.PathEscape(normalizedPipelineUUID),
 	)
-	req, err := c.http.NewRequest(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
+
+	var steps []PipelineStep
+	for path != "" {
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp struct {
+			Values []PipelineStep `json:"values"`
+			Next   string         `json:"next"`
+		}
+		if err := c.http.Do(req, &resp); err != nil {
+			return nil, err
+		}
+
+		steps = append(steps, resp.Values...)
+
+		if resp.Next == "" {
+			break
+		}
+		nextURL, err := url.Parse(resp.Next)
+		if err != nil {
+			return nil, fmt.Errorf("parse pipeline steps next URL %q: %w", resp.Next, err)
+		}
+		if nextURL.IsAbs() {
+			if uri := nextURL.RequestURI(); uri != "" {
+				path = uri
+			} else {
+				path = nextURL.String()
+			}
+		} else {
+			path = nextURL.String()
+		}
 	}
 
-	var resp struct {
-		Values []PipelineStep `json:"values"`
-	}
-	if err := c.http.Do(req, &resp); err != nil {
-		return nil, err
-	}
-	return resp.Values, nil
+	return steps, nil
 }
 
 // PipelineLog represents a step log chunk.

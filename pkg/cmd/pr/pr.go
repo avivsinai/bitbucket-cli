@@ -29,9 +29,10 @@ import (
 
 const (
 	// Standard timeouts for API calls.
-	timeoutRead      = 15 * time.Second
-	timeoutWrite     = 10 * time.Second
-	prListTimeLayout = "2006-01-02 15:04"
+	timeoutRead       = 15 * time.Second
+	timeoutWrite      = 10 * time.Second
+	cloudMergeTimeout = 6 * time.Minute
+	prListTimeLayout  = "2006-01-02 15:04"
 )
 
 // Sentinel errors for checks command
@@ -242,8 +243,15 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		defer cancel()
 
 		mine := ""
-		if opts.Mine && host.Username != "" {
-			mine = host.Username
+		if opts.Mine {
+			currentUser, err := client.CurrentUser(ctx)
+			if err != nil {
+				return fmt.Errorf("resolve current Bitbucket Cloud user for --mine: %w", err)
+			}
+			mine, err = cloudRepositoryMineIdentity(*currentUser)
+			if err != nil {
+				return err
+			}
 		}
 
 		prs, err := client.ListPullRequests(ctx, workspace, repoSlug, bbcloud.PullRequestListOptions{
@@ -345,7 +353,7 @@ func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.I
 
 // runListWorkspaceCloud lists pull requests for the authenticated user across all repositories (Cloud).
 func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, host *config.Host, workspace string, opts *listOptions) error {
-	client, err := cmdutil.NewCloudClient(host)
+	client, err := f.CloudClient(host)
 	if err != nil {
 		return err
 	}
@@ -359,17 +367,9 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	// Determine username for API call. Username may be empty for newer Bitbucket
-	// accounts, so fall back to AccountID, then configured host username.
-	username := currentUser.Username
-	if username == "" {
-		username = currentUser.AccountID
-	}
-	if username == "" && host.Username != "" && !strings.Contains(host.Username, "@") {
-		username = host.Username
-	}
-	if username == "" {
-		return fmt.Errorf("could not determine username; Bitbucket Cloud account may lack username field")
+	username, err := cloudWorkspaceMineIdentity(*currentUser, host)
+	if err != nil {
+		return err
 	}
 
 	prs, err := client.ListWorkspacePullRequests(ctx, workspace, username, bbcloud.WorkspacePullRequestsOptions{
@@ -415,6 +415,31 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 		}
 		return nil
 	})
+}
+
+func cloudRepositoryMineIdentity(user bbcloud.User) (string, error) {
+	if normalized := bbcloud.NormalizeUUID(user.UUID); normalized != "" {
+		return normalized, nil
+	}
+	if accountID := strings.TrimSpace(user.AccountID); accountID != "" {
+		return accountID, nil
+	}
+	return "", fmt.Errorf("could not determine stable Bitbucket Cloud user identity for --mine; /user returned no UUID or account ID")
+}
+
+func cloudWorkspaceMineIdentity(user bbcloud.User, host *config.Host) (string, error) {
+	if username := strings.TrimSpace(user.Username); username != "" {
+		return username, nil
+	}
+	if accountID := strings.TrimSpace(user.AccountID); accountID != "" {
+		return accountID, nil
+	}
+	if host != nil {
+		if username := strings.TrimSpace(host.Username); username != "" && !strings.Contains(username, "@") {
+			return username, nil
+		}
+	}
+	return "", fmt.Errorf("could not determine username; Bitbucket Cloud account may lack username field")
 }
 
 func formatPRListUnixMilli(unixMilli int64) string {
@@ -2437,12 +2462,12 @@ func runMerge(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *mergeOptions
 			return fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
 		}
 
-		client, err := cmdutil.NewCloudClient(host)
+		client, err := f.CloudClient(host)
 		if err != nil {
 			return err
 		}
 
-		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(cmd.Context(), cloudMergeTimeout)
 		defer cancel()
 
 		if err := client.MergePullRequest(ctx, workspace, repoSlug, id, opts.Message, opts.Strategy, opts.CloseSource); err != nil {

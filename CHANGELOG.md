@@ -5,6 +5,25 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- `bkt branch create --from` on Bitbucket Data Center no longer wraps commit
+  hashes in `refs/heads/`, so creating a branch from a commit hash works.
+- `bkt variable set` and `bkt variable delete` on Bitbucket Cloud now reject
+  invalid variable and deployment-environment UUIDs locally instead of calling
+  malformed API endpoints.
+- `bkt pipeline view` and `bkt pipeline logs` now paginate pipeline steps, so
+  pipelines with many steps are complete and the default log step is the true
+  final step.
+- `bkt pr merge` on Bitbucket Cloud now gives async merge tasks enough time to
+  finish and reports an actionable "may still be running" message with task and
+  pull request IDs if polling times out.
+- `bkt pr list --mine` on Bitbucket Cloud now filters by the authenticated
+  user's stable identity (UUID or account ID) instead of an email-shaped
+  username, fixing empty results for API-token logins.
+- `bkt repo create` now rejects host-specific flags that do not apply, such as
+  `--forkable`, `--default-branch`, `--scm`, and `--project` on Cloud or
+  `--workspace` and `--cloud-project` on Data Center, instead of silently
+  ignoring them.
 
 ## [0.28.0] - 2026-05-30
 ### Added

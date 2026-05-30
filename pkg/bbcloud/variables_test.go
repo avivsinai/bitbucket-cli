@@ -419,7 +419,7 @@ func TestListDeploymentVariables(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	variables, err := client.ListDeploymentVariables(ctx, "ws", "repo", "{env-uuid}", VariableListOptions{})
+	variables, err := client.ListDeploymentVariables(ctx, "ws", "repo", "{550e8400-e29b-41d4-a716-446655440000}", VariableListOptions{})
 	if err != nil {
 		t.Fatalf("ListDeploymentVariables: %v", err)
 	}
@@ -429,5 +429,126 @@ func TestListDeploymentVariables(t *testing.T) {
 	}
 	if variables[0].Key != "DEPLOY_VAR" {
 		t.Errorf("expected key DEPLOY_VAR, got %s", variables[0].Key)
+	}
+}
+
+func TestVariableUUIDValidationRejectsMalformedUUIDsBeforeRequest(t *testing.T) {
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(PipelineVariable{UUID: "{123e4567-e89b-12d3-a456-426614174000}", Key: "VAR"})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx := context.Background()
+	validEnvironmentUUID := "{550e8400-e29b-41d4-a716-446655440000}"
+	validVariableUUID := "{123e4567-e89b-12d3-a456-426614174000}"
+	tests := []struct {
+		name string
+		call func() error
+		want string
+	}{
+		{
+			name: "update repository variable",
+			call: func() error {
+				_, err := client.UpdateRepositoryVariable(ctx, "ws", "repo", "not-a-uuid", UpdateRepositoryVariableInput{Key: "VAR"})
+				return err
+			},
+			want: "variable UUID must be a canonical UUID",
+		},
+		{
+			name: "delete repository variable",
+			call: func() error {
+				return client.DeleteRepositoryVariable(ctx, "ws", "repo", "not-a-uuid")
+			},
+			want: "variable UUID must be a canonical UUID",
+		},
+		{
+			name: "update workspace variable",
+			call: func() error {
+				_, err := client.UpdateWorkspaceVariable(ctx, "ws", "not-a-uuid", UpdateWorkspaceVariableInput{Key: "VAR"})
+				return err
+			},
+			want: "variable UUID must be a canonical UUID",
+		},
+		{
+			name: "delete workspace variable",
+			call: func() error {
+				return client.DeleteWorkspaceVariable(ctx, "ws", "not-a-uuid")
+			},
+			want: "variable UUID must be a canonical UUID",
+		},
+		{
+			name: "list deployment variables",
+			call: func() error {
+				_, err := client.ListDeploymentVariables(ctx, "ws", "repo", "not-a-uuid", VariableListOptions{})
+				return err
+			},
+			want: "environment UUID must be a canonical UUID",
+		},
+		{
+			name: "create deployment variable",
+			call: func() error {
+				_, err := client.CreateDeploymentVariable(ctx, "ws", "repo", "not-a-uuid", CreateDeploymentVariableInput{Key: "VAR"})
+				return err
+			},
+			want: "environment UUID must be a canonical UUID",
+		},
+		{
+			name: "update deployment variable environment",
+			call: func() error {
+				_, err := client.UpdateDeploymentVariable(ctx, "ws", "repo", "not-a-uuid", validVariableUUID, UpdateDeploymentVariableInput{Key: "VAR"})
+				return err
+			},
+			want: "environment UUID must be a canonical UUID",
+		},
+		{
+			name: "update deployment variable",
+			call: func() error {
+				_, err := client.UpdateDeploymentVariable(ctx, "ws", "repo", validEnvironmentUUID, "not-a-uuid", UpdateDeploymentVariableInput{Key: "VAR"})
+				return err
+			},
+			want: "variable UUID must be a canonical UUID",
+		},
+		{
+			name: "delete deployment variable environment",
+			call: func() error {
+				return client.DeleteDeploymentVariable(ctx, "ws", "repo", "not-a-uuid", validVariableUUID)
+			},
+			want: "environment UUID must be a canonical UUID",
+		},
+		{
+			name: "delete deployment variable",
+			call: func() error {
+				return client.DeleteDeploymentVariable(ctx, "ws", "repo", validEnvironmentUUID, "not-a-uuid")
+			},
+			want: "variable UUID must be a canonical UUID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hits = 0
+			err := tt.call()
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want substring %q", err, tt.want)
+			}
+			if hits != 0 {
+				t.Fatalf("expected local validation to avoid HTTP requests, got %d", hits)
+			}
+		})
 	}
 }

@@ -285,11 +285,13 @@ bkt repo list --limit 20
 bkt repo list --workspace myteam --limit 10   # Cloud workspace override
 bkt repo view platform-api
 bkt repo create data-pipeline --description "Data ingestion" --project DATA
+bkt repo create frontend-app --workspace myteam --cloud-project WEB
 bkt repo browse --project DATA --repo platform-api
 bkt repo clone platform-api --project DATA --ssh
 ```
 
 `repo list`/`repo view` automatically target the right REST API for your active context: Data Center uses `/rest/api/1.0/projects/{projectKey}/repos`, while Cloud uses `/2.0/repositories/{workspace}`.
+For `repo create`, `--project`, `--forkable`, `--default-branch`, and `--scm` are Data Center flags; `--workspace` and `--cloud-project` are Cloud flags. Host-specific create flags are rejected when they would otherwise be ignored.
 
 ### 4. Pull request workflows
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 )
 
 func newTestClient(t *testing.T, handler http.Handler) *bbcloud.Client {
@@ -153,6 +154,32 @@ func TestListPullRequestsRespectsLimit(t *testing.T) {
 	}
 	if len(prs) != 2 {
 		t.Errorf("expected 2 PRs, got %d", len(prs))
+	}
+}
+
+func TestListPullRequestsMineFiltersByAuthorUUID(t *testing.T) {
+	var gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query().Get("q")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []map[string]any{}})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := bbcloud.New(bbcloud.Options{BaseURL: server.URL, Username: "email@example.com", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.ListPullRequests(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{
+		Mine: "{550e8400-e29b-41d4-a716-446655440000}",
+	})
+	if err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+
+	if gotQuery != `author.uuid = "{550e8400-e29b-41d4-a716-446655440000}"` {
+		t.Fatalf("q = %q, want author.uuid filter", gotQuery)
 	}
 }
 
@@ -719,6 +746,67 @@ func TestMergePullRequest202AsyncPolling(t *testing.T) {
 	}
 }
 
+func TestMergePullRequest202AsyncDeadlineErrorIsActionable(t *testing.T) {
+	statusStarted := make(chan struct{})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/merge") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"task_id": "slow-123",
+			})
+			return
+		}
+		if strings.Contains(r.URL.Path, "/task-status/") {
+			close(statusStarted)
+			<-r.Context().Done()
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := bbcloud.New(bbcloud.Options{
+		BaseURL:           server.URL,
+		Username:          "user",
+		Token:             "token",
+		Retry:             httpx.RetryPolicy{MaxAttempts: 1},
+		MergePollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- client.MergePullRequest(ctx, "ws", "repo", 1, "", "squash", false)
+	}()
+
+	select {
+	case <-statusStarted:
+	case <-time.After(time.Second):
+		t.Fatal("merge task status request did not start")
+	}
+
+	select {
+	case err = <-errCh:
+	case <-time.After(time.Second):
+		t.Fatal("MergePullRequest did not return after context deadline")
+	}
+	if err == nil {
+		t.Fatal("expected merge timeout error")
+	}
+	for _, want := range []string{"merge task slow-123", "pull request #1", "may still be running", context.DeadlineExceeded.Error()} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want substring %q", err, want)
+		}
+	}
+}
+
 func TestMergePullRequest202AsyncFailure(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/merge") {
@@ -742,7 +830,7 @@ func TestMergePullRequest202AsyncFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for failed merge task")
 	}
-	if !strings.Contains(err.Error(), "merge task failed") {
+	if !strings.Contains(err.Error(), "merge task abc-456") || !strings.Contains(err.Error(), "failed with status: FAILED") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

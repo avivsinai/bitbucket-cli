@@ -132,6 +132,10 @@ func (c *Client) UpdateRepositoryVariable(ctx context.Context, workspace, repoSl
 	if input.Key == "" {
 		return nil, fmt.Errorf("variable key is required")
 	}
+	normalizedVariableUUID, err := normalizeUUIDArg("variable UUID", variableUUID)
+	if err != nil {
+		return nil, err
+	}
 
 	body := map[string]any{
 		"key":     input.Key,
@@ -142,7 +146,7 @@ func (c *Client) UpdateRepositoryVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines_config/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(variableUUID)),
+		url.PathEscape(normalizedVariableUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "PUT", path, body)
@@ -165,11 +169,15 @@ func (c *Client) DeleteRepositoryVariable(ctx context.Context, workspace, repoSl
 	if variableUUID == "" {
 		return fmt.Errorf("variable UUID is required")
 	}
+	normalizedVariableUUID, err := normalizeUUIDArg("variable UUID", variableUUID)
+	if err != nil {
+		return err
+	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pipelines_config/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(variableUUID)),
+		url.PathEscape(normalizedVariableUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
@@ -287,6 +295,10 @@ func (c *Client) UpdateWorkspaceVariable(ctx context.Context, workspace, variabl
 	if input.Key == "" {
 		return nil, fmt.Errorf("variable key is required")
 	}
+	normalizedVariableUUID, err := normalizeUUIDArg("variable UUID", variableUUID)
+	if err != nil {
+		return nil, err
+	}
 
 	body := map[string]any{
 		"key":     input.Key,
@@ -296,7 +308,7 @@ func (c *Client) UpdateWorkspaceVariable(ctx context.Context, workspace, variabl
 
 	path := fmt.Sprintf("/workspaces/%s/pipelines-config/variables/%s",
 		url.PathEscape(workspace),
-		url.PathEscape(NormalizeUUID(variableUUID)),
+		url.PathEscape(normalizedVariableUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "PUT", path, body)
@@ -319,10 +331,14 @@ func (c *Client) DeleteWorkspaceVariable(ctx context.Context, workspace, variabl
 	if variableUUID == "" {
 		return fmt.Errorf("variable UUID is required")
 	}
+	normalizedVariableUUID, err := normalizeUUIDArg("variable UUID", variableUUID)
+	if err != nil {
+		return err
+	}
 
 	path := fmt.Sprintf("/workspaces/%s/pipelines-config/variables/%s",
 		url.PathEscape(workspace),
-		url.PathEscape(NormalizeUUID(variableUUID)),
+		url.PathEscape(normalizedVariableUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
@@ -397,6 +413,10 @@ func (c *Client) ListDeploymentVariables(ctx context.Context, workspace, repoSlu
 	if environmentUUID == "" {
 		return nil, fmt.Errorf("environment UUID is required")
 	}
+	normalizedEnvironmentUUID, err := normalizeUUIDArg("environment UUID", environmentUUID)
+	if err != nil {
+		return nil, err
+	}
 
 	pageLen := opts.Limit
 	if pageLen <= 0 || pageLen > 100 {
@@ -406,7 +426,7 @@ func (c *Client) ListDeploymentVariables(ctx context.Context, workspace, repoSlu
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables?pagelen=%d",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(environmentUUID)),
+		url.PathEscape(normalizedEnvironmentUUID),
 		pageLen,
 	)
 
@@ -461,6 +481,10 @@ func (c *Client) CreateDeploymentVariable(ctx context.Context, workspace, repoSl
 	if input.Key == "" {
 		return nil, fmt.Errorf("variable key is required")
 	}
+	normalizedEnvironmentUUID, err := normalizeUUIDArg("environment UUID", environmentUUID)
+	if err != nil {
+		return nil, err
+	}
 
 	body := map[string]any{
 		"key":     input.Key,
@@ -471,7 +495,7 @@ func (c *Client) CreateDeploymentVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(environmentUUID)),
+		url.PathEscape(normalizedEnvironmentUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "POST", path, body)
@@ -507,6 +531,14 @@ func (c *Client) UpdateDeploymentVariable(ctx context.Context, workspace, repoSl
 	if input.Key == "" {
 		return nil, fmt.Errorf("variable key is required")
 	}
+	normalizedEnvironmentUUID, err := normalizeUUIDArg("environment UUID", environmentUUID)
+	if err != nil {
+		return nil, err
+	}
+	normalizedVariableUUID, err := normalizeUUIDArg("variable UUID", variableUUID)
+	if err != nil {
+		return nil, err
+	}
 
 	body := map[string]any{
 		"key":     input.Key,
@@ -517,8 +549,8 @@ func (c *Client) UpdateDeploymentVariable(ctx context.Context, workspace, repoSl
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(environmentUUID)),
-		url.PathEscape(NormalizeUUID(variableUUID)),
+		url.PathEscape(normalizedEnvironmentUUID),
+		url.PathEscape(normalizedVariableUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "PUT", path, body)
@@ -544,12 +576,20 @@ func (c *Client) DeleteDeploymentVariable(ctx context.Context, workspace, repoSl
 	if variableUUID == "" {
 		return fmt.Errorf("variable UUID is required")
 	}
+	normalizedEnvironmentUUID, err := normalizeUUIDArg("environment UUID", environmentUUID)
+	if err != nil {
+		return err
+	}
+	normalizedVariableUUID, err := normalizeUUIDArg("variable UUID", variableUUID)
+	if err != nil {
+		return err
+	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/deployments_config/environments/%s/variables/%s",
 		url.PathEscape(workspace),
 		url.PathEscape(repoSlug),
-		url.PathEscape(NormalizeUUID(environmentUUID)),
-		url.PathEscape(NormalizeUUID(variableUUID)),
+		url.PathEscape(normalizedEnvironmentUUID),
+		url.PathEscape(normalizedVariableUUID),
 	)
 
 	req, err := c.http.NewRequest(ctx, "DELETE", path, nil)
