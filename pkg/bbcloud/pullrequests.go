@@ -450,7 +450,27 @@ func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug str
 		return err
 	}
 
-	return c.http.Do(req, nil)
+	// Capture the created comment so a requested threaded reply can be
+	// verified. Bitbucket Cloud echoes the created representation, including
+	// parent.id, on a successful POST.
+	var created PullRequestComment
+	if err := c.http.Do(req, &created); err != nil {
+		return err
+	}
+
+	// Only verify threading when a reply was requested and Bitbucket actually
+	// returned a parseable body (created.ID != 0). Some responses (and test
+	// stubs) return a 2xx with an empty body, which is still a success.
+	if opts.ParentID > 0 && created.ID != 0 {
+		if created.Parent == nil || created.Parent.ID != opts.ParentID {
+			return fmt.Errorf(
+				"comment created (id %d) but Bitbucket did not thread it under parent %d; the parent may not be a valid reply target (e.g. resolved, deleted, or a comment that does not accept replies) — delete the stray comment or retry against a top-level comment",
+				created.ID, opts.ParentID,
+			)
+		}
+	}
+
+	return nil
 }
 
 // PullRequestDiff streams the unified diff for the given pull request into w.
