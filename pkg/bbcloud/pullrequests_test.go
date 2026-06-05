@@ -452,6 +452,92 @@ func TestCommentPullRequestWithoutParent(t *testing.T) {
 	}
 }
 
+func TestCommentPullRequestParentThreadingVerification(t *testing.T) {
+	tests := []struct {
+		name         string
+		parentID     int
+		responseBody string
+		wantErr      bool
+		wantErrParts []string
+	}{
+		{
+			name:         "threaded reply echoed by Bitbucket",
+			parentID:     42,
+			responseBody: `{"id":100,"parent":{"id":42},"content":{"raw":"reply"}}`,
+			wantErr:      false,
+		},
+		{
+			name:         "parent silently dropped to top-level",
+			parentID:     42,
+			responseBody: `{"id":100,"content":{"raw":"reply"}}`,
+			wantErr:      true,
+			wantErrParts: []string{"100", "42", "parent"},
+		},
+		{
+			name:         "parent threaded under a different comment",
+			parentID:     42,
+			responseBody: `{"id":100,"parent":{"id":7},"content":{"raw":"reply"}}`,
+			wantErr:      true,
+			wantErrParts: []string{"100", "42", "parent"},
+		},
+		{
+			name:         "empty 2xx body is treated as success",
+			parentID:     42,
+			responseBody: "",
+			wantErr:      false,
+		},
+		{
+			name:         "no parent requested skips verification even if body lacks parent",
+			parentID:     0,
+			responseBody: `{"id":100,"content":{"raw":"top-level"}}`,
+			wantErr:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.WriteHeader(http.StatusCreated)
+				if tt.responseBody != "" {
+					_, _ = w.Write([]byte(tt.responseBody))
+				}
+			}))
+
+			err := client.CommentPullRequest(context.Background(), "myworkspace", "my-repo", 7, bbcloud.CommentOptions{
+				Text:     "reply",
+				ParentID: tt.parentID,
+			})
+
+			if tt.parentID > 0 {
+				parent, ok := gotBody["parent"].(map[string]any)
+				if !ok {
+					t.Fatalf("request body missing parent object")
+				}
+				if id, ok := parent["id"].(float64); !ok || int(id) != tt.parentID {
+					t.Errorf("parent.id = %v, want %d", parent["id"], tt.parentID)
+				}
+			}
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				for _, part := range tt.wantErrParts {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("error %q missing %q", err.Error(), part)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CommentPullRequest: %v", err)
+			}
+		})
+	}
+}
+
 func TestCommentPullRequestInlineToLine(t *testing.T) {
 	var gotBody map[string]any
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
