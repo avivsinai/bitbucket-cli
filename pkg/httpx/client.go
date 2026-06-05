@@ -285,7 +285,7 @@ func (c *Client) Do(req *http.Request, v any) error {
 
 		resp, err := c.httpClient.Do(attemptReq)
 		if err != nil {
-			if !c.shouldRetry(attempts, 0) {
+			if !c.shouldRetry(attempts, attemptReq.Method, 0) {
 				if c.debug {
 					fmt.Fprintf(os.Stderr, "<-- network error: %v\n", err)
 				}
@@ -324,7 +324,7 @@ func (c *Client) Do(req *http.Request, v any) error {
 			// Read body for retry logic; errors are intentionally ignored as we'll retry anyway
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			if !c.shouldRetry(attempts, resp.StatusCode) {
+			if !c.shouldRetry(attempts, attemptReq.Method, resp.StatusCode) {
 				if len(bodyBytes) > 0 {
 					resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 				}
@@ -499,8 +499,34 @@ func shouldRetryStatus(code int) bool {
 	return code >= 500 && code <= 599
 }
 
-func (c *Client) shouldRetry(attempts int, status int) bool {
-	return attempts+1 < c.retry.MaxAttempts
+// shouldRetry reports whether another attempt should be made for the given
+// method and status. A 429 (Too Many Requests) is safe to retry for any method
+// because the request was rejected, not processed. 5xx responses and transport
+// errors (status == 0) may have already applied a server-side side effect, so
+// they are only retried for idempotent methods — this prevents a transient 500
+// after a successful write from duplicating a non-idempotent POST (e.g. creating
+// a pull request comment twice).
+func (c *Client) shouldRetry(attempts int, method string, status int) bool {
+	if attempts+1 >= c.retry.MaxAttempts {
+		return false
+	}
+	if status == http.StatusTooManyRequests {
+		return true
+	}
+	return isIdempotentMethod(method)
+}
+
+// isIdempotentMethod reports whether retrying the method is safe per HTTP
+// semantics (RFC 9110 §9.2.2). POST and PATCH are excluded because they are not
+// idempotent.
+func isIdempotentMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions,
+		http.MethodPut, http.MethodDelete, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) retryDelay(attempts int, resp *http.Response) time.Duration {
