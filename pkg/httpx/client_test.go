@@ -937,6 +937,47 @@ func TestClientRetriesPostOn429(t *testing.T) {
 	}
 }
 
+func TestShouldRetry(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com", Retry: RetryPolicy{MaxAttempts: 4}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		attempts int
+		method   string
+		status   int
+		want     bool
+	}{
+		// status == 0 is a transport/network error: unsafe for non-idempotent methods.
+		{"network error POST", 0, http.MethodPost, 0, false},
+		{"network error PATCH", 0, http.MethodPatch, 0, false},
+		{"network error GET", 0, http.MethodGet, 0, true},
+		{"network error PUT", 0, http.MethodPut, 0, true},
+		{"network error DELETE", 0, http.MethodDelete, 0, true},
+		// 5xx: same idempotency rule as transport errors.
+		{"500 POST", 0, http.MethodPost, http.StatusInternalServerError, false},
+		{"503 PATCH", 0, http.MethodPatch, http.StatusServiceUnavailable, false},
+		{"500 GET", 0, http.MethodGet, http.StatusInternalServerError, true},
+		{"502 PUT", 0, http.MethodPut, http.StatusBadGateway, true},
+		// 429: rejected, not processed — retryable for any method.
+		{"429 POST", 0, http.MethodPost, http.StatusTooManyRequests, true},
+		{"429 PATCH", 0, http.MethodPatch, http.StatusTooManyRequests, true},
+		// attempt budget exhausted: no retry even for an idempotent GET.
+		{"attempts exhausted GET 500", 3, http.MethodGet, http.StatusInternalServerError, false},
+		{"attempts exhausted POST 429", 3, http.MethodPost, http.StatusTooManyRequests, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := client.shouldRetry(tt.attempts, tt.method, tt.status); got != tt.want {
+				t.Errorf("shouldRetry(%d, %q, %d) = %v, want %v", tt.attempts, tt.method, tt.status, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRetryDelayCapsRetryAfter(t *testing.T) {
 	client, err := New(Options{
 		BaseURL: "https://example.com",
