@@ -822,6 +822,162 @@ func TestClientRetriesOn429(t *testing.T) {
 	}
 }
 
+func TestClientDoesNotRetryPostOnServerError(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		Retry: RetryPolicy{
+			MaxAttempts:    4,
+			InitialBackoff: 10 * time.Millisecond,
+			MaxBackoff:     20 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodPost, "/comments", payload{Message: "hi"})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	if err := client.Do(req, nil); err == nil {
+		t.Fatalf("expected error from 500, got nil")
+	}
+
+	// A non-idempotent POST must not be retried on 5xx: the server may have
+	// already created the resource, so a retry would duplicate it.
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Fatalf("expected exactly 1 POST attempt, got %d", got)
+	}
+}
+
+func TestClientRetriesIdempotentPutOnServerError(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		if count == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload{Message: "ok"})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		Retry: RetryPolicy{
+			MaxAttempts:    4,
+			InitialBackoff: 10 * time.Millisecond,
+			MaxBackoff:     20 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodPut, "/comments/1", payload{Message: "edit"})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	var out payload
+	if err := client.Do(req, &out); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	// PUT is idempotent, so a 5xx is retried like GET.
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Fatalf("expected 2 PUT attempts, got %d", got)
+	}
+}
+
+func TestClientRetriesPostOn429(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		if count == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload{Message: "ok"})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		Retry: RetryPolicy{
+			MaxAttempts:    4,
+			InitialBackoff: 10 * time.Millisecond,
+			MaxBackoff:     20 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodPost, "/comments", payload{Message: "hi"})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	var out payload
+	if err := client.Do(req, &out); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	// 429 means the request was rejected, not processed, so retrying a POST is
+	// safe and expected.
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Fatalf("expected 2 POST attempts on 429, got %d", got)
+	}
+}
+
+func TestShouldRetry(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://example.com", Retry: RetryPolicy{MaxAttempts: 4}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		attempts int
+		method   string
+		status   int
+		want     bool
+	}{
+		// status == 0 is a transport/network error: unsafe for non-idempotent methods.
+		{"network error POST", 0, http.MethodPost, 0, false},
+		{"network error PATCH", 0, http.MethodPatch, 0, false},
+		{"network error GET", 0, http.MethodGet, 0, true},
+		{"network error PUT", 0, http.MethodPut, 0, true},
+		{"network error DELETE", 0, http.MethodDelete, 0, true},
+		// 5xx: same idempotency rule as transport errors.
+		{"500 POST", 0, http.MethodPost, http.StatusInternalServerError, false},
+		{"503 PATCH", 0, http.MethodPatch, http.StatusServiceUnavailable, false},
+		{"500 GET", 0, http.MethodGet, http.StatusInternalServerError, true},
+		{"502 PUT", 0, http.MethodPut, http.StatusBadGateway, true},
+		// 429: rejected, not processed — retryable for any method.
+		{"429 POST", 0, http.MethodPost, http.StatusTooManyRequests, true},
+		{"429 PATCH", 0, http.MethodPatch, http.StatusTooManyRequests, true},
+		// attempt budget exhausted: no retry even for an idempotent GET.
+		{"attempts exhausted GET 500", 3, http.MethodGet, http.StatusInternalServerError, false},
+		{"attempts exhausted POST 429", 3, http.MethodPost, http.StatusTooManyRequests, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := client.shouldRetry(tt.attempts, tt.method, tt.status); got != tt.want {
+				t.Errorf("shouldRetry(%d, %q, %d) = %v, want %v", tt.attempts, tt.method, tt.status, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRetryDelayCapsRetryAfter(t *testing.T) {
 	client, err := New(Options{
 		BaseURL: "https://example.com",
