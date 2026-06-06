@@ -5,6 +5,15 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- `bkt pr comment --parent` on Bitbucket Cloud no longer reports success when
+  Bitbucket does not thread the reply under the requested parent. When the
+  created-comment response is available, `bkt` verifies the echoed `parent.id`
+  and returns an actionable error instead of a false "Commented" message.
+- The HTTP client no longer retries non-idempotent requests (POST/PATCH) on
+  server (5xx) or network errors, preventing duplicate pull request comments
+  when a transient failure occurs after the comment was already created.
+  Rate-limited (429) responses remain retryable for all methods.
 
 ## [0.28.1] - 2026-05-30
 ### Fixed
