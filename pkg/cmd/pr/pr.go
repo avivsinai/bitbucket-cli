@@ -2377,7 +2377,7 @@ func newMergeCmd(f *cmdutil.Factory) *cobra.Command {
 		Short: "Merge a pull request",
 		Long: `Merge a pull request. The source branch is closed by default (use
 --close-source=false to keep it). An optional merge strategy can be specified
-(e.g. fast-forward, squash) and a custom merge commit message can be provided.
+(e.g. fast_forward, squash) and a custom merge commit message can be provided.
 
 Works on both Data Center and Cloud. On Data Center, the current PR version
 is used for optimistic locking.`,
@@ -2387,8 +2387,8 @@ is used for optimistic locking.`,
   # Merge with a custom commit message
   bkt pr merge 42 --message "Release v1.2.0"
 
-  # Merge using fast-forward strategy and keep source branch
-  bkt pr merge 42 --strategy fast-forward --close-source=false`,
+  # Merge using rebase fast-forward strategy and keep source branch
+  bkt pr merge 42 --strategy rebase_fast_forward --close-source=false`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
@@ -2403,7 +2403,7 @@ is used for optimistic locking.`,
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Message, "message", "", "Merge commit message override")
-	cmd.Flags().StringVar(&opts.Strategy, "strategy", "", "Merge strategy ID (e.g., fast-forward)")
+	cmd.Flags().StringVar(&opts.Strategy, "strategy", "", "Merge strategy ID (e.g., rebase_fast_forward)")
 	cmd.Flags().BoolVar(&opts.CloseSource, "close-source", true, "Close source branch on merge")
 
 	return cmd
