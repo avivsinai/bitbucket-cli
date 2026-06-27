@@ -771,6 +771,40 @@ func TestMergePullRequestValidation(t *testing.T) {
 	}
 }
 
+func TestMergePullRequestAcceptsCloudStrategies(t *testing.T) {
+	strategies := []string{
+		"merge_commit",
+		"squash",
+		"fast_forward",
+		"squash_fast_forward",
+		"rebase_fast_forward",
+		"rebase_merge",
+	}
+
+	for _, strategy := range strategies {
+		t.Run(strategy, func(t *testing.T) {
+			var gotBody map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("method = %s, want POST", r.Method)
+				}
+				if r.URL.Path != "/repositories/ws/repo/pullrequests/1/merge" {
+					t.Errorf("path = %s, want /repositories/ws/repo/pullrequests/1/merge", r.URL.Path)
+				}
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			if err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", strategy, false); err != nil {
+				t.Fatalf("MergePullRequest strategy %q: %v", strategy, err)
+			}
+			if gotBody["merge_strategy"] != strategy {
+				t.Fatalf("merge_strategy = %v, want %q", gotBody["merge_strategy"], strategy)
+			}
+		})
+	}
+}
+
 func TestMergePullRequestInvalidStrategy(t *testing.T) {
 	client, err := bbcloud.New(bbcloud.Options{
 		BaseURL: "http://localhost", Username: "u", Token: "t",
@@ -780,11 +814,14 @@ func TestMergePullRequestInvalidStrategy(t *testing.T) {
 	}
 
 	// Invalid strategy should return error
-	invalidStrategies := []string{"squah", "rebase", "merge-commit", "SQUASH"}
+	invalidStrategies := []string{"squah", "rebase", "merge-commit", "fast-forward", "SQUASH"}
 	for _, s := range invalidStrategies {
 		t.Run("invalid_"+s, func(t *testing.T) {
-			if err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", s, false); err == nil {
+			err := client.MergePullRequest(context.Background(), "ws", "repo", 1, "", s, false)
+			if err == nil {
 				t.Errorf("expected error for strategy %q", s)
+			} else if !strings.Contains(err.Error(), "squash_fast_forward, rebase_fast_forward, rebase_merge") {
+				t.Errorf("error = %q, want all valid Cloud strategies listed", err)
 			}
 		})
 	}

@@ -496,11 +496,24 @@ func (c *Client) PullRequestDiff(ctx context.Context, workspace, repoSlug string
 	return c.http.Do(req, w)
 }
 
-// validMergeStrategies lists the strategies accepted by Bitbucket Cloud.
-var validMergeStrategies = map[string]bool{
-	"merge_commit": true,
-	"squash":       true,
-	"fast_forward": true,
+// validMergeStrategyValues lists the strategies accepted by Bitbucket Cloud.
+var validMergeStrategyValues = []string{
+	"merge_commit",
+	"squash",
+	"fast_forward",
+	"squash_fast_forward",
+	"rebase_fast_forward",
+	"rebase_merge",
+}
+
+var validMergeStrategies = mergeStrategySet(validMergeStrategyValues)
+
+func mergeStrategySet(strategies []string) map[string]bool {
+	set := make(map[string]bool, len(strategies))
+	for _, strategy := range strategies {
+		set[strategy] = true
+	}
+	return set
 }
 
 // mergeTaskStatus represents the async merge task status response.
@@ -517,7 +530,7 @@ func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug strin
 		return fmt.Errorf("workspace and repository slug are required")
 	}
 	if strategy != "" && !validMergeStrategies[strategy] {
-		return fmt.Errorf("invalid merge strategy %q: must be one of merge_commit, squash, fast_forward", strategy)
+		return fmt.Errorf("invalid merge strategy %q: must be one of %s", strategy, strings.Join(validMergeStrategyValues, ", "))
 	}
 
 	body := map[string]any{
