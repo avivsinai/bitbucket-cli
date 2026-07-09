@@ -5,6 +5,10 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- `make build`, `make clean`, and `make test` now run on Windows GNU Make
+  using platform-specific commands and Windows-safe test helpers, while keeping
+  the existing Unix build and release script paths intact.
 
 ## [0.28.2] - 2026-06-06
 ### Fixed

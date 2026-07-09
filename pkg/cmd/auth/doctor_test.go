@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -155,18 +156,37 @@ func TestKeychainItemPresent(t *testing.T) {
 	}
 }
 
-// mustExitError runs a trivial subprocess that exits with the given code so
+// mustExitError runs a helper subprocess that exits with the given code so
 // tests can pass a real *exec.ExitError with an asserted ExitCode() through
-// the stubbed runCmd path. Relies on /bin/sh being present (always true on
-// darwin and linux runners used here).
+// the stubbed runCmd path.
 func mustExitError(t *testing.T, code int) error {
 	t.Helper()
-	cmd := exec.Command("/bin/sh", "-c", "exit "+strconv.Itoa(code))
+	cmd := exec.Command(os.Args[0], "-test.run=TestExitWithCodeHelper", "--", strconv.Itoa(code))
+	cmd.Env = append(os.Environ(), "BKT_TEST_EXIT_CODE_HELPER=1")
 	err := cmd.Run()
 	if err == nil {
-		t.Fatalf("sh -c exit %d returned nil error", code)
+		t.Fatalf("helper exit %d returned nil error", code)
 	}
 	return err
+}
+
+func TestExitWithCodeHelper(t *testing.T) {
+	if os.Getenv("BKT_TEST_EXIT_CODE_HELPER") != "1" {
+		return
+	}
+
+	code := 2
+	for i, arg := range os.Args {
+		if arg != "--" || i+1 >= len(os.Args) {
+			continue
+		}
+		parsed, err := strconv.Atoi(os.Args[i+1])
+		if err == nil {
+			code = parsed
+		}
+		break
+	}
+	os.Exit(code)
 }
 
 func TestDiagnose_NoHosts(t *testing.T) {

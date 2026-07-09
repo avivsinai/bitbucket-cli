@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -73,12 +74,13 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	// Verify the file exists and has restrictive permissions.
+	// Verify the file exists and has restrictive permissions where Unix mode
+	// bits are meaningful.
 	info, err := os.Stat(cfg.path)
 	if err != nil {
 		t.Fatalf("Stat: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Fatalf("expected 0600 permissions, got %o", perm)
 	}
 

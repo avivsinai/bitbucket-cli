@@ -44,7 +44,15 @@ func writeGitHelperScript(t *testing.T, target string) {
 	t.Helper()
 
 	if runtime.GOOS == "windows" {
-		script := "@echo off\r\n(\r\nfor %%a in (%*) do echo %%a\r\n) > \"%REPO_GIT_ARGS_FILE%\"\r\n"
+		exe, err := os.Executable()
+		if err != nil {
+			t.Fatalf("os.Executable: %v", err)
+		}
+		exe = strings.ReplaceAll(exe, "%", "%%")
+		script := "@echo off\r\n" +
+			"set GO_WANT_REPO_GIT_HELPER_PROCESS=1\r\n" +
+			"\"" + exe + "\" -test.run=TestRepoGitHelperProcess -- %*\r\n" +
+			"exit /b %ERRORLEVEL%\r\n"
 		if err := os.WriteFile(target, []byte(script), 0o644); err != nil {
 			t.Fatalf("WriteFile(%s): %v", target, err)
 		}
@@ -62,4 +70,25 @@ func gitHelperName() string {
 		return "git.bat"
 	}
 	return "git"
+}
+
+func TestRepoGitHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_REPO_GIT_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	args := testArgsAfterDoubleDash(os.Args)
+	if err := os.WriteFile(os.Getenv("REPO_GIT_ARGS_FILE"), []byte(strings.Join(args, "\n")), 0o644); err != nil {
+		panic(err)
+	}
+	os.Exit(0)
+}
+
+func testArgsAfterDoubleDash(args []string) []string {
+	for i, arg := range args {
+		if arg == "--" {
+			return args[i+1:]
+		}
+	}
+	return nil
 }
