@@ -1729,7 +1729,7 @@ func TestListPullRequestsEncodesReviewerFilterUpstream(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ListPullRequests: %v", err)
 	}
-	if want := `reviewers.username = "nick"`; firstQuery != want {
+	if want := `reviewers.nickname = "nick"`; firstQuery != want {
 		t.Fatalf("q = %q, want %q", firstQuery, want)
 	}
 
@@ -1741,7 +1741,7 @@ func TestListPullRequestsEncodesReviewerFilterUpstream(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ListPullRequests: %v", err)
 	}
-	if want := `author.username = "nick" AND reviewers.uuid = "` + uuid + `"`; firstQuery != want {
+	if want := `author.nickname = "nick" AND reviewers.uuid = "` + uuid + `"`; firstQuery != want {
 		t.Fatalf("q = %q, want %q", firstQuery, want)
 	}
 }
@@ -1800,5 +1800,57 @@ func TestListWorkspacePullRequestsPageIsAuthorScoped(t *testing.T) {
 	}
 	if !strings.HasSuffix(gotPath, "/workspaces/ws/pullrequests/alice") {
 		t.Fatalf("path = %q, want the user-scoped author endpoint", gotPath)
+	}
+}
+
+// Regression for credential exfiltration: a caller-supplied next reference
+// pointing at another host must never be fetched with the Bitbucket
+// Authorization header. The reference is reduced to its request URI (same
+// client host) and must target the original endpoint.
+func TestListRepoPullRequestsPageRejectsForeignNextHost(t *testing.T) {
+	var attackerHits int32
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attackerHits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(attacker.Close)
+
+	var apiPaths []string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiPaths = append(apiPaths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+
+	// Absolute foreign URL with a plausible path: host must be stripped, the
+	// request must go to the client's own base host.
+	foreign := attacker.URL + "/repositories/ws/repo/pullrequests?page=2"
+	if _, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, foreign); err != nil {
+		t.Fatalf("normalized foreign next: %v", err)
+	}
+	if got := atomic.LoadInt32(&attackerHits); got != 0 {
+		t.Fatalf("attacker host received %d requests; credential exfiltration", got)
+	}
+	if len(apiPaths) != 1 || !strings.Contains(apiPaths[0], "/repositories/ws/repo/pullrequests") {
+		t.Fatalf("api paths = %v, want the normalized same-host request", apiPaths)
+	}
+
+	// A next reference targeting a different endpoint must be rejected
+	// without any request.
+	apiPaths = nil
+	if _, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, attacker.URL+"/2.0/user"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("foreign endpoint: err = %v, want endpoint rejection", err)
+	}
+	if len(apiPaths) != 0 || atomic.LoadInt32(&attackerHits) != 0 {
+		t.Fatalf("rejected reference still produced requests (api=%v attacker=%d)", apiPaths, attackerHits)
+	}
+}
+
+func TestListWorkspacePullRequestsPageRejectsForeignNext(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("no request expected for a rejected next reference")
+	}))
+	if _, err := client.ListWorkspacePullRequestsPage(context.Background(), "ws", "alice", bbcloud.WorkspacePullRequestsOptions{}, "https://evil.example/steal"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("err = %v, want endpoint rejection", err)
 	}
 }

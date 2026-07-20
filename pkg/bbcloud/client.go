@@ -716,25 +716,32 @@ func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, u
 		return nil, fmt.Errorf("username is required")
 	}
 
-	path := next
-	if path == "" {
-		pageLen := opts.Limit
-		if pageLen <= 0 || pageLen > 100 {
-			pageLen = 20
+	if next != "" {
+		endpoint := fmt.Sprintf("/workspaces/%s/pullrequests/%s",
+			url.PathEscape(workspace), url.PathEscape(username))
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
 		}
-
-		var params []string
-		params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-		if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-			params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-		}
-
-		path = fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
-			url.PathEscape(workspace),
-			url.PathEscape(username),
-			strings.Join(params, "&"),
-		)
+		return c.fetchPullRequestsPage(ctx, normalized)
 	}
+
+	pageLen := opts.Limit
+	if pageLen <= 0 || pageLen > 100 {
+		pageLen = 20
+	}
+
+	var params []string
+	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
+	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
+		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
+	}
+
+	path := fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
+		url.PathEscape(workspace),
+		url.PathEscape(username),
+		strings.Join(params, "&"),
+	)
 
 	return c.fetchPullRequestsPage(ctx, path)
 }

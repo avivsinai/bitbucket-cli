@@ -96,28 +96,35 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSl
 		return nil, fmt.Errorf("workspace and repository slug are required")
 	}
 
-	path := next
-	if path == "" {
-		pageLen := opts.Limit
-		if pageLen <= 0 || pageLen > 100 {
-			pageLen = 20
+	if next != "" {
+		endpoint := fmt.Sprintf("/repositories/%s/%s/pullrequests",
+			url.PathEscape(workspace), url.PathEscape(repoSlug))
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
 		}
-
-		var params []string
-		params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-		if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-			params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-		}
-		if q := pullRequestQFilter(opts); q != "" {
-			params = append(params, "q="+url.QueryEscape(q))
-		}
-
-		path = fmt.Sprintf("/repositories/%s/%s/pullrequests?%s",
-			url.PathEscape(workspace),
-			url.PathEscape(repoSlug),
-			strings.Join(params, "&"),
-		)
+		return c.fetchPullRequestsPage(ctx, normalized)
 	}
+
+	pageLen := opts.Limit
+	if pageLen <= 0 || pageLen > 100 {
+		pageLen = 20
+	}
+
+	var params []string
+	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
+	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
+		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
+	}
+	if q := pullRequestQFilter(opts); q != "" {
+		params = append(params, "q="+url.QueryEscape(q))
+	}
+
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests?%s",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		strings.Join(params, "&"),
+	)
 
 	return c.fetchPullRequestsPage(ctx, path)
 }
@@ -133,6 +140,21 @@ func pullRequestQFilter(opts PullRequestListOptions) string {
 		terms = append(terms, bbqlEquals(reviewerFilterField(reviewer), reviewer))
 	}
 	return strings.Join(terms, " AND ")
+}
+
+// normalizeNextRef hardens caller-supplied opaque next references: the
+// reference is reduced to its request URI (so it can never point the
+// authenticated client at another host) and must target the endpoint the
+// page sequence started from. Anything else is rejected.
+func normalizeNextRef(next, endpoint string) (string, error) {
+	u, err := url.Parse(next)
+	if err != nil {
+		return "", fmt.Errorf("invalid next page reference: %w", err)
+	}
+	if !strings.Contains(u.EscapedPath(), endpoint) {
+		return "", fmt.Errorf("next page reference does not target %s", endpoint)
+	}
+	return u.RequestURI(), nil
 }
 
 func (c *Client) fetchPullRequestsPage(ctx context.Context, path string) (*PullRequestsPage, error) {
@@ -192,7 +214,7 @@ func authorFilterField(identity string) string {
 	case LooksLikeAccountID(identity):
 		return "author.account_id"
 	default:
-		return "author.username"
+		return "author.nickname"
 	}
 }
 
@@ -205,7 +227,7 @@ func reviewerFilterField(identity string) string {
 	case LooksLikeAccountID(identity):
 		return "reviewers.account_id"
 	default:
-		return "reviewers.username"
+		return "reviewers.nickname"
 	}
 }
 
