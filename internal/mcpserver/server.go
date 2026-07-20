@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
@@ -63,29 +64,73 @@ type ContextInfo struct {
 }
 
 // New builds the MCP server for the given frozen snapshot. All registered
-// tools are read-only in v1; registration is the single enforcement point.
+// tools are read-only in v1; addReadOnlyTool is the single registration path
+// and stamps truthful annotations.
 func New(snap *Snapshot, version string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "bkt", Version: version}, nil)
 	registerGetContext(server, snap)
 	return server
 }
 
-// capabilities lists what the pinned platform supports. Wave C extends this
-// alongside the tool registry; identifiers are part of the public contract.
+// addReadOnlyTool registers a tool with truthful read-only annotations. Every
+// v1 tool must go through here; the write wave adds a separate gated path.
+func addReadOnlyTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	if tool.Annotations == nil {
+		tool.Annotations = &mcp.ToolAnnotations{}
+	}
+	tool.Annotations.ReadOnlyHint = true
+	mcp.AddTool(server, tool, handler)
+}
+
+// capabilities lists platform feature identifiers (e.g. my_prs.role.reviewer)
+// supported by the pinned platform. Empty until such features land in wave C;
+// identifiers are part of the public contract and must not be invented here.
 func capabilities(snap *Snapshot) []string {
-	caps := []string{"context"}
-	_ = snap // platform-dependent capabilities arrive with the read tools
-	return caps
+	_ = snap
+	return []string{}
+}
+
+// contextInfoSchema is the hand-frozen output contract for bkt_get_context.
+// Inference from the struct would under-specify it (no platform enum, nullable
+// capabilities), so the schema is explicit and golden-tested.
+var contextInfoSchema = &jsonschema.Schema{
+	Type:     "object",
+	Required: []string{"platform", "host_label", "capabilities"},
+	Properties: map[string]*jsonschema.Schema{
+		"platform": {
+			Type:        "string",
+			Enum:        []any{"dc", "cloud"},
+			Description: "the pinned Bitbucket platform",
+		},
+		"host_label": {
+			Type:        "string",
+			Description: "the bkt config host entry this server is pinned to",
+		},
+		"default_scope": {
+			Type:        "string",
+			Description: "default scope (DC project key or Cloud workspace) used when a tool call omits the repository locator",
+		},
+		"default_repo": {
+			Type:        "string",
+			Description: "default repository slug used when a tool call omits the repository locator",
+		},
+		"capabilities": {
+			Type:        "array",
+			Items:       &jsonschema.Schema{Type: "string"},
+			Description: "platform feature identifiers this server supports",
+		},
+	},
 }
 
 type getContextArgs struct{}
 
 func registerGetContext(server *mcp.Server, snap *Snapshot) {
-	mcp.AddTool(server, &mcp.Tool{
+	addReadOnlyTool(server, &mcp.Tool{
 		Name: "bkt_get_context",
 		Description: "Describe the Bitbucket target this server is pinned to: " +
 			"platform (dc or cloud), host label, default repository scope/slug, " +
 			"and the capabilities available here. Never returns credentials.",
+		OutputSchema: contextInfoSchema,
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args getContextArgs) (*mcp.CallToolResult, ContextInfo, error) {
 		return nil, ContextInfo{
 			Platform:     snap.Platform,

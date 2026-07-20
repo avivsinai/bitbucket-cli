@@ -26,6 +26,13 @@ func NewCmdMCP(f *cmdutil.Factory) *cobra.Command {
 }
 
 func newServeCmd(f *cmdutil.Factory) *cobra.Command {
+	return newServeCmdWithTransport(f, nil)
+}
+
+// newServeCmdWithTransport lets tests drive the full serve path (context
+// resolution, banner, server run) over an injected transport; nil means the
+// real stdio transport.
+func newServeCmdWithTransport(f *cmdutil.Factory, transport sdk.Transport) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve Bitbucket tools over MCP stdio (read-only)",
@@ -50,14 +57,14 @@ Register with an MCP client, e.g. for Claude Code:
   bkt mcp serve --context work-dc`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServe(cmd, f)
+			return runServe(cmd, f, transport)
 		},
 	}
 
 	return cmd
 }
 
-func runServe(cmd *cobra.Command, f *cmdutil.Factory) error {
+func runServe(cmd *cobra.Command, f *cmdutil.Factory, transport sdk.Transport) error {
 	ios, err := f.Streams()
 	if err != nil {
 		return err
@@ -77,5 +84,8 @@ func runServe(cmd *cobra.Command, f *cmdutil.Factory) error {
 		label, snap.Platform, snap.HostLabel)
 
 	server := mcpserver.New(snap, f.AppVersion)
-	return server.Run(cmd.Context(), &sdk.StdioTransport{})
+	if transport == nil {
+		transport = &sdk.StdioTransport{}
+	}
+	return server.Run(cmd.Context(), transport)
 }

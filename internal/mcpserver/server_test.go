@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -122,8 +123,24 @@ func TestGetContextToolRoundTrip(t *testing.T) {
 	if len(tools.Tools) != 1 || tools.Tools[0].Name != "bkt_get_context" {
 		t.Fatalf("tools = %+v, want exactly bkt_get_context", tools.Tools)
 	}
-	if tools.Tools[0].OutputSchema == nil {
+	tool := tools.Tools[0]
+	if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+		t.Fatal("bkt_get_context must advertise ReadOnlyHint: true — v1 is read-only")
+	}
+	if tool.OutputSchema == nil {
 		t.Fatal("bkt_get_context has no output schema; typed contract missing")
+	}
+	schemaJSON, err := json.Marshal(tool.OutputSchema)
+	if err != nil {
+		t.Fatalf("marshal output schema: %v", err)
+	}
+	for _, want := range []string{`"enum":["dc","cloud"]`, `"capabilities":{`, `"type":"array"`} {
+		if !strings.Contains(string(schemaJSON), want) {
+			t.Fatalf("output schema missing frozen contract piece %q:\n%s", want, schemaJSON)
+		}
+	}
+	if strings.Contains(string(schemaJSON), "null") {
+		t.Fatalf("output schema permits null types; contract requires concrete types:\n%s", schemaJSON)
 	}
 
 	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "bkt_get_context"})
@@ -145,8 +162,11 @@ func TestGetContextToolRoundTrip(t *testing.T) {
 	if info.Platform != "dc" || info.HostLabel != "dc-host" || info.DefaultScope != "PROJ" || info.DefaultRepo != "api" {
 		t.Fatalf("ContextInfo = %+v, want snapshot values", info)
 	}
-	if len(info.Capabilities) == 0 {
-		t.Fatal("capabilities must not be empty")
+	if info.Capabilities == nil {
+		t.Fatal("capabilities must be a non-null array (empty is fine until platform features land)")
+	}
+	if !strings.Contains(string(raw), `"capabilities":[]`) {
+		t.Fatalf("capabilities must serialize as an empty array, got: %s", raw)
 	}
 	for _, s := range []string{"token", "Token", "secret"} {
 		if string(raw) != "" && json.Valid(raw) && containsInsensitive(raw, s) {
