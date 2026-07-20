@@ -517,6 +517,34 @@ func TestListPullRequestCommentsFlattensReplies(t *testing.T) {
 	}
 }
 
+func TestListPullRequestCommentsPagePreservesActivityPagination(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/activities" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.URL.Query().Get("limit") != "3" || r.URL.Query().Get("start") != "14" {
+			t.Fatalf("query = %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{"action": "APPROVED"},
+				{"action": "COMMENTED", "comment": map[string]any{"id": 9, "text": "note"}},
+			},
+			"isLastPage":    false,
+			"nextPageStart": 17,
+		})
+	}))
+
+	page, err := client.ListPullRequestCommentsPage(context.Background(), "PROJ", "repo", 42, 3, 14)
+	if err != nil {
+		t.Fatalf("ListPullRequestCommentsPage: %v", err)
+	}
+	if len(page.Values) != 1 || page.Values[0].ID != 9 || page.IsLast || page.NextStart != 17 {
+		t.Fatalf("page = %+v", page)
+	}
+}
+
 func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 	var gotPutPath string
 	var gotBody map[string]any

@@ -731,6 +731,63 @@ func (c *Client) CommitStatuses(ctx context.Context, workspace, repoSlug, commit
 	return statuses, nil
 }
 
+// CommitStatusesPage is one bounded Cloud commit-status page. Next is an
+// opaque continuation reference; callers must pass it back to this method.
+type CommitStatusesPage struct {
+	Values []CommitStatus
+	Next   string
+}
+
+// CommitStatusesPage fetches one commit-status page without flattening the
+// rest of the sequence.
+func (c *Client) CommitStatusesPage(ctx context.Context, workspace, repoSlug, commit string, limit int, next string) (*CommitStatusesPage, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if commit == "" {
+		return nil, fmt.Errorf("commit SHA is required")
+	}
+
+	endpoint := fmt.Sprintf("/repositories/%s/%s/commit/%s/statuses",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		url.PathEscape(commit),
+	)
+	path := endpoint
+	if next != "" {
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		path = normalized
+	} else {
+		if limit <= 0 || limit > 100 {
+			limit = 100
+		}
+		path += fmt.Sprintf("?pagelen=%d", limit)
+	}
+
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var page struct {
+		Values []CommitStatus `json:"values"`
+		Next   string         `json:"next"`
+	}
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
+	normalizedNext := ""
+	if page.Next != "" {
+		normalizedNext, err = normalizeNextRef(page.Next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &CommitStatusesPage{Values: page.Values, Next: normalizedNext}, nil
+}
+
 // WorkspacePullRequestsOptions configures workspace-level PR listings.
 type WorkspacePullRequestsOptions struct {
 	State string

@@ -1429,6 +1429,68 @@ func TestListPullRequestCommentsValidation(t *testing.T) {
 	}
 }
 
+func TestListPullRequestCommentsPagePreservesAndNormalizesNext(t *testing.T) {
+	var requests []string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{{"id": len(requests), "content": map[string]any{"raw": "note"}}},
+			"next":   server.URL + "/repositories/team/repo/pullrequests/7/comments?pagelen=2&page=2",
+		})
+	}))
+	t.Cleanup(server.Close)
+	client, err := bbcloud.New(bbcloud.Options{BaseURL: server.URL, Token: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := client.ListPullRequestCommentsPage(context.Background(), "team", "repo", 7, 2, "")
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if len(page.Values) != 1 || page.Next != "/repositories/team/repo/pullrequests/7/comments?pagelen=2&page=2" {
+		t.Fatalf("first page = %+v", page)
+	}
+	if _, err := client.ListPullRequestCommentsPage(context.Background(), "team", "repo", 7, 2, page.Next); err != nil {
+		t.Fatalf("next page: %v", err)
+	}
+	if len(requests) != 2 || requests[0] != "/repositories/team/repo/pullrequests/7/comments?pagelen=2" || requests[1] != "/repositories/team/repo/pullrequests/7/comments?pagelen=2&page=2" {
+		t.Fatalf("requests = %v", requests)
+	}
+}
+
+func TestListPullRequestCommentsPageRejectsForeignNext(t *testing.T) {
+	var requests atomic.Int32
+	client := newTestClient(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	_, err := client.ListPullRequestCommentsPage(context.Background(), "team", "repo", 7, 2, "https://evil.example/steal")
+	if err == nil || requests.Load() != 0 {
+		t.Fatalf("error = %v, requests = %d; want rejection before HTTP", err, requests.Load())
+	}
+}
+
+func TestGetPullRequestRetainsDestinationCommit(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": 7,
+			"destination": map[string]any{
+				"commit": map[string]any{"hash": "target-sha"},
+			},
+		})
+	}))
+	pr, err := client.GetPullRequest(context.Background(), "team", "repo", 7)
+	if err != nil {
+		t.Fatalf("GetPullRequest: %v", err)
+	}
+	if pr.Destination.Commit.Hash != "target-sha" {
+		t.Fatalf("destination commit = %q", pr.Destination.Commit.Hash)
+	}
+}
+
 func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 	tests := []struct {
 		name       string

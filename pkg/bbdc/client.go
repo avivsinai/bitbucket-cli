@@ -430,6 +430,44 @@ func (c *Client) CommitStatuses(ctx context.Context, sha string) ([]CommitStatus
 	return resp.Values, nil
 }
 
+// CommitStatusesPage is one bounded page from the legacy Data Center build
+// status endpoint. The endpoint exposes at most the 100 most recent statuses.
+type CommitStatusesPage struct {
+	Values    []CommitStatus
+	IsLast    bool
+	NextStart int
+}
+
+// CommitStatusesPage fetches one build-status page without flattening it.
+func (c *Client) CommitStatusesPage(ctx context.Context, sha string, limit, start int) (*CommitStatusesPage, error) {
+	if sha == "" {
+		return nil, fmt.Errorf("commit SHA is required")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	if start < 0 {
+		return nil, fmt.Errorf("page start must not be negative")
+	}
+
+	path := fmt.Sprintf("/rest/build-status/1.0/commits/%s?limit=%d&start=%d",
+		url.PathEscape(sha), limit, start)
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp paged[CommitStatus]
+	if err := c.http.Do(req, &resp); err != nil {
+		return nil, err
+	}
+	return &CommitStatusesPage{
+		Values:    resp.Values,
+		IsLast:    resp.IsLastPage,
+		NextStart: resp.NextPageStart,
+	}, nil
+}
+
 // DashboardPullRequestsOptions configures dashboard PR listings.
 type DashboardPullRequestsOptions struct {
 	State string

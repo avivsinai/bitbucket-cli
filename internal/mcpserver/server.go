@@ -61,7 +61,7 @@ func New(snap *Snapshot, version string) (*mcp.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newServer(snap, version, backend), nil
+	return newFullServer(snap, version, backend), nil
 }
 
 func newServer(snap *Snapshot, version string, backend platformBackend) *mcp.Server {
@@ -69,6 +69,12 @@ func newServer(snap *Snapshot, version string, backend platformBackend) *mcp.Ser
 	registerGetContext(server, snap)
 	registerRepositoryTools(server, snap, backend)
 	registerPullRequestListTools(server, snap, backend)
+	return server
+}
+
+func newFullServer(snap *Snapshot, version string, backend fullPlatformBackend) *mcp.Server {
+	server := newServer(snap, version, backend)
+	registerPullRequestDetailTools(server, snap, backend)
 	return server
 }
 

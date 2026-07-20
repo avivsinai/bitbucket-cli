@@ -129,6 +129,61 @@ type pullRequestActivity struct {
 	Comment *PullRequestComment `json:"comment,omitempty"`
 }
 
+// PullRequestCommentsPage is one page of comments extracted from the Data
+// Center pull request activities endpoint. Pagination metadata refers to the
+// upstream activity page, which may also contain non-comment activities.
+type PullRequestCommentsPage struct {
+	Values    []PullRequestComment
+	IsLast    bool
+	NextStart int
+}
+
+// ListPullRequestCommentsPage fetches one upstream activity page and extracts
+// its comments without following pagination.
+func (c *Client) ListPullRequestCommentsPage(ctx context.Context, projectKey, repoSlug string, prID, limit, start int) (*PullRequestCommentsPage, error) {
+	if projectKey == "" || repoSlug == "" {
+		return nil, fmt.Errorf("project key and repository slug are required")
+	}
+	if prID <= 0 {
+		return nil, fmt.Errorf("pull request id must be positive")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	if start < 0 {
+		return nil, fmt.Errorf("page start must not be negative")
+	}
+
+	u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/activities?limit=%d&start=%d",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		prID,
+		limit,
+		start,
+	)
+	req, err := c.http.NewRequest(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp paged[pullRequestActivity]
+	if err := c.http.Do(req, &resp); err != nil {
+		return nil, err
+	}
+
+	comments := make([]PullRequestComment, 0, len(resp.Values))
+	for _, activity := range resp.Values {
+		if activity.Action == "COMMENTED" && activity.Comment != nil {
+			comments = append(comments, flattenComments(*activity.Comment, 0)...)
+		}
+	}
+	return &PullRequestCommentsPage{
+		Values:    comments,
+		IsLast:    resp.IsLastPage,
+		NextStart: resp.NextPageStart,
+	}, nil
+}
+
 // ListPullRequestComments lists comments on a pull request via the activities endpoint.
 func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSlug string, prID int) ([]PullRequestComment, error) {
 	if projectKey == "" || repoSlug == "" {
