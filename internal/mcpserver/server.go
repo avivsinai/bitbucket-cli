@@ -53,16 +53,6 @@ func ResolveSnapshot(f *cmdutil.Factory, contextOverride string) (*Snapshot, err
 	}, nil
 }
 
-// ContextInfo is the bkt_get_context result DTO. Field shapes are part of
-// the frozen v1 contract; never include credentials.
-type ContextInfo struct {
-	Platform     string   `json:"platform" jsonschema:"the pinned Bitbucket platform: dc (Data Center) or cloud"`
-	HostLabel    string   `json:"host_label" jsonschema:"the bkt config host entry this server is pinned to"`
-	DefaultScope string   `json:"default_scope,omitempty" jsonschema:"default scope (DC project key or Cloud workspace) used when a tool call omits the repository locator"`
-	DefaultRepo  string   `json:"default_repo,omitempty" jsonschema:"default repository slug used when a tool call omits the repository locator"`
-	Capabilities []string `json:"capabilities" jsonschema:"capability identifiers for the tools and roles this server supports on the pinned platform"`
-}
-
 // New builds the MCP server for the given frozen snapshot. All registered
 // tools are read-only in v1; addReadOnlyTool is the single registration path
 // and stamps truthful annotations.

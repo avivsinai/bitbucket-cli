@@ -16,7 +16,10 @@ var ErrPullRequestCommentNotTopLevel = errors.New("only top-level pull request c
 
 // PullRequestReviewer represents a reviewer assignment.
 type PullRequestReviewer struct {
-	User User `json:"user"`
+	User     User   `json:"user"`
+	Role     string `json:"role,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Approved *bool  `json:"approved,omitempty"`
 }
 
 // PullRequestParticipant wraps a reviewer/participant entry.
@@ -29,18 +32,22 @@ type PullRequestParticipant struct {
 
 // PullRequestComment represents a PR comment.
 type PullRequestComment struct {
-	ID             int                       `json:"id"`
-	Version        int                       `json:"version"`
-	Text           string                    `json:"text"`
-	Severity       string                    `json:"severity"` // "NORMAL" or "BLOCKER" (task)
-	State          string                    `json:"state"`    // "OPEN" or "RESOLVED"
-	Properties     map[string]any            `json:"properties,omitempty"`
-	Author         User                      `json:"author"`
-	ThreadResolved bool                      `json:"threadResolved"`
-	Anchor         *PullRequestCommentAnchor `json:"anchor,omitempty"`
-	Comments       []PullRequestComment      `json:"comments,omitempty"`
-	Depth          int                       `json:"-"` // nesting depth, set during flattening
-	raw            map[string]any
+	ID             int            `json:"id"`
+	Version        int            `json:"version"`
+	Text           string         `json:"text"`
+	CreatedDate    *int64         `json:"createdDate,omitempty"`
+	Severity       string         `json:"severity"` // "NORMAL" or "BLOCKER" (task)
+	State          string         `json:"state"`    // "OPEN" or "RESOLVED"
+	Properties     map[string]any `json:"properties,omitempty"`
+	Author         User           `json:"author"`
+	ThreadResolved bool           `json:"threadResolved"`
+	Parent         *struct {
+		ID int `json:"id"`
+	} `json:"parent,omitempty"`
+	Anchor   *PullRequestCommentAnchor `json:"anchor,omitempty"`
+	Comments []PullRequestComment      `json:"comments,omitempty"`
+	Depth    int                       `json:"-"` // nesting depth, set during flattening
+	raw      map[string]any
 }
 
 type PullRequestCommentAnchor struct {

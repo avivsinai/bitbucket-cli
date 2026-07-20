@@ -2,6 +2,7 @@ package bbcloud
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -28,19 +29,21 @@ type RepositoryRef struct {
 
 // PullRequest models a Bitbucket Cloud pull request.
 type PullRequest struct {
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	State     string `json:"state"`
-	Draft     bool   `json:"draft"`
-	CreatedOn string `json:"created_on"`
-	UpdatedOn string `json:"updated_on"`
-	Author    struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	State       string `json:"state"`
+	Draft       bool   `json:"draft"`
+	CreatedOn   string `json:"created_on"`
+	UpdatedOn   string `json:"updated_on"`
+	Author      struct {
 		DisplayName string `json:"display_name"`
 		Username    string `json:"username"`
 		UUID        string `json:"uuid"`
 		AccountID   string `json:"account_id"`
 	} `json:"author"`
-	Source struct {
+	AuthorNickname string `json:"-"`
+	Source         struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
@@ -60,10 +63,41 @@ type PullRequest struct {
 			Href string `json:"href"`
 		} `json:"html"`
 	} `json:"links"`
-	Reviewers []User `json:"reviewers"`
-	Summary   struct {
+	Reviewers    []User                   `json:"reviewers"`
+	Participants []PullRequestParticipant `json:"participants,omitempty"`
+	Summary      struct {
 		Raw string `json:"raw"`
 	} `json:"summary"`
+}
+
+// UnmarshalJSON preserves the current anonymous Author field shape for
+// source compatibility while retaining Cloud's nickname field separately.
+func (p *PullRequest) UnmarshalJSON(data []byte) error {
+	type pullRequestAlias PullRequest
+	var decoded pullRequestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var extra struct {
+		Author struct {
+			Nickname string `json:"nickname"`
+		} `json:"author"`
+	}
+	if err := json.Unmarshal(data, &extra); err != nil {
+		return err
+	}
+	*p = PullRequest(decoded)
+	p.AuthorNickname = extra.Author.Nickname
+	return nil
+}
+
+// PullRequestParticipant retains the approval state Bitbucket Cloud returns
+// separately from the pull request's reviewer identities.
+type PullRequestParticipant struct {
+	User     User   `json:"user"`
+	Role     string `json:"role,omitempty"`
+	State    string `json:"state,omitempty"`
+	Approved *bool  `json:"approved,omitempty"`
 }
 
 // PullRequestListOptions configure PR listings. Mine and Reviewer carry a
