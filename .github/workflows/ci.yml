@@ -89,6 +89,37 @@ jobs:
           output-file: sbom.cdx.json
           format: cyclonedx-json
 
+  # Verifies the Windows-native GNU Make flow (cmd.exe recipes) and the
+  # Windows test helpers. The runner ships Git for Windows, so sh.exe is on
+  # PATH — exactly the environment where an unpinned SHELL would break.
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    needs: check-skills
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.25'
+
+      - name: Install GNU Make
+        run: choco install make --no-progress -y
+
+      - name: Build via GNU Make
+        run: make build
+        env:
+          BKT_OAUTH_CLIENT_ID: ci-oauth-client-id
+          BKT_OAUTH_CLIENT_SECRET: ci-oauth-client-secret # gitleaks:allow
+
+      - name: Test via GNU Make
+        run: make test
+
+      - name: Clean via GNU Make
+        run: make clean
+
   scorecard:
     runs-on: ubuntu-latest
     timeout-minutes: 10

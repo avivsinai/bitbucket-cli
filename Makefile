@@ -5,6 +5,10 @@ CMD := ./cmd/bkt
 MACOS_CODESIGN_ID ?= io.github.avivsinai.bitbucket-cli
 
 ifeq ($(OS),Windows_NT)
+# The Windows recipes below use cmd.exe syntax, but GNU Make prefers sh.exe
+# from PATH (e.g. Git for Windows) when present — pin the shell explicitly.
+SHELL := cmd.exe
+.SHELLFLAGS := /C
 BIN_EXT := .exe
 NULL_DEVICE := NUL
 BUILD_DATE_VALUE := $(shell powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')")
@@ -19,7 +23,9 @@ RM_RF = rm -rf "$(1)"
 endif
 
 BIN := $(BIN_DIR)/bkt$(BIN_EXT)
-SOURCES := $(shell git ls-files -- cmd internal pkg 2>$(NULL_DEVICE))
+# Tracked and untracked (non-ignored) Go sources; $(wildcard) drops entries
+# for files that are tracked but deleted from the working tree.
+SOURCES := $(wildcard $(shell git ls-files --cached --others --exclude-standard -- "cmd/*.go" "internal/*.go" "pkg/*.go" 2>$(NULL_DEVICE)))
 GIT_TAG := $(shell git describe --tags --exact-match 2>$(NULL_DEVICE))
 GIT_COMMIT_SHORT := $(shell git rev-parse --short HEAD 2>$(NULL_DEVICE))
 GIT_COMMIT := $(shell git rev-parse HEAD 2>$(NULL_DEVICE))
@@ -51,6 +57,7 @@ else
 	@test -L .agents/skills/bkt || (echo "ERROR: .agents/skills/bkt is not a symlink" && exit 1)
 	@test "$$(readlink .claude/skills/bkt)" = "../../skills/bkt" || (echo "ERROR: .claude/skills/bkt target is not ../../skills/bkt" && exit 1)
 	@test "$$(readlink .agents/skills/bkt)" = "../../skills/bkt" || (echo "ERROR: .agents/skills/bkt target is not ../../skills/bkt" && exit 1)
+	@diff -rq skills/bkt .claude/skills/bkt || (echo "ERROR: .claude/skills/bkt content mismatch" && exit 1)
 	@echo "Skill symlinks valid"
 endif
 

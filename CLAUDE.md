@@ -16,6 +16,9 @@ This is the master agent instruction file for this repository. Keep repository p
 - `make fmt` formats the codebase with `go fmt ./...`.
 - `make tidy` syncs module dependencies with `go mod tidy`.
 - `go run ./cmd/bkt --help` is the quick local smoke test.
+- Windows-native development is supported: the same Make targets run under GNU
+  Make with cmd.exe-pinned recipes, and the `build-windows` CI job is the
+  source of truth for what works on Windows.
 
 ## Coding Style & Naming Conventions
 
