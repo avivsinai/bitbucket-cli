@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
@@ -216,5 +219,65 @@ func TestValidateWaitFlags(t *testing.T) {
 				t.Fatalf("validateWaitFlags = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// Regression test for the steps-fetch context wiring: cancelling the command
+// context while the steps request is in flight must abort it immediately
+// (a detached context would hang until the 10s fetch deadline instead).
+func TestPipelineViewStepsFetchHonorsCommandCancellation(t *testing.T) {
+	pipelineJSON := `{"uuid":"{a1b2c3d4-e5f6-4890-abcd-ef1234567890}","build_number":1,"state":{"name":"COMPLETED","result":{"name":"SUCCESSFUL"}},"target":{"ref":{"name":"main"}}}`
+	stepsReached := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/steps") {
+			select {
+			case stepsReached <- struct{}{}:
+			default:
+			}
+			<-r.Context().Done() // hold the request open until the client aborts
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(pipelineJSON))
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {Kind: "cloud", BaseURL: srv.URL, Username: "u", Token: "t"},
+		},
+	}
+
+	var out, errOut bytes.Buffer
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &out, ErrOut: &errOut},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-stepsReached
+		cancel()
+	}()
+
+	cmd := newViewCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1"})
+
+	start := time.Now()
+	err := cmd.ExecuteContext(ctx)
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("view took %v; steps fetch ignored command cancellation", elapsed)
 	}
 }

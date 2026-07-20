@@ -291,6 +291,11 @@ func runPipelineRun(cmd *cobra.Command, f *cmdutil.Factory, opts *runOptions) er
 		"pipeline":  pipeline,
 	}
 	if err := cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		// Without a TTY the poll loop already printed the terminal status;
+		// match pr checks and skip the duplicate final print.
+		if !ios.IsStdoutTTY() {
+			return nil
+		}
 		_, err := fmt.Fprintf(ios.Out, "Pipeline #%d (%s): %s\n", pipeline.BuildNumber, pipeline.Target.Ref.Name, pipelineStatus(pipeline))
 		return err
 	}); err != nil {
@@ -392,9 +397,10 @@ func runPipelineView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) 
 		}
 	}
 
-	// Use a fresh short context for the steps fetch: the wait context may
-	// already be cancelled or past its deadline.
-	stepsCtx, stepsCancel := context.WithTimeout(context.WithoutCancel(cmd.Context()), 10*time.Second)
+	// The wait path derives its own timeout/signal context, so cmd.Context()
+	// is still live here; give the steps fetch its own short deadline while
+	// preserving caller cancellation.
+	stepsCtx, stepsCancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 	defer stepsCancel()
 
 	steps, err := client.ListPipelineSteps(stepsCtx, workspace, repo, pipeline.UUID)
