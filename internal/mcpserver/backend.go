@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
@@ -23,6 +24,20 @@ type platformBackend interface {
 	listMyPullRequests(context.Context, string, string, string, int) ([]PullRequest, bool, error)
 }
 
+// pullRequestReadBackend is the normalized seam for the C.2b detail tools.
+// Tool handlers never receive raw platform client types.
+type pullRequestReadBackend interface {
+	getPullRequest(context.Context, RepositoryRef, int) (PullRequest, error)
+	getPullRequestDiff(context.Context, RepositoryRef, int) (Diff, error)
+	listPullRequestComments(context.Context, RepositoryRef, int, int) ([]Comment, bool, error)
+	getPullRequestChecks(context.Context, RepositoryRef, int) ([]Check, bool, error)
+}
+
+type fullPlatformBackend interface {
+	platformBackend
+	pullRequestReadBackend
+}
+
 type dcBackend struct {
 	client   *bbdc.Client
 	username string
@@ -32,7 +47,12 @@ type cloudBackend struct {
 	client *bbcloud.Client
 }
 
-func newPlatformBackend(snap *Snapshot) (platformBackend, error) {
+var (
+	_ pullRequestReadBackend = (*dcBackend)(nil)
+	_ pullRequestReadBackend = (*cloudBackend)(nil)
+)
+
+func newPlatformBackend(snap *Snapshot) (fullPlatformBackend, error) {
 	if snap == nil {
 		return nil, fmt.Errorf("MCP snapshot is required")
 	}
@@ -93,6 +113,181 @@ func (b *cloudBackend) getRepository(ctx context.Context, locator RepositoryRef)
 		return Repository{}, err
 	}
 	return adaptCloudRepository(*raw), nil
+}
+
+func (b *dcBackend) getPullRequest(ctx context.Context, locator RepositoryRef, id int) (PullRequest, error) {
+	raw, err := b.client.GetPullRequest(ctx, locator.Scope, locator.Slug, id)
+	if err != nil {
+		return PullRequest{}, err
+	}
+	return adaptDCPullRequest(*raw, true)
+}
+
+func (b *cloudBackend) getPullRequest(ctx context.Context, locator RepositoryRef, id int) (PullRequest, error) {
+	raw, err := b.client.GetPullRequest(ctx, locator.Scope, locator.Slug, id)
+	if err != nil {
+		return PullRequest{}, err
+	}
+	return adaptCloudPullRequest(*raw, true)
+}
+
+func (b *dcBackend) getPullRequestDiff(ctx context.Context, locator RepositoryRef, id int) (Diff, error) {
+	pr, err := b.client.GetPullRequest(ctx, locator.Scope, locator.Slug, id)
+	if err != nil {
+		return Diff{}, err
+	}
+	if pr.FromRef.LatestCommit == "" || pr.ToRef.LatestCommit == "" {
+		return Diff{}, fmt.Errorf("pull request source and target commits are required")
+	}
+	sink := newBoundedTextSink(DiffContentLimit)
+	if err := b.client.PullRequestDiff(ctx, locator.Scope, locator.Slug, id, sink); err != nil {
+		return Diff{}, err
+	}
+	return Diff{
+		Content:      sink.boundedText(),
+		SourceCommit: pr.FromRef.LatestCommit,
+		TargetCommit: pr.ToRef.LatestCommit,
+	}, nil
+}
+
+func (b *cloudBackend) getPullRequestDiff(ctx context.Context, locator RepositoryRef, id int) (Diff, error) {
+	pr, err := b.client.GetPullRequest(ctx, locator.Scope, locator.Slug, id)
+	if err != nil {
+		return Diff{}, err
+	}
+	if pr.Source.Commit.Hash == "" || pr.Destination.Commit.Hash == "" {
+		return Diff{}, fmt.Errorf("pull request source and target commits are required")
+	}
+	sink := newBoundedTextSink(DiffContentLimit)
+	if err := b.client.PullRequestDiff(ctx, locator.Scope, locator.Slug, id, sink); err != nil {
+		return Diff{}, err
+	}
+	return Diff{
+		Content:      sink.boundedText(),
+		SourceCommit: pr.Source.Commit.Hash,
+		TargetCommit: pr.Destination.Commit.Hash,
+	}, nil
+}
+
+func (b *dcBackend) listPullRequestComments(ctx context.Context, locator RepositoryRef, id, limit int) ([]Comment, bool, error) {
+	limit = normalizedListLimit(limit)
+	pageSize := min(limit+1, MaxListLimit)
+	start := 0
+	items := make([]Comment, 0, limit)
+	for {
+		page, err := b.client.ListPullRequestCommentsPage(ctx, locator.Scope, locator.Slug, id, pageSize, start)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, raw := range page.Values {
+			if len(items) == limit {
+				return items, true, nil
+			}
+			item, err := adaptDCComment(raw)
+			if err != nil {
+				return nil, false, err
+			}
+			items = append(items, item)
+		}
+		if page.IsLast {
+			return items, false, nil
+		}
+		if page.NextStart <= start {
+			return nil, false, fmt.Errorf("bitbucket Data Center activity pagination did not advance")
+		}
+		start = page.NextStart
+	}
+}
+
+func (b *cloudBackend) listPullRequestComments(ctx context.Context, locator RepositoryRef, id, limit int) ([]Comment, bool, error) {
+	limit = normalizedListLimit(limit)
+	page, err := b.client.ListPullRequestCommentsPage(ctx, locator.Scope, locator.Slug, id, limit, "")
+	if err != nil {
+		return nil, false, err
+	}
+	items := make([]Comment, 0, len(page.Values))
+	for _, raw := range page.Values {
+		item, err := adaptCloudComment(raw)
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, item)
+	}
+	return items, page.Next != "" || len(items) > limit, nil
+}
+
+func (b *dcBackend) getPullRequestChecks(ctx context.Context, locator RepositoryRef, id int) ([]Check, bool, error) {
+	pr, err := b.client.GetPullRequest(ctx, locator.Scope, locator.Slug, id)
+	if err != nil {
+		return nil, false, err
+	}
+	if pr.FromRef.LatestCommit == "" {
+		return nil, false, fmt.Errorf("pull request source commit is required")
+	}
+	page, err := b.client.CommitStatusesPage(ctx, pr.FromRef.LatestCommit, MaxListLimit, 0)
+	if err != nil {
+		return nil, false, err
+	}
+	items := make([]Check, 0, len(page.Values))
+	for _, raw := range page.Values {
+		items = append(items, adaptDCCheck(raw))
+	}
+	return items, !page.IsLast || len(items) >= MaxListLimit, nil
+}
+
+func (b *cloudBackend) getPullRequestChecks(ctx context.Context, locator RepositoryRef, id int) ([]Check, bool, error) {
+	pr, err := b.client.GetPullRequest(ctx, locator.Scope, locator.Slug, id)
+	if err != nil {
+		return nil, false, err
+	}
+	if pr.Source.Commit.Hash == "" {
+		return nil, false, fmt.Errorf("pull request source commit is required")
+	}
+	sourceScope, sourceSlug, ok := strings.Cut(strings.TrimSpace(pr.Source.Repository.FullName), "/")
+	if !ok || strings.TrimSpace(sourceScope) == "" || strings.TrimSpace(sourceSlug) == "" {
+		return nil, false, fmt.Errorf("pull request source repository identity is incomplete")
+	}
+	if slug := strings.TrimSpace(pr.Source.Repository.Slug); slug != "" {
+		sourceSlug = slug
+	}
+	page, err := b.client.CommitStatusesPage(ctx, sourceScope, sourceSlug, pr.Source.Commit.Hash, MaxListLimit, "")
+	if err != nil {
+		return nil, false, err
+	}
+	items := make([]Check, 0, len(page.Values))
+	for _, raw := range page.Values {
+		items = append(items, adaptCloudCheck(raw))
+	}
+	return items, page.Next != "" || len(items) > MaxListLimit, nil
+}
+
+type boundedTextSink struct {
+	limit int
+	text  strings.Builder
+	size  int
+}
+
+func newBoundedTextSink(limit int) *boundedTextSink {
+	return &boundedTextSink{limit: max(limit, 0)}
+}
+
+func (w *boundedTextSink) Write(p []byte) (int, error) {
+	w.size += len(p)
+	retain := w.limit + utf8.UTFMax
+	if remaining := retain - w.text.Len(); remaining > 0 {
+		_, _ = w.text.Write(p[:min(len(p), remaining)])
+	}
+	return len(p), nil
+}
+
+func (w *boundedTextSink) boundedText() BoundedText {
+	bounded := boundBitbucketText(w.text.String(), w.limit)
+	if bounded.Truncated || w.size > w.limit {
+		originalSize := w.size
+		bounded.Truncated = true
+		bounded.OriginalSize = &originalSize
+	}
+	return bounded
 }
 
 func (b *dcBackend) listPullRequests(ctx context.Context, locator RepositoryRef, state, role string, limit int) ([]PullRequest, bool, error) {

@@ -323,6 +323,31 @@ func TestCommitStatusesRequiresSHA(t *testing.T) {
 	}
 }
 
+func TestCommitStatusesPagePreservesUpstreamPagination(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/build-status/1.0/commits/abc123" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.URL.Query().Get("limit") != "100" || r.URL.Query().Get("start") != "25" {
+			t.Fatalf("query = %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values":        []map[string]any{{"state": "SUCCESSFUL", "key": "ci"}},
+			"isLastPage":    false,
+			"nextPageStart": 125,
+		})
+	}))
+
+	page, err := client.CommitStatusesPage(context.Background(), "abc123", 100, 25)
+	if err != nil {
+		t.Fatalf("CommitStatusesPage: %v", err)
+	}
+	if len(page.Values) != 1 || page.Values[0].Key != "ci" || page.IsLast || page.NextStart != 125 {
+		t.Fatalf("page = %+v", page)
+	}
+}
+
 func TestCurrentUser(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, "/rest/api/1.0/users/admin") {

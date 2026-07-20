@@ -56,6 +56,9 @@ type PullRequest struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
+		Commit struct {
+			Hash string `json:"hash"`
+		} `json:"commit"`
 		Repository RepositoryRef `json:"repository"`
 	} `json:"destination"`
 	Links struct {
@@ -772,6 +775,60 @@ type PullRequestCommentResolution map[string]any
 type pullRequestCommentListPage struct {
 	Values []PullRequestComment `json:"values"`
 	Next   string               `json:"next"`
+}
+
+// PullRequestCommentsPage is one bounded Cloud comments page. Next is an
+// opaque continuation reference; callers must pass it back to this method.
+type PullRequestCommentsPage struct {
+	Values []PullRequestComment
+	Next   string
+}
+
+// ListPullRequestCommentsPage fetches one comments page without flattening
+// the rest of the sequence.
+func (c *Client) ListPullRequestCommentsPage(ctx context.Context, workspace, repoSlug string, prID, limit int, next string) (*PullRequestCommentsPage, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if prID <= 0 {
+		return nil, fmt.Errorf("pull request id must be positive")
+	}
+
+	endpoint := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+	)
+	path := endpoint
+	if next != "" {
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		path = normalized
+	} else {
+		if limit <= 0 || limit > 100 {
+			limit = 100
+		}
+		path += fmt.Sprintf("?pagelen=%d", limit)
+	}
+
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var page pullRequestCommentListPage
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
+	normalizedNext := ""
+	if page.Next != "" {
+		normalizedNext, err = normalizeNextRef(page.Next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &PullRequestCommentsPage{Values: page.Values, Next: normalizedNext}, nil
 }
 
 // ListPullRequestComments lists comments on a pull request.
