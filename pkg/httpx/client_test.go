@@ -1269,3 +1269,109 @@ func TestNewRequestAbsoluteURL(t *testing.T) {
 		t.Fatalf("expected absolute URL to be preserved, got %s", got)
 	}
 }
+
+func TestConcurrent401RefreshCoalesced(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer new-token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(payload{Message: "ok"})
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	var refreshCalls int32
+	client, err := New(Options{
+		BaseURL:  server.URL,
+		Username: "user",
+		Password: "old-token",
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			atomic.AddInt32(&refreshCalls, 1)
+			time.Sleep(100 * time.Millisecond) // widen the coalescing window
+			return "new-token", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	const workers = 8
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			var out payload
+			errs[i] = client.Do(req, &out)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("worker %d: %v", i, err)
+		}
+	}
+	if got := atomic.LoadInt32(&refreshCalls); got != 1 {
+		t.Fatalf("TokenRefresher called %d times, want exactly 1 (coalesced)", got)
+	}
+}
+
+func TestRefreshSkippedWhenCredentialsAlreadyRotated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer new-token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(payload{Message: "ok"})
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	var refreshCalls int32
+	client, err := New(Options{
+		BaseURL:  server.URL,
+		Username: "user",
+		Password: "old-token",
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			atomic.AddInt32(&refreshCalls, 1)
+			return "new-token", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Build a request while the old token is still installed, so its baked
+	// Authorization header goes stale after the first refresh.
+	staleReq, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	// First request triggers the one and only refresh.
+	firstReq, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	var out payload
+	if err := client.Do(firstReq, &out); err != nil {
+		t.Fatalf("Do(first): %v", err)
+	}
+
+	// The stale request 401s, but the 401 path must notice the rotated
+	// credentials and retry with them instead of refreshing again.
+	if err := client.Do(staleReq, &out); err != nil {
+		t.Fatalf("Do(stale): %v", err)
+	}
+	if got := atomic.LoadInt32(&refreshCalls); got != 1 {
+		t.Fatalf("TokenRefresher called %d times, want exactly 1", got)
+	}
+}
