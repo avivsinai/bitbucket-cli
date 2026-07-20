@@ -21,6 +21,18 @@ import (
 // override name (typically provided via --context). When the override is empty
 // the active context from the config file is used.
 func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *config.Context, *config.Host, error) {
+	return resolveContext(f, override, true)
+}
+
+// ResolveContextStatic resolves a context exactly like ResolveContext but
+// never derives defaults from the current working directory's git remotes.
+// Long-running consumers (the MCP server) use it so the effective target
+// cannot depend on spawn cwd.
+func ResolveContextStatic(f *Factory, override string) (string, *config.Context, *config.Host, error) {
+	return resolveContext(f, override, false)
+}
+
+func resolveContext(f *Factory, override string, remoteDefaults bool) (string, *config.Context, *config.Host, error) {
 	cfg, err := f.ResolveConfig()
 	if err != nil {
 		return "", nil, nil, err
@@ -49,7 +61,9 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 			}
 			ctx := contextFromEnv()
 			ctx.Host = envKey
-			applyRemoteDefaults(ctx, envHost)
+			if remoteDefaults {
+				applyRemoteDefaults(ctx, envHost)
+			}
 			return "", ctx, envHost, nil
 		}
 		if secret.TokenFromEnv() != "" {
@@ -79,7 +93,9 @@ func ResolveContext(f *Factory, cmd *cobra.Command, override string) (string, *c
 		return "", nil, nil, err
 	}
 
-	applyRemoteDefaults(ctx, host)
+	if remoteDefaults {
+		applyRemoteDefaults(ctx, host)
+	}
 
 	return contextName, ctx, host, nil
 }

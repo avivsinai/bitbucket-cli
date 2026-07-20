@@ -5,6 +5,26 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+### Added
+- `bkt mcp serve` (experimental): a read-only Model Context Protocol server
+  over stdio, pinning one bkt context resolved at startup. v1 registers
+  `bkt_get_context`; repository and pull-request tools land in upcoming
+  releases. Register with e.g. `claude mcp add bitbucket -- bkt mcp serve`.
+
+### Fixed
+- The HTTP client is now safe for concurrent use during OAuth token refresh:
+  credential updates are mutex-protected and simultaneous 401 responses
+  coalesce into a single token refresh instead of racing. Groundwork for the
+  upcoming MCP server, which issues parallel API calls.
+
+### Added
+- `bkt pipeline view --wait` and `bkt pipeline run --wait` poll a pipeline
+  until it completes, using the same backoff flags (`--interval`,
+  `--max-interval`, `--timeout`) and exit-code contract as
+  `bkt pr checks --wait`: 0 = succeeded, 1 = completed unsuccessfully,
+  8 = timed out while still running. (#252)
+
 ### Changed
 - `make build`, `make clean`, and `make test` now run on Windows GNU Make
   using cmd.exe-pinned recipes and Windows-safe test helpers, while keeping

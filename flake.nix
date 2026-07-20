@@ -15,7 +15,7 @@
           pname = "bkt";
           version = "dev";
           src = ./.;
-          vendorHash = "sha256-hAdOUd8Ur7nU45fqPrA61O3g1Ml6jFH3jsn8L3Vzhkc=";
+          vendorHash = "sha256-uEziVUGmnsUKcAQReNWDDaI+IfhyF5TavYqZbC18n4Q=";
 
           subPackages = [ "cmd/bkt" ];
 

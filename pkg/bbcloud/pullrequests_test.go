@@ -1699,3 +1699,192 @@ func TestUpdatePullRequestValidation(t *testing.T) {
 		t.Errorf("expected empty input error, got %v", err)
 	}
 }
+
+func TestListPullRequestsEncodesReviewerFilterUpstream(t *testing.T) {
+	var firstQuery string
+	var requests int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&requests, 1) == 1 {
+			firstQuery = r.URL.Query().Get("q")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+
+	uuid := "{a1b2c3d4-e5f6-4890-abcd-ef1234567890}"
+	if _, err := client.ListPullRequests(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{
+		Reviewer: uuid,
+		Limit:    10,
+	}); err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if want := `reviewers.uuid = "` + uuid + `"`; firstQuery != want {
+		t.Fatalf("first request q = %q, want %q (reviewer filter must be upstream, before any limiting)", firstQuery, want)
+	}
+
+	// Nickname identities use the username field.
+	atomic.StoreInt32(&requests, 0)
+	if _, err := client.ListPullRequests(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{
+		Reviewer: "nick",
+	}); err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if want := `reviewers.nickname = "nick"`; firstQuery != want {
+		t.Fatalf("q = %q, want %q", firstQuery, want)
+	}
+
+	// Author + reviewer combine with AND.
+	atomic.StoreInt32(&requests, 0)
+	if _, err := client.ListPullRequests(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{
+		Mine:     "nick",
+		Reviewer: uuid,
+	}); err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if want := `author.nickname = "nick" AND reviewers.uuid = "` + uuid + `"`; firstQuery != want {
+		t.Fatalf("q = %q, want %q", firstQuery, want)
+	}
+}
+
+func TestListRepoPullRequestsPageNextRoundTrip(t *testing.T) {
+	var paths []string
+	var server *httptest.Server
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		if len(paths) == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{{"id": 1}},
+				"next":   server.URL + "/repositories/ws/repo/pullrequests?page=2&pagelen=1",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []map[string]any{{"id": 2}}})
+	})
+	server = httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	client, err := bbcloud.New(bbcloud.Options{BaseURL: server.URL, Username: "u", Token: "t"})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	first, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{Limit: 1}, "")
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if first.Next == "" {
+		t.Fatal("first page must expose Next")
+	}
+	second, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, first.Next)
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	if second.Next != "" {
+		t.Fatal("second page must be last")
+	}
+	if len(paths) != 2 || !strings.Contains(paths[1], "page=2") {
+		t.Fatalf("paths = %v, want second request to follow the opaque next reference", paths)
+	}
+}
+
+func TestListWorkspacePullRequestsPageIsAuthorScoped(t *testing.T) {
+	var gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+
+	if _, err := client.ListWorkspacePullRequestsPage(context.Background(), "ws", "alice", bbcloud.WorkspacePullRequestsOptions{State: "open", Limit: 5}, ""); err != nil {
+		t.Fatalf("ListWorkspacePullRequestsPage: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/workspaces/ws/pullrequests/alice") {
+		t.Fatalf("path = %q, want the user-scoped author endpoint", gotPath)
+	}
+}
+
+// Regression for credential exfiltration: a caller-supplied next reference
+// pointing at another host must never be fetched with the Bitbucket
+// Authorization header. The reference is reduced to its request URI (same
+// client host) and must target the original endpoint.
+func TestListRepoPullRequestsPageRejectsForeignNextHost(t *testing.T) {
+	var attackerHits int32
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attackerHits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(attacker.Close)
+
+	var apiPaths []string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiPaths = append(apiPaths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+
+	// Absolute foreign URL with a plausible path: host must be stripped, the
+	// request must go to the client's own base host.
+	foreign := attacker.URL + "/repositories/ws/repo/pullrequests?page=2"
+	if _, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, foreign); err != nil {
+		t.Fatalf("normalized foreign next: %v", err)
+	}
+	if got := atomic.LoadInt32(&attackerHits); got != 0 {
+		t.Fatalf("attacker host received %d requests; credential exfiltration", got)
+	}
+	if len(apiPaths) != 1 || !strings.Contains(apiPaths[0], "/repositories/ws/repo/pullrequests") {
+		t.Fatalf("api paths = %v, want the normalized same-host request", apiPaths)
+	}
+
+	// A next reference targeting a different endpoint must be rejected
+	// without any request.
+	apiPaths = nil
+	if _, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, attacker.URL+"/2.0/user"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("foreign endpoint: err = %v, want endpoint rejection", err)
+	}
+	if len(apiPaths) != 0 || atomic.LoadInt32(&attackerHits) != 0 {
+		t.Fatalf("rejected reference still produced requests (api=%v attacker=%d)", apiPaths, attackerHits)
+	}
+}
+
+func TestListWorkspacePullRequestsPageRejectsForeignNext(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("no request expected for a rejected next reference")
+	}))
+	if _, err := client.ListWorkspacePullRequestsPage(context.Background(), "ws", "alice", bbcloud.WorkspacePullRequestsOptions{}, "https://evil.example/steal"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("err = %v, want endpoint rejection", err)
+	}
+}
+
+// Endpoint binding must be terminal, not substring containment: a same-host
+// path that merely contains the endpoint (trailing extra segment or a glued
+// prefix) is rejected, while a legitimate /2.0-prefixed reference round-trips.
+func TestNormalizeNextRefEnforcesTerminalEndpoint(t *testing.T) {
+	var apiPaths []string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiPaths = append(apiPaths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+	base := client // same-host references are built from the test server URL below
+
+	// Legitimate base-path-prefixed next reference round-trips.
+	if _, err := base.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, "/2.0/repositories/ws/repo/pullrequests?page=2"); err != nil {
+		t.Fatalf("valid /2.0 next reference rejected: %v", err)
+	}
+	if len(apiPaths) != 1 {
+		t.Fatalf("valid reference produced %d requests, want 1", len(apiPaths))
+	}
+
+	// Trailing extra segment (containment, not endpoint identity) rejected.
+	apiPaths = nil
+	if _, err := base.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, "/repositories/ws/repo/pullrequests/1"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("trailing-segment reference: err = %v, want rejection", err)
+	}
+	// Glued prefix (no segment boundary) rejected.
+	if _, err := base.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, "/evilrepositories/ws/repo/pullrequests"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("glued-prefix reference: err = %v, want rejection", err)
+	}
+	if len(apiPaths) != 0 {
+		t.Fatalf("rejected references still issued %d requests", len(apiPaths))
+	}
+}
