@@ -1032,6 +1032,33 @@ func TestListRepoPullRequestsPageRoleValidation(t *testing.T) {
 	}
 }
 
+func TestPullRequestPagesPreserveEmptyNonFinalContinuation(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values":        []any{},
+			"isLastPage":    false,
+			"nextPageStart": 25,
+		})
+	}))
+
+	repoPage, err := client.ListRepoPullRequestsPage(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{Limit: 25})
+	if err != nil {
+		t.Fatalf("ListRepoPullRequestsPage: %v", err)
+	}
+	if repoPage.IsLast || repoPage.NextStart != 25 {
+		t.Fatalf("repo page = %+v, want empty non-final continuation", repoPage)
+	}
+
+	dashboardPage, err := client.ListDashboardPullRequestsPage(context.Background(), bbdc.DashboardPullRequestsOptions{Role: "AUTHOR", Limit: 25}, 0)
+	if err != nil {
+		t.Fatalf("ListDashboardPullRequestsPage: %v", err)
+	}
+	if dashboardPage.IsLast || dashboardPage.NextStart != 25 {
+		t.Fatalf("dashboard page = %+v, want empty non-final continuation", dashboardPage)
+	}
+}
+
 func TestListDashboardPullRequestsPageEncodesRole(t *testing.T) {
 	var gotQuery string
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -147,9 +147,7 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSl
 
 	var params []string
 	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-	}
+	params = append(params, pullRequestStateParams(opts.State)...)
 	if q := pullRequestQFilter(opts); q != "" {
 		params = append(params, "q="+url.QueryEscape(q))
 	}
@@ -161,6 +159,17 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSl
 	)
 
 	return c.fetchPullRequestsPage(ctx, path)
+}
+
+func pullRequestStateParams(raw string) []string {
+	state := strings.ToUpper(strings.TrimSpace(raw))
+	if state == "" {
+		return nil
+	}
+	if state == "ALL" {
+		return []string{"state=OPEN", "state=MERGED", "state=DECLINED"}
+	}
+	return []string{"state=" + url.QueryEscape(state)}
 }
 
 // pullRequestQFilter builds the upstream BBQL q parameter from the identity

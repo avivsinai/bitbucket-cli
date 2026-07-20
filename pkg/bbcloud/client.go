@@ -262,32 +262,25 @@ type repositoryListPage struct {
 	Next   string       `json:"next"`
 }
 
+// RepositoriesPage is one bounded page of repositories. Next is an opaque
+// reference to the following page; empty means the last page.
+type RepositoriesPage struct {
+	Values []Repository
+	Next   string
+}
+
 // ListRepositories enumerates repositories for the workspace.
 func (c *Client) ListRepositories(ctx context.Context, workspace string, limit int) ([]Repository, error) {
-	if workspace == "" {
-		return nil, fmt.Errorf("workspace is required")
-	}
-
 	pageLen := limit
 	if pageLen <= 0 || pageLen > 100 {
 		pageLen = 20
 	}
 
-	path := fmt.Sprintf("/repositories/%s?pagelen=%d",
-		url.PathEscape(workspace),
-		pageLen,
-	)
-
 	var repos []Repository
-
-	for path != "" {
-		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	next := ""
+	for {
+		page, err := c.ListRepositoriesPage(ctx, workspace, pageLen, next)
 		if err != nil {
-			return nil, err
-		}
-
-		var page repositoryListPage
-		if err := c.http.Do(req, &page); err != nil {
 			return nil, err
 		}
 
@@ -301,16 +294,52 @@ func (c *Client) ListRepositories(ctx context.Context, workspace string, limit i
 		if page.Next == "" {
 			break
 		}
-
-		// Bitbucket returns absolute URLs for next; reuse as-is.
-		pathURL, err := url.Parse(page.Next)
-		if err != nil {
-			return nil, err
-		}
-		path = pathURL.RequestURI()
+		next = page.Next
 	}
 
 	return repos, nil
+}
+
+// ListRepositoriesPage fetches one repository page and preserves the opaque
+// upstream continuation reference for bounded consumers.
+func (c *Client) ListRepositoriesPage(ctx context.Context, workspace string, limit int, next string) (*RepositoriesPage, error) {
+	if workspace == "" {
+		return nil, fmt.Errorf("workspace is required")
+	}
+
+	endpoint := fmt.Sprintf("/repositories/%s", url.PathEscape(workspace))
+	path := ""
+	if next != "" {
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		path = normalized
+	} else {
+		if limit <= 0 || limit > 100 {
+			limit = 20
+		}
+		path = fmt.Sprintf("%s?pagelen=%d", endpoint, limit)
+	}
+
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var page repositoryListPage
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
+
+	nextRef := ""
+	if page.Next != "" {
+		nextURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		nextRef = nextURL.RequestURI()
+	}
+	return &RepositoriesPage{Values: page.Values, Next: nextRef}, nil
 }
 
 // GetRepository retrieves repository details.
@@ -737,9 +766,7 @@ func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, u
 
 	var params []string
 	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-	}
+	params = append(params, pullRequestStateParams(opts.State)...)
 
 	path := fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
 		url.PathEscape(workspace),

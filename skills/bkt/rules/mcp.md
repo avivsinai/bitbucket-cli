@@ -23,6 +23,10 @@ a named context, otherwise the active context is used. The working directory
 never influences the served target, and configuration changes require a
 restart. Tool calls cannot switch hosts, contexts, or tokens.
 
+For a Cloud OAuth context, the access token is frozen at startup and is not
+refreshed from the credential store. After it expires, tool calls return
+auth_failed until the MCP server is restarted.
+
 v1 is read-only and registers tools only for capabilities the pinned platform
 supports; call bkt_get_context to discover the target and capabilities.
 

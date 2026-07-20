@@ -43,6 +43,10 @@ a named context, otherwise the active context is used. The working directory
 never influences the served target, and configuration changes require a
 restart. Tool calls cannot switch hosts, contexts, or tokens.
 
+For a Cloud OAuth context, the access token is frozen at startup and is not
+refreshed from the credential store. After it expires, tool calls return
+auth_failed until the MCP server is restarted.
+
 v1 is read-only and registers tools only for capabilities the pinned platform
 supports; call bkt_get_context to discover the target and capabilities.
 
@@ -75,7 +79,13 @@ func runServe(cmd *cobra.Command, f *cmdutil.Factory, transport sdk.Transport) e
 		return err
 	}
 
-	// Startup banner goes to stderr: stdout is reserved for the protocol.
+	server, err := mcpserver.New(snap, f.AppVersion)
+	if err != nil {
+		return err
+	}
+
+	// Startup banner goes to stderr after construction succeeds: stdout is
+	// reserved for the protocol, and a failed server never claims to be running.
 	label := snap.ContextName
 	if label == "" {
 		label = "(env)"
@@ -83,7 +93,6 @@ func runServe(cmd *cobra.Command, f *cmdutil.Factory, transport sdk.Transport) e
 	fmt.Fprintf(ios.ErrOut, "bkt mcp serve: context %s, platform %s, host %s (read-only; Ctrl-C to stop)\n",
 		label, snap.Platform, snap.HostLabel)
 
-	server := mcpserver.New(snap, f.AppVersion)
 	if transport == nil {
 		transport = &sdk.StdioTransport{}
 	}
