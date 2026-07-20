@@ -159,6 +159,13 @@ type paged[T any] struct {
 	Values        []T  `json:"values"`
 }
 
+// RepositoriesPage is one bounded page of repositories.
+type RepositoriesPage struct {
+	Values    []Repository
+	IsLast    bool
+	NextStart int
+}
+
 // CurrentUser fetches the user identified by slug.
 func (c *Client) CurrentUser(ctx context.Context, userSlug string) (*User, error) {
 	req, err := c.http.NewRequest(ctx, "GET", fmt.Sprintf("/rest/api/1.0/users/%s", url.PathEscape(userSlug)), nil)
@@ -174,10 +181,6 @@ func (c *Client) CurrentUser(ctx context.Context, userSlug string) (*User, error
 
 // ListRepositories enumerates repositories for a project, handling pagination.
 func (c *Client) ListRepositories(ctx context.Context, projectKey string, limit int) ([]Repository, error) {
-	if projectKey == "" {
-		return nil, fmt.Errorf("project key is required")
-	}
-
 	const defaultPageSize = 25
 
 	var (
@@ -197,31 +200,52 @@ func (c *Client) ListRepositories(ctx context.Context, projectKey string, limit 
 			}
 		}
 
-		u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos?limit=%d&start=%d", url.PathEscape(projectKey), pageSize, start)
-		req, err := c.http.NewRequest(ctx, "GET", u, nil)
+		page, err := c.ListRepositoriesPage(ctx, projectKey, pageSize, start)
 		if err != nil {
 			return nil, err
 		}
 
-		var resp paged[Repository]
-		if err := c.http.Do(req, &resp); err != nil {
-			return nil, err
-		}
-
-		found = append(found, resp.Values...)
+		found = append(found, page.Values...)
 
 		if limit > 0 && len(found) >= limit {
 			found = found[:limit]
 			break
 		}
 
-		if resp.IsLastPage || len(resp.Values) == 0 {
+		if page.IsLast || len(page.Values) == 0 {
 			break
 		}
-		start = resp.NextPageStart
+		start = page.NextStart
 	}
 
 	return found, nil
+}
+
+// ListRepositoriesPage fetches one repository page and preserves upstream
+// continuation metadata for bounded consumers.
+func (c *Client) ListRepositoriesPage(ctx context.Context, projectKey string, limit, start int) (*RepositoriesPage, error) {
+	if projectKey == "" {
+		return nil, fmt.Errorf("project key is required")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+
+	u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos?limit=%d&start=%d", url.PathEscape(projectKey), limit, start)
+	req, err := c.http.NewRequest(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp paged[Repository]
+	if err := c.http.Do(req, &resp); err != nil {
+		return nil, err
+	}
+	return &RepositoriesPage{
+		Values:    resp.Values,
+		IsLast:    resp.IsLastPage,
+		NextStart: resp.NextPageStart,
+	}, nil
 }
 
 // GetRepository fetches details for a repository.
@@ -308,7 +332,7 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, projectKey, repoS
 
 	return &PullRequestsPage{
 		Values:    resp.Values,
-		IsLast:    resp.IsLastPage || len(resp.Values) == 0,
+		IsLast:    resp.IsLastPage,
 		NextStart: resp.NextPageStart,
 	}, nil
 }
@@ -373,7 +397,7 @@ func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, sta
 
 		all = append(all, page.Values...)
 
-		if page.IsLast {
+		if page.IsLast || len(page.Values) == 0 {
 			break
 		}
 		start = page.NextStart
@@ -446,7 +470,7 @@ func (c *Client) ListDashboardPullRequestsPage(ctx context.Context, opts Dashboa
 
 	return &PullRequestsPage{
 		Values:    resp.Values,
-		IsLast:    resp.IsLastPage || len(resp.Values) == 0,
+		IsLast:    resp.IsLastPage,
 		NextStart: resp.NextPageStart,
 	}, nil
 }
@@ -481,7 +505,7 @@ func (c *Client) ListDashboardPullRequests(ctx context.Context, opts DashboardPu
 
 		all = append(all, page.Values...)
 
-		if page.IsLast {
+		if page.IsLast || len(page.Values) == 0 {
 			break
 		}
 		start = page.NextStart

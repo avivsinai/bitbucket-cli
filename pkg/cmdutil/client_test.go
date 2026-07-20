@@ -3,14 +3,17 @@ package cmdutil
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/internal/secret"
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 	"github.com/avivsinai/bitbucket-cli/pkg/oauth"
 )
 
@@ -95,6 +98,74 @@ func TestNewCloudClientOAuthExpiredMissingCredsPreflight(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web-token") {
 		t.Errorf("error = %q, want API-token recovery command", err)
+	}
+}
+
+func TestNewFrozenCloudClientOAuthNeverRefreshes(t *testing.T) {
+	t.Setenv(secret.EnvToken, "")
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
+	t.Setenv("BKT_ALLOW_INSECURE_STORE", "1")
+	t.Setenv("BKT_KEYRING_PASSPHRASE", "test-pass")
+	t.Setenv("KEYRING_BACKEND", "file")
+	fileDir := t.TempDir()
+	t.Setenv("KEYRING_FILE_DIR", fileDir)
+	var requests atomic.Int32
+	var refreshedRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch got := r.Header.Get("Authorization"); got {
+		case "Bearer frozen-access":
+		case "Bearer newer-keyring-access":
+			refreshedRequests.Add(1)
+		default:
+			t.Errorf("Authorization = %q, want frozen bearer token", got)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+	hostKey, err := HostKeyFromURL(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer := oauth.FromResponse("newer-keyring-access", "newer-refresh", 7200)
+	blob, err := newer.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := secret.Open(secret.WithAllowFileFallback(true), secret.WithPassphrase("test-pass"), secret.WithFileDir(fileDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Set(secret.TokenKey(hostKey), blob); err != nil {
+		t.Fatal(err)
+	}
+	host := &config.Host{
+		Kind:               "cloud",
+		BaseURL:            server.URL,
+		AuthMethod:         "oauth",
+		Token:              "frozen-access",
+		OAuthExpiresAt:     time.Now().Add(time.Hour),
+		AllowInsecureStore: true,
+	}
+
+	client, err := NewFrozenCloudClient(host)
+	if err != nil {
+		t.Fatalf("NewFrozenCloudClient: %v", err)
+	}
+	_, err = client.CurrentUser(context.Background())
+	var httpErr *httpx.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("CurrentUser error = %T %v, want frozen 401 HTTPError", err, err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("requests = %d, want one request with no refresh retry", got)
+	}
+	if got := refreshedRequests.Load(); got != 0 {
+		t.Fatalf("requests with refreshed keyring token = %d, want zero", got)
+	}
+	if host.Token != "frozen-access" {
+		t.Fatalf("host token mutated to %q", host.Token)
 	}
 }
 

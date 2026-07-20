@@ -692,6 +692,62 @@ func TestListRepositoriesPaginates(t *testing.T) {
 	}
 }
 
+func TestListRepositoriesPageReturnsOpaqueContinuation(t *testing.T) {
+	var hits int32
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		switch count {
+		case 1:
+			if r.URL.Path != "/repositories/ws" || r.URL.Query().Get("pagelen") != "2" {
+				t.Fatalf("first request = %s?%s", r.URL.Path, r.URL.RawQuery)
+			}
+			_ = json.NewEncoder(w).Encode(repositoryListPage{
+				Values: []Repository{{Slug: "repo1"}, {Slug: "repo2"}},
+				Next:   serverURL + "/repositories/ws?pagelen=2&page=2",
+			})
+		case 2:
+			if r.URL.Path != "/repositories/ws" || r.URL.Query().Get("page") != "2" {
+				t.Fatalf("second request = %s?%s", r.URL.Path, r.URL.RawQuery)
+			}
+			_ = json.NewEncoder(w).Encode(repositoryListPage{Values: []Repository{{Slug: "repo3"}}})
+		default:
+			t.Fatalf("unexpected request %d", count)
+		}
+	}))
+	serverURL = server.URL
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := client.ListRepositoriesPage(context.Background(), "ws", 2, "")
+	if err != nil {
+		t.Fatalf("first ListRepositoriesPage: %v", err)
+	}
+	if len(first.Values) != 2 || first.Next == "" {
+		t.Fatalf("first page = %+v", first)
+	}
+	second, err := client.ListRepositoriesPage(context.Background(), "ws", 2, first.Next)
+	if err != nil {
+		t.Fatalf("second ListRepositoriesPage: %v", err)
+	}
+	if len(second.Values) != 1 || second.Values[0].Slug != "repo3" || second.Next != "" {
+		t.Fatalf("second page = %+v", second)
+	}
+}
+
+func TestListRepositoriesPageRejectsWrongEndpoint(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("unexpected request")
+	}))
+	if _, err := client.ListRepositoriesPage(context.Background(), "ws", 2, "/2.0/user?page=2"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("error = %v, want wrong-endpoint rejection", err)
+	}
+}
+
 func TestListRepositoriesRespectsLimit(t *testing.T) {
 	var hits int32
 	var serverURL string

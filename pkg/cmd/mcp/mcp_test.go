@@ -112,8 +112,10 @@ func TestServeCommandStdoutCarriesOnlyJSONRPC(t *testing.T) {
 			t.Fatalf("protocol frame %d lacks jsonrpc 2.0 envelope: %q", i+1, line)
 		}
 	}
-	if !strings.Contains(listResp, "bkt_get_context") {
-		t.Fatalf("tools/list response missing bkt_get_context: %q", listResp)
+	for _, tool := range []string{"bkt_get_context", "bkt_list_repositories", "bkt_get_repository", "bkt_list_pull_requests", "bkt_list_my_pull_requests"} {
+		if !strings.Contains(listResp, tool) {
+			t.Fatalf("tools/list response missing %s: %q", tool, listResp)
+		}
 	}
 	if !strings.Contains(listResp, `"readOnlyHint":true`) {
 		t.Fatalf("tools/list must advertise readOnlyHint: %q", listResp)
@@ -128,6 +130,44 @@ func TestServeCommandStdoutCarriesOnlyJSONRPC(t *testing.T) {
 	banner := stderr.String()
 	if !strings.Contains(banner, "bkt mcp serve: context work, platform dc, host dc-host") {
 		t.Fatalf("startup banner missing or wrong on stderr: %q", banner)
+	}
+}
+
+func TestServeCommandDoesNotPrintRunningBannerBeforeBackendConstruction(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "broken",
+		Contexts: map[string]*config.Context{
+			"broken": {Host: "dc-host", ProjectKey: "PROJ"},
+		},
+		Hosts: map[string]*config.Host{
+			"dc-host": {Kind: "dc", BaseURL: "://invalid", Username: "u", Token: "t"},
+		},
+	}
+
+	var stderr bytes.Buffer
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &failIfWritten{t: t}, ErrOut: &stderr},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+	cmd := newServeCmdWithTransport(f, nil)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	if err := cmd.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("expected backend construction error")
+	}
+	if strings.Contains(stderr.String(), "Ctrl-C to stop") {
+		t.Fatalf("running banner printed before backend construction succeeded: %q", stderr.String())
+	}
+}
+
+func TestServeCommandDocumentsFrozenCloudOAuthCredential(t *testing.T) {
+	cmd := newServeCmdWithTransport(&cmdutil.Factory{}, nil)
+	for _, want := range []string{"Cloud OAuth", "frozen at startup", "auth_failed", "restarted"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Fatalf("serve help missing %q:\n%s", want, cmd.Long)
+		}
 	}
 }
 

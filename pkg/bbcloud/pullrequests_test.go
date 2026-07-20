@@ -1787,6 +1787,27 @@ func TestListRepoPullRequestsPageNextRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPullRequestPagesStateAllRepeatsEverySupportedState(t *testing.T) {
+	var gotStates [][]string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotStates = append(gotStates, r.URL.Query()["state"])
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+
+	if _, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{State: "ALL", Limit: 25}, ""); err != nil {
+		t.Fatalf("ListRepoPullRequestsPage: %v", err)
+	}
+	if _, err := client.ListWorkspacePullRequestsPage(context.Background(), "ws", "alice", bbcloud.WorkspacePullRequestsOptions{State: "all", Limit: 25}, ""); err != nil {
+		t.Fatalf("ListWorkspacePullRequestsPage: %v", err)
+	}
+	for i, states := range gotStates {
+		if got := strings.Join(states, ","); got != "OPEN,MERGED,DECLINED" {
+			t.Fatalf("request %d states = %q, want repeated OPEN,MERGED,DECLINED", i+1, got)
+		}
+	}
+}
+
 func TestListWorkspacePullRequestsPageIsAuthorScoped(t *testing.T) {
 	var gotPath string
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
