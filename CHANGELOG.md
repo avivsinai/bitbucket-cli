@@ -5,6 +5,12 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- The HTTP client is now safe for concurrent use during OAuth token refresh:
+  credential updates are mutex-protected and simultaneous 401 responses
+  coalesce into a single token refresh instead of racing. Groundwork for the
+  upcoming MCP server, which issues parallel API calls.
+
 ### Added
 - `bkt pipeline view --wait` and `bkt pipeline run --wait` poll a pipeline
   until it completes, using the same backoff flags (`--interval`,

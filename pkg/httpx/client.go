@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -18,11 +19,16 @@ import (
 
 // Client wraps HTTP access with Bitbucket-aware defaults.
 type Client struct {
-	baseURL    *url.URL
+	baseURL   *url.URL
+	userAgent string
+
+	// credMu guards username, password, and authMethod: they are read on
+	// every request and rewritten when a 401 triggers a token refresh, and
+	// the client must stay safe for concurrent use.
+	credMu     sync.RWMutex
 	username   string
 	password   string
 	authMethod string
-	userAgent  string
 
 	httpClient *http.Client
 
@@ -37,11 +43,21 @@ type Client struct {
 
 	// tokenRefresher is called on 401 Unauthorized responses. It should return
 	// a new access token. The client retries the original request once with the
-	// updated credentials.
-	tokenRefresher func(ctx context.Context) (string, error)
-	requestHook    func(*http.Request)
+	// updated credentials. Concurrent 401s coalesce into a single refresher
+	// call via refreshMu/refreshInFlight.
+	tokenRefresher  func(ctx context.Context) (string, error)
+	refreshMu       sync.Mutex
+	refreshInFlight *refreshCall
+	requestHook     func(*http.Request)
 
 	debug bool
+}
+
+// refreshCall is a single in-flight token refresh that concurrent 401 paths
+// wait on instead of issuing their own refresh.
+type refreshCall struct {
+	done chan struct{}
+	err  error
 }
 
 // Options configures a Client.
@@ -241,16 +257,95 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 
 // applyAuth sets the Authorization header based on the configured auth method.
 func (c *Client) applyAuth(req *http.Request) {
-	switch c.authMethod {
+	c.credMu.RLock()
+	username, password, authMethod := c.username, c.password, c.authMethod
+	c.credMu.RUnlock()
+
+	switch authMethod {
 	case "bearer":
-		if c.password != "" {
-			req.Header.Set("Authorization", "Bearer "+c.password)
+		if password != "" {
+			req.Header.Set("Authorization", "Bearer "+password)
 		}
 	default:
-		if c.username != "" || c.password != "" {
-			req.SetBasicAuth(c.username, c.password)
+		if username != "" || password != "" {
+			req.SetBasicAuth(username, password)
 		}
 	}
+}
+
+// authorizationHeader returns the Authorization header value the current
+// credentials would produce, so a 401 path can detect that another goroutine
+// already rotated them.
+func (c *Client) authorizationHeader() string {
+	probe, err := http.NewRequest(http.MethodGet, "http://probe.invalid/", nil)
+	if err != nil {
+		return ""
+	}
+	c.applyAuth(probe)
+	return probe.Header.Get("Authorization")
+}
+
+// refreshCredentials handles a 401: if the credentials already changed since
+// the failed request was built, it simply retries with them; otherwise it
+// coalesces all concurrent callers into one tokenRefresher invocation and
+// installs the resulting bearer token.
+//
+// The stale-credential check and leader election happen in one refreshMu
+// critical section, so a goroutine that raced past a completed refresh cannot
+// become a redundant second leader (rotating refresh tokens make redundant
+// refreshes harmful, not just wasteful). Lock order is refreshMu -> credMu
+// (read); credMu is never held while acquiring refreshMu.
+func (c *Client) refreshCredentials(ctx context.Context, usedAuth string) error {
+	for {
+		c.refreshMu.Lock()
+		if h := c.authorizationHeader(); h != "" && h != usedAuth {
+			// Credentials rotated while this request was in flight; retry
+			// with the current ones without spending another refresh.
+			c.refreshMu.Unlock()
+			return nil
+		}
+		if call := c.refreshInFlight; call != nil {
+			c.refreshMu.Unlock()
+			select {
+			case <-call.done:
+				// Inherit real refresh failures, but not another request's
+				// context death: if the leader was cancelled while this
+				// caller is still live, contend for leadership again.
+				if isContextError(call.err) && ctx.Err() == nil {
+					continue
+				}
+				return call.err
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		call := &refreshCall{done: make(chan struct{})}
+		c.refreshInFlight = call
+		c.refreshMu.Unlock()
+
+		token, err := c.tokenRefresher(ctx)
+		if err == nil {
+			c.credMu.Lock()
+			c.password = token
+			// OAuth access tokens are always sent as Bearer regardless of
+			// the auth method the client was originally constructed with.
+			c.authMethod = "bearer"
+			c.credMu.Unlock()
+		}
+		call.err = err
+
+		c.refreshMu.Lock()
+		c.refreshInFlight = nil
+		c.refreshMu.Unlock()
+		close(call.done)
+
+		return err
+	}
+}
+
+// isContextError reports whether err is a context cancellation or deadline.
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (c *Client) applyRequestHook(req *http.Request) {
@@ -346,17 +441,9 @@ func (c *Client) Do(req *http.Request, v any) error {
 
 		if resp.StatusCode == http.StatusUnauthorized && c.tokenRefresher != nil && !tokenRefreshed {
 			_ = resp.Body.Close()
-			newToken, refreshErr := c.tokenRefresher(req.Context())
-			if refreshErr != nil {
+			if refreshErr := c.refreshCredentials(req.Context(), attemptReq.Header.Get("Authorization")); refreshErr != nil {
 				return fmt.Errorf("refresh token: %w", refreshErr)
 			}
-			// c.password and c.authMethod are updated without a mutex. Client is
-			// not safe for concurrent use during token refresh; CLI commands are
-			// single-threaded so this is acceptable.
-			c.password = newToken
-			// OAuth access tokens are always sent as Bearer regardless of the
-			// auth method the client was originally constructed with.
-			c.authMethod = "bearer"
 			c.applyAuth(req) // update auth header on original request for next clone
 			tokenRefreshed = true
 			continue
