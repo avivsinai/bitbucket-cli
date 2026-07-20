@@ -76,6 +76,7 @@ func New(opts Options) (*Client, error) {
 type User struct {
 	UUID      string `json:"uuid"`
 	Username  string `json:"username"`
+	Nickname  string `json:"nickname,omitempty"`
 	AccountID string `json:"account_id"`
 	Display   string `json:"display_name"`
 }
@@ -115,6 +116,9 @@ type Repository struct {
 	Project struct {
 		Key string `json:"key"`
 	} `json:"project"`
+	MainBranch struct {
+		Name string `json:"name"`
+	} `json:"mainbranch,omitempty"`
 }
 
 // PipelineResult is a Bitbucket pipeline outcome object.
