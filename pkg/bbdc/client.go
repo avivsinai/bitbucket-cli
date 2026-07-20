@@ -261,12 +261,88 @@ func (c *Client) GetPullRequest(ctx context.Context, projectKey, repoSlug string
 	return &pr, nil
 }
 
-// ListPullRequests lists pull requests for a repository.
-func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, state string, limit int) ([]PullRequest, error) {
+// RepoPullRequestsOptions configures repository-scoped pull request pages.
+// Role filtering happens upstream via the REST participant filter params
+// (role.1/username.1); Role requires Username.
+type RepoPullRequestsOptions struct {
+	State    string
+	Role     string // AUTHOR or REVIEWER
+	Username string
+	Limit    int // page size; <=0 or >100 uses the default
+	Start    int // page offset as returned in NextStart
+}
+
+// PullRequestsPage is one bounded page of pull requests.
+type PullRequestsPage struct {
+	Values    []PullRequest
+	IsLast    bool
+	NextStart int
+}
+
+// ListRepoPullRequestsPage fetches a single page of repository pull
+// requests with all filters encoded in the upstream query.
+func (c *Client) ListRepoPullRequestsPage(ctx context.Context, projectKey, repoSlug string, opts RepoPullRequestsOptions) (*PullRequestsPage, error) {
 	if projectKey == "" || repoSlug == "" {
 		return nil, fmt.Errorf("project key and repository slug are required")
 	}
 
+	params, err := repoPullRequestParams(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests?%s",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		strings.Join(params, "&"),
+	)
+	req, err := c.http.NewRequest(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp paged[PullRequest]
+	if err := c.http.Do(req, &resp); err != nil {
+		return nil, err
+	}
+
+	return &PullRequestsPage{
+		Values:    resp.Values,
+		IsLast:    resp.IsLastPage || len(resp.Values) == 0,
+		NextStart: resp.NextPageStart,
+	}, nil
+}
+
+func repoPullRequestParams(opts RepoPullRequestsOptions) ([]string, error) {
+	pageSize := opts.Limit
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 25
+	}
+
+	params := []string{fmt.Sprintf("limit=%d", pageSize)}
+	if opts.State != "" {
+		params = append(params, "state="+url.QueryEscape(strings.ToUpper(opts.State)))
+	}
+	if opts.Role != "" {
+		role := strings.ToUpper(strings.TrimSpace(opts.Role))
+		if role != "AUTHOR" && role != "REVIEWER" {
+			return nil, fmt.Errorf("unsupported participant role %q; use AUTHOR or REVIEWER", opts.Role)
+		}
+		if strings.TrimSpace(opts.Username) == "" {
+			return nil, fmt.Errorf("participant role filtering requires a username")
+		}
+		params = append(params,
+			"username.1="+url.QueryEscape(opts.Username),
+			"role.1="+role,
+		)
+	}
+	params = append(params, fmt.Sprintf("start=%d", opts.Start))
+	return params, nil
+}
+
+// ListPullRequests lists pull requests for a repository, flattening pages up
+// to limit.
+func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, state string, limit int) ([]PullRequest, error) {
 	const defaultPageSize = 25
 
 	var (
@@ -286,33 +362,21 @@ func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, sta
 			}
 		}
 
-		params := []string{fmt.Sprintf("limit=%d", pageSize)}
-		if state != "" {
-			params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-		}
-
-		u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests?%s&start=%d",
-			url.PathEscape(projectKey),
-			url.PathEscape(repoSlug),
-			strings.Join(params, "&"),
-			start,
-		)
-		req, err := c.http.NewRequest(ctx, "GET", u, nil)
+		page, err := c.ListRepoPullRequestsPage(ctx, projectKey, repoSlug, RepoPullRequestsOptions{
+			State: state,
+			Limit: pageSize,
+			Start: start,
+		})
 		if err != nil {
 			return nil, err
 		}
 
-		var resp paged[PullRequest]
-		if err := c.http.Do(req, &resp); err != nil {
-			return nil, err
-		}
+		all = append(all, page.Values...)
 
-		all = append(all, resp.Values...)
-
-		if resp.IsLastPage || len(resp.Values) == 0 {
+		if page.IsLast {
 			break
 		}
-		start = resp.NextPageStart
+		start = page.NextStart
 	}
 
 	if limit > 0 && len(all) > limit {
@@ -349,6 +413,44 @@ type DashboardPullRequestsOptions struct {
 	Limit int
 }
 
+// ListDashboardPullRequestsPage fetches one page of the authenticated
+// user's dashboard pull requests; the role filter (AUTHOR, REVIEWER,
+// PARTICIPANT) is encoded upstream.
+func (c *Client) ListDashboardPullRequestsPage(ctx context.Context, opts DashboardPullRequestsOptions, start int) (*PullRequestsPage, error) {
+	pageSize := opts.Limit
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 25
+	}
+
+	params := []string{fmt.Sprintf("limit=%d", pageSize)}
+	if opts.State != "" {
+		params = append(params, "state="+url.QueryEscape(strings.ToUpper(opts.State)))
+	}
+	if opts.Role != "" {
+		params = append(params, "role="+url.QueryEscape(strings.ToUpper(opts.Role)))
+	}
+
+	u := fmt.Sprintf("/rest/api/1.0/dashboard/pull-requests?%s&start=%d",
+		strings.Join(params, "&"),
+		start,
+	)
+	req, err := c.http.NewRequest(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp paged[PullRequest]
+	if err := c.http.Do(req, &resp); err != nil {
+		return nil, err
+	}
+
+	return &PullRequestsPage{
+		Values:    resp.Values,
+		IsLast:    resp.IsLastPage || len(resp.Values) == 0,
+		NextStart: resp.NextPageStart,
+	}, nil
+}
+
 // ListDashboardPullRequests lists pull requests for the authenticated user across all repositories.
 func (c *Client) ListDashboardPullRequests(ctx context.Context, opts DashboardPullRequestsOptions) ([]PullRequest, error) {
 	const defaultPageSize = 25
@@ -370,34 +472,19 @@ func (c *Client) ListDashboardPullRequests(ctx context.Context, opts DashboardPu
 			}
 		}
 
-		params := []string{fmt.Sprintf("limit=%d", pageSize)}
-		if opts.State != "" {
-			params = append(params, "state="+url.QueryEscape(strings.ToUpper(opts.State)))
-		}
-		if opts.Role != "" {
-			params = append(params, "role="+url.QueryEscape(strings.ToUpper(opts.Role)))
-		}
-
-		u := fmt.Sprintf("/rest/api/1.0/dashboard/pull-requests?%s&start=%d",
-			strings.Join(params, "&"),
-			start,
-		)
-		req, err := c.http.NewRequest(ctx, "GET", u, nil)
+		pageOpts := opts
+		pageOpts.Limit = pageSize
+		page, err := c.ListDashboardPullRequestsPage(ctx, pageOpts, start)
 		if err != nil {
 			return nil, err
 		}
 
-		var resp paged[PullRequest]
-		if err := c.http.Do(req, &resp); err != nil {
-			return nil, err
-		}
+		all = append(all, page.Values...)
 
-		all = append(all, resp.Values...)
-
-		if resp.IsLastPage || len(resp.Values) == 0 {
+		if page.IsLast {
 			break
 		}
-		start = resp.NextPageStart
+		start = page.NextStart
 	}
 
 	if opts.Limit > 0 && len(all) > opts.Limit {

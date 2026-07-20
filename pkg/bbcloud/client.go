@@ -704,13 +704,26 @@ type WorkspacePullRequestsOptions struct {
 	Limit int
 }
 
-// ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
-func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions) ([]PullRequest, error) {
+// ListWorkspacePullRequestsPage fetches a single page of pull requests
+// authored by the specified user across the workspace. Pass next="" for the
+// first page or a Next value from a previous page. This endpoint is
+// author-scoped only: the Cloud API has no workspace-wide reviewer filter.
+func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions, next string) (*PullRequestsPage, error) {
 	if workspace == "" {
 		return nil, fmt.Errorf("workspace is required")
 	}
 	if username == "" {
 		return nil, fmt.Errorf("username is required")
+	}
+
+	if next != "" {
+		endpoint := fmt.Sprintf("/workspaces/%s/pullrequests/%s",
+			url.PathEscape(workspace), url.PathEscape(username))
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		return c.fetchPullRequestsPage(ctx, normalized)
 	}
 
 	pageLen := opts.Limit
@@ -730,15 +743,16 @@ func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, usern
 		strings.Join(params, "&"),
 	)
 
-	var prs []PullRequest
-	for path != "" {
-		req, err := c.http.NewRequest(ctx, "GET", path, nil)
-		if err != nil {
-			return nil, err
-		}
+	return c.fetchPullRequestsPage(ctx, path)
+}
 
-		var page pullRequestListPage
-		if err := c.http.Do(req, &page); err != nil {
+// ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
+func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions) ([]PullRequest, error) {
+	var prs []PullRequest
+	next := ""
+	for {
+		page, err := c.ListWorkspacePullRequestsPage(ctx, workspace, username, opts, next)
+		if err != nil {
 			return nil, err
 		}
 
@@ -752,11 +766,7 @@ func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, usern
 		if page.Next == "" {
 			break
 		}
-		nextURL, err := url.Parse(page.Next)
-		if err != nil {
-			return nil, err
-		}
-		path = nextURL.RequestURI()
+		next = page.Next
 	}
 
 	return prs, nil

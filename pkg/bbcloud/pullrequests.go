@@ -66,11 +66,14 @@ type PullRequest struct {
 	} `json:"summary"`
 }
 
-// PullRequestListOptions configure PR listings.
+// PullRequestListOptions configure PR listings. Mine and Reviewer carry a
+// user identity (UUID, account id, or nickname) and are encoded upstream as
+// BBQL author/reviewer filters before any limiting happens.
 type PullRequestListOptions struct {
-	State string
-	Limit int
-	Mine  string
+	State    string
+	Limit    int
+	Mine     string
+	Reviewer string
 }
 
 type pullRequestListPage struct {
@@ -78,10 +81,29 @@ type pullRequestListPage struct {
 	Next   string        `json:"next"`
 }
 
-// ListPullRequests lists pull requests for a repository.
-func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug string, opts PullRequestListOptions) ([]PullRequest, error) {
+// PullRequestsPage is one bounded page of pull requests. Next is an opaque
+// reference to the following page; empty means the last page.
+type PullRequestsPage struct {
+	Values []PullRequest
+	Next   string
+}
+
+// ListRepoPullRequestsPage fetches a single page of repository pull
+// requests. Pass next="" for the first page (built from opts) or a Next
+// value from a previous page.
+func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSlug string, opts PullRequestListOptions, next string) (*PullRequestsPage, error) {
 	if workspace == "" || repoSlug == "" {
 		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+
+	if next != "" {
+		endpoint := fmt.Sprintf("/repositories/%s/%s/pullrequests",
+			url.PathEscape(workspace), url.PathEscape(repoSlug))
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		return c.fetchPullRequestsPage(ctx, normalized)
 	}
 
 	pageLen := opts.Limit
@@ -94,8 +116,8 @@ func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug strin
 	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
 		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
 	}
-	if mine := strings.TrimSpace(opts.Mine); mine != "" {
-		params = append(params, "q="+url.QueryEscape(bbqlEquals(authorFilterField(mine), mine)))
+	if q := pullRequestQFilter(opts); q != "" {
+		params = append(params, "q="+url.QueryEscape(q))
 	}
 
 	path := fmt.Sprintf("/repositories/%s/%s/pullrequests?%s",
@@ -104,15 +126,72 @@ func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug strin
 		strings.Join(params, "&"),
 	)
 
-	var prs []PullRequest
-	for path != "" {
-		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	return c.fetchPullRequestsPage(ctx, path)
+}
+
+// pullRequestQFilter builds the upstream BBQL q parameter from the identity
+// filters; multiple filters combine with AND.
+func pullRequestQFilter(opts PullRequestListOptions) string {
+	var terms []string
+	if mine := strings.TrimSpace(opts.Mine); mine != "" {
+		terms = append(terms, bbqlEquals(authorFilterField(mine), mine))
+	}
+	if reviewer := strings.TrimSpace(opts.Reviewer); reviewer != "" {
+		terms = append(terms, bbqlEquals(reviewerFilterField(reviewer), reviewer))
+	}
+	return strings.Join(terms, " AND ")
+}
+
+// normalizeNextRef hardens caller-supplied opaque next references: the
+// reference is reduced to its request URI (so it can never point the
+// authenticated client at another host) and its path must END at the
+// endpoint the page sequence started from. HasSuffix (not Contains) enforces
+// terminal endpoint identity — a trailing "/1" or a glued "/prefixrepos..."
+// is rejected — while the endpoint's leading slash still admits a legitimate
+// base-path prefix such as /2.0.
+func normalizeNextRef(next, endpoint string) (string, error) {
+	u, err := url.Parse(next)
+	if err != nil {
+		return "", fmt.Errorf("invalid next page reference: %w", err)
+	}
+	path := u.EscapedPath()
+	if path != endpoint && !strings.HasSuffix(path, endpoint) {
+		return "", fmt.Errorf("next page reference does not target %s", endpoint)
+	}
+	return u.RequestURI(), nil
+}
+
+func (c *Client) fetchPullRequestsPage(ctx context.Context, path string) (*PullRequestsPage, error) {
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var page pullRequestListPage
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
+
+	next := ""
+	if page.Next != "" {
+		nextURL, err := url.Parse(page.Next)
 		if err != nil {
 			return nil, err
 		}
+		next = nextURL.RequestURI()
+	}
 
-		var page pullRequestListPage
-		if err := c.http.Do(req, &page); err != nil {
+	return &PullRequestsPage{Values: page.Values, Next: next}, nil
+}
+
+// ListPullRequests lists pull requests for a repository, flattening pages up
+// to opts.Limit.
+func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug string, opts PullRequestListOptions) ([]PullRequest, error) {
+	var prs []PullRequest
+	next := ""
+	for {
+		page, err := c.ListRepoPullRequestsPage(ctx, workspace, repoSlug, opts, next)
+		if err != nil {
 			return nil, err
 		}
 
@@ -126,11 +205,7 @@ func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug strin
 		if page.Next == "" {
 			break
 		}
-		nextURL, err := url.Parse(page.Next)
-		if err != nil {
-			return nil, err
-		}
-		path = nextURL.RequestURI()
+		next = page.Next
 	}
 
 	return prs, nil
@@ -143,7 +218,20 @@ func authorFilterField(identity string) string {
 	case LooksLikeAccountID(identity):
 		return "author.account_id"
 	default:
-		return "author.username"
+		return "author.nickname"
+	}
+}
+
+// reviewerFilterField picks the BBQL reviewers field matching the identity
+// shape, mirroring authorFilterField.
+func reviewerFilterField(identity string) string {
+	switch {
+	case LooksLikeUUID(identity):
+		return "reviewers.uuid"
+	case LooksLikeAccountID(identity):
+		return "reviewers.account_id"
+	default:
+		return "reviewers.nickname"
 	}
 }
 

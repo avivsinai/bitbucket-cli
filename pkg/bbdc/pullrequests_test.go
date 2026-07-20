@@ -985,3 +985,71 @@ func containsParam(query, param string) bool {
 	}
 	return false
 }
+
+func TestListRepoPullRequestsPageEncodesParticipantFilters(t *testing.T) {
+	var requests int32
+	var gotQuery string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}, "isLastPage": true})
+	}))
+
+	page, err := client.ListRepoPullRequestsPage(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{
+		State:    "open",
+		Role:     "reviewer",
+		Username: "alice",
+		Limit:    50,
+		Start:    30,
+	})
+	if err != nil {
+		t.Fatalf("ListRepoPullRequestsPage: %v", err)
+	}
+	if !page.IsLast {
+		t.Fatal("empty last page must report IsLast")
+	}
+	if got := atomic.LoadInt32(&requests); got != 1 {
+		t.Fatalf("page fetch made %d requests, want exactly 1", got)
+	}
+	for _, want := range []string{"role.1=REVIEWER", "username.1=alice", "state=OPEN", "limit=50", "start=30"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query %q missing upstream filter %q", gotQuery, want)
+		}
+	}
+}
+
+func TestListRepoPullRequestsPageRoleValidation(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("no request expected on validation failure")
+	}))
+
+	if _, err := client.ListRepoPullRequestsPage(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{Role: "REVIEWER"}); err == nil || !strings.Contains(err.Error(), "requires a username") {
+		t.Fatalf("role without username: err = %v, want username requirement", err)
+	}
+	if _, err := client.ListRepoPullRequestsPage(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{Role: "OWNER", Username: "a"}); err == nil || !strings.Contains(err.Error(), "unsupported participant role") {
+		t.Fatalf("bad role: err = %v, want unsupported role", err)
+	}
+}
+
+func TestListDashboardPullRequestsPageEncodesRole(t *testing.T) {
+	var gotQuery string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}, "isLastPage": true})
+	}))
+
+	if _, err := client.ListDashboardPullRequestsPage(context.Background(), bbdc.DashboardPullRequestsOptions{
+		State: "open",
+		Role:  "reviewer",
+		Limit: 25,
+	}, 75); err != nil {
+		t.Fatalf("ListDashboardPullRequestsPage: %v", err)
+	}
+	for _, want := range []string{"role=REVIEWER", "state=OPEN", "limit=25", "start=75"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query %q missing %q", gotQuery, want)
+		}
+	}
+}
