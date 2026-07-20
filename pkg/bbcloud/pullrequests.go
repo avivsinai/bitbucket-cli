@@ -66,11 +66,14 @@ type PullRequest struct {
 	} `json:"summary"`
 }
 
-// PullRequestListOptions configure PR listings.
+// PullRequestListOptions configure PR listings. Mine and Reviewer carry a
+// user identity (UUID, account id, or nickname) and are encoded upstream as
+// BBQL author/reviewer filters before any limiting happens.
 type PullRequestListOptions struct {
-	State string
-	Limit int
-	Mine  string
+	State    string
+	Limit    int
+	Mine     string
+	Reviewer string
 }
 
 type pullRequestListPage struct {
@@ -78,41 +81,91 @@ type pullRequestListPage struct {
 	Next   string        `json:"next"`
 }
 
-// ListPullRequests lists pull requests for a repository.
-func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug string, opts PullRequestListOptions) ([]PullRequest, error) {
+// PullRequestsPage is one bounded page of pull requests. Next is an opaque
+// reference to the following page; empty means the last page.
+type PullRequestsPage struct {
+	Values []PullRequest
+	Next   string
+}
+
+// ListRepoPullRequestsPage fetches a single page of repository pull
+// requests. Pass next="" for the first page (built from opts) or a Next
+// value from a previous page.
+func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSlug string, opts PullRequestListOptions, next string) (*PullRequestsPage, error) {
 	if workspace == "" || repoSlug == "" {
 		return nil, fmt.Errorf("workspace and repository slug are required")
 	}
 
-	pageLen := opts.Limit
-	if pageLen <= 0 || pageLen > 100 {
-		pageLen = 20
+	path := next
+	if path == "" {
+		pageLen := opts.Limit
+		if pageLen <= 0 || pageLen > 100 {
+			pageLen = 20
+		}
+
+		var params []string
+		params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
+		if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
+			params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
+		}
+		if q := pullRequestQFilter(opts); q != "" {
+			params = append(params, "q="+url.QueryEscape(q))
+		}
+
+		path = fmt.Sprintf("/repositories/%s/%s/pullrequests?%s",
+			url.PathEscape(workspace),
+			url.PathEscape(repoSlug),
+			strings.Join(params, "&"),
+		)
 	}
 
-	var params []string
-	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-	}
+	return c.fetchPullRequestsPage(ctx, path)
+}
+
+// pullRequestQFilter builds the upstream BBQL q parameter from the identity
+// filters; multiple filters combine with AND.
+func pullRequestQFilter(opts PullRequestListOptions) string {
+	var terms []string
 	if mine := strings.TrimSpace(opts.Mine); mine != "" {
-		params = append(params, "q="+url.QueryEscape(bbqlEquals(authorFilterField(mine), mine)))
+		terms = append(terms, bbqlEquals(authorFilterField(mine), mine))
+	}
+	if reviewer := strings.TrimSpace(opts.Reviewer); reviewer != "" {
+		terms = append(terms, bbqlEquals(reviewerFilterField(reviewer), reviewer))
+	}
+	return strings.Join(terms, " AND ")
+}
+
+func (c *Client) fetchPullRequestsPage(ctx context.Context, path string) (*PullRequestsPage, error) {
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
 	}
 
-	path := fmt.Sprintf("/repositories/%s/%s/pullrequests?%s",
-		url.PathEscape(workspace),
-		url.PathEscape(repoSlug),
-		strings.Join(params, "&"),
-	)
+	var page pullRequestListPage
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
 
-	var prs []PullRequest
-	for path != "" {
-		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	next := ""
+	if page.Next != "" {
+		nextURL, err := url.Parse(page.Next)
 		if err != nil {
 			return nil, err
 		}
+		next = nextURL.RequestURI()
+	}
 
-		var page pullRequestListPage
-		if err := c.http.Do(req, &page); err != nil {
+	return &PullRequestsPage{Values: page.Values, Next: next}, nil
+}
+
+// ListPullRequests lists pull requests for a repository, flattening pages up
+// to opts.Limit.
+func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug string, opts PullRequestListOptions) ([]PullRequest, error) {
+	var prs []PullRequest
+	next := ""
+	for {
+		page, err := c.ListRepoPullRequestsPage(ctx, workspace, repoSlug, opts, next)
+		if err != nil {
 			return nil, err
 		}
 
@@ -126,11 +179,7 @@ func (c *Client) ListPullRequests(ctx context.Context, workspace, repoSlug strin
 		if page.Next == "" {
 			break
 		}
-		nextURL, err := url.Parse(page.Next)
-		if err != nil {
-			return nil, err
-		}
-		path = nextURL.RequestURI()
+		next = page.Next
 	}
 
 	return prs, nil
@@ -144,6 +193,19 @@ func authorFilterField(identity string) string {
 		return "author.account_id"
 	default:
 		return "author.username"
+	}
+}
+
+// reviewerFilterField picks the BBQL reviewers field matching the identity
+// shape, mirroring authorFilterField.
+func reviewerFilterField(identity string) string {
+	switch {
+	case LooksLikeUUID(identity):
+		return "reviewers.uuid"
+	case LooksLikeAccountID(identity):
+		return "reviewers.account_id"
+	default:
+		return "reviewers.username"
 	}
 }
 

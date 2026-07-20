@@ -1699,3 +1699,106 @@ func TestUpdatePullRequestValidation(t *testing.T) {
 		t.Errorf("expected empty input error, got %v", err)
 	}
 }
+
+func TestListPullRequestsEncodesReviewerFilterUpstream(t *testing.T) {
+	var firstQuery string
+	var requests int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&requests, 1) == 1 {
+			firstQuery = r.URL.Query().Get("q")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+
+	uuid := "{a1b2c3d4-e5f6-4890-abcd-ef1234567890}"
+	if _, err := client.ListPullRequests(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{
+		Reviewer: uuid,
+		Limit:    10,
+	}); err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if want := `reviewers.uuid = "` + uuid + `"`; firstQuery != want {
+		t.Fatalf("first request q = %q, want %q (reviewer filter must be upstream, before any limiting)", firstQuery, want)
+	}
+
+	// Nickname identities use the username field.
+	atomic.StoreInt32(&requests, 0)
+	if _, err := client.ListPullRequests(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{
+		Reviewer: "nick",
+	}); err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if want := `reviewers.username = "nick"`; firstQuery != want {
+		t.Fatalf("q = %q, want %q", firstQuery, want)
+	}
+
+	// Author + reviewer combine with AND.
+	atomic.StoreInt32(&requests, 0)
+	if _, err := client.ListPullRequests(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{
+		Mine:     "nick",
+		Reviewer: uuid,
+	}); err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if want := `author.username = "nick" AND reviewers.uuid = "` + uuid + `"`; firstQuery != want {
+		t.Fatalf("q = %q, want %q", firstQuery, want)
+	}
+}
+
+func TestListRepoPullRequestsPageNextRoundTrip(t *testing.T) {
+	var paths []string
+	var server *httptest.Server
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		if len(paths) == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []map[string]any{{"id": 1}},
+				"next":   server.URL + "/repositories/ws/repo/pullrequests?page=2&pagelen=1",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []map[string]any{{"id": 2}}})
+	})
+	server = httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	client, err := bbcloud.New(bbcloud.Options{BaseURL: server.URL, Username: "u", Token: "t"})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	first, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{Limit: 1}, "")
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if first.Next == "" {
+		t.Fatal("first page must expose Next")
+	}
+	second, err := client.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, first.Next)
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	if second.Next != "" {
+		t.Fatal("second page must be last")
+	}
+	if len(paths) != 2 || !strings.Contains(paths[1], "page=2") {
+		t.Fatalf("paths = %v, want second request to follow the opaque next reference", paths)
+	}
+}
+
+func TestListWorkspacePullRequestsPageIsAuthorScoped(t *testing.T) {
+	var gotPath string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+
+	if _, err := client.ListWorkspacePullRequestsPage(context.Background(), "ws", "alice", bbcloud.WorkspacePullRequestsOptions{State: "open", Limit: 5}, ""); err != nil {
+		t.Fatalf("ListWorkspacePullRequestsPage: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/workspaces/ws/pullrequests/alice") {
+		t.Fatalf("path = %q, want the user-scoped author endpoint", gotPath)
+	}
+}

@@ -704,8 +704,11 @@ type WorkspacePullRequestsOptions struct {
 	Limit int
 }
 
-// ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
-func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions) ([]PullRequest, error) {
+// ListWorkspacePullRequestsPage fetches a single page of pull requests
+// authored by the specified user across the workspace. Pass next="" for the
+// first page or a Next value from a previous page. This endpoint is
+// author-scoped only: the Cloud API has no workspace-wide reviewer filter.
+func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions, next string) (*PullRequestsPage, error) {
 	if workspace == "" {
 		return nil, fmt.Errorf("workspace is required")
 	}
@@ -713,32 +716,36 @@ func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, usern
 		return nil, fmt.Errorf("username is required")
 	}
 
-	pageLen := opts.Limit
-	if pageLen <= 0 || pageLen > 100 {
-		pageLen = 20
-	}
-
-	var params []string
-	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-	}
-
-	path := fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
-		url.PathEscape(workspace),
-		url.PathEscape(username),
-		strings.Join(params, "&"),
-	)
-
-	var prs []PullRequest
-	for path != "" {
-		req, err := c.http.NewRequest(ctx, "GET", path, nil)
-		if err != nil {
-			return nil, err
+	path := next
+	if path == "" {
+		pageLen := opts.Limit
+		if pageLen <= 0 || pageLen > 100 {
+			pageLen = 20
 		}
 
-		var page pullRequestListPage
-		if err := c.http.Do(req, &page); err != nil {
+		var params []string
+		params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
+		if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
+			params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
+		}
+
+		path = fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
+			url.PathEscape(workspace),
+			url.PathEscape(username),
+			strings.Join(params, "&"),
+		)
+	}
+
+	return c.fetchPullRequestsPage(ctx, path)
+}
+
+// ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
+func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, username string, opts WorkspacePullRequestsOptions) ([]PullRequest, error) {
+	var prs []PullRequest
+	next := ""
+	for {
+		page, err := c.ListWorkspacePullRequestsPage(ctx, workspace, username, opts, next)
+		if err != nil {
 			return nil, err
 		}
 
@@ -752,11 +759,7 @@ func (c *Client) ListWorkspacePullRequests(ctx context.Context, workspace, usern
 		if page.Next == "" {
 			break
 		}
-		nextURL, err := url.Parse(page.Next)
-		if err != nil {
-			return nil, err
-		}
-		path = nextURL.RequestURI()
+		next = page.Next
 	}
 
 	return prs, nil
