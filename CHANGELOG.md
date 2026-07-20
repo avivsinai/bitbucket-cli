@@ -5,6 +5,12 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt mcp serve` (experimental): a read-only Model Context Protocol server
+  over stdio, pinning one bkt context resolved at startup. v1 registers
+  `bkt_get_context`; repository and pull-request tools land in upcoming
+  releases. Register with e.g. `claude mcp add bitbucket -- bkt mcp serve`.
+
 ### Fixed
 - The HTTP client is now safe for concurrent use during OAuth token refresh:
   credential updates are mutex-protected and simultaneous 401 responses

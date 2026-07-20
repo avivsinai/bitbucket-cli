@@ -11,6 +11,7 @@ import (
 	contextcmd "github.com/avivsinai/bitbucket-cli/pkg/cmd/context"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/extension"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/issue"
+	mcpcmd "github.com/avivsinai/bitbucket-cli/pkg/cmd/mcp"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/perms"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pipeline"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pr"
@@ -74,6 +75,7 @@ Common flows:
 		variable.NewCommand(f),
 		api.NewCmdAPI(f),
 		extension.NewCmdExtension(f),
+		mcpcmd.NewCmdMCP(f),
 	)
 
 	root.Version = f.AppVersion
