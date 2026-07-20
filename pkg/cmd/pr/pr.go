@@ -2,11 +2,9 @@ package pr
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -3266,7 +3264,7 @@ func pollUntilComplete(
 			// Log error to stderr (doesn't corrupt structured output on stdout)
 			_, _ = fmt.Fprintf(ios.ErrOut, "  ⚠ Error fetching status (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
 			// Use iteration + consecutiveErrors to back off faster on errors
-			errorBackoff := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration+consecutiveErrors)
+			errorBackoff := cmdutil.PollInterval(opts.Interval, opts.MaxInterval, iteration+consecutiveErrors)
 			if err := waitForPollInterval(ctx, opts, errorBackoff); err != nil {
 				return nil, err
 			}
@@ -3299,7 +3297,7 @@ func pollUntilComplete(
 		}
 
 		// Calculate next polling interval with exponential backoff and jitter
-		nextInterval := calculatePollInterval(opts.Interval, opts.MaxInterval, iteration)
+		nextInterval := cmdutil.PollInterval(opts.Interval, opts.MaxInterval, iteration)
 
 		// Show waiting message (skip for structured output)
 		if !quietPoll {
@@ -3443,70 +3441,6 @@ func anyBuildFailed(statuses []types.CommitStatus) bool {
 		}
 	}
 	return false
-}
-
-// backoffMultiplier is the factor by which the polling interval increases each iteration
-const backoffMultiplier = 1.5
-
-// jitterFraction is the maximum random adjustment (±15%) applied to intervals
-const jitterFraction = 0.15
-
-// calculatePollInterval computes the next polling interval using exponential backoff with jitter.
-// The formula is: min(baseInterval * multiplier^iteration, maxInterval) ± jitter
-func calculatePollInterval(baseInterval, maxInterval time.Duration, iteration int) time.Duration {
-	if iteration <= 0 {
-		return addJitter(baseInterval)
-	}
-
-	// Calculate exponential backoff: base * 1.5^iteration
-	interval := float64(baseInterval)
-	for i := 0; i < iteration; i++ {
-		interval *= backoffMultiplier
-		if interval >= float64(maxInterval) {
-			interval = float64(maxInterval)
-			break
-		}
-	}
-
-	// Cap at max interval
-	if interval > float64(maxInterval) {
-		interval = float64(maxInterval)
-	}
-
-	return addJitter(time.Duration(interval))
-}
-
-// addJitter applies ±15% random jitter to a duration to prevent thundering herd.
-// Uses crypto/rand for better randomness distribution.
-func addJitter(d time.Duration) time.Duration {
-	if d <= 0 {
-		return d
-	}
-
-	// Calculate jitter range: ±15% of the duration
-	jitterRange := int64(float64(d) * jitterFraction * 2) // Total range is 2x the fraction
-	if jitterRange <= 0 {
-		return d
-	}
-
-	// Generate random value in range [0, jitterRange)
-	n, err := rand.Int(rand.Reader, big.NewInt(jitterRange))
-	if err != nil {
-		// Fallback to no jitter on error
-		return d
-	}
-
-	// Apply jitter: subtract half the range, then add random value
-	// This gives us a value in [-jitterFraction, +jitterFraction]
-	jitter := n.Int64() - (jitterRange / 2)
-	result := time.Duration(int64(d) + jitter)
-
-	// Ensure we don't go below 1 second minimum
-	if result < time.Second {
-		result = time.Second
-	}
-
-	return result
 }
 
 func runGit(ctx context.Context, args ...string) error {

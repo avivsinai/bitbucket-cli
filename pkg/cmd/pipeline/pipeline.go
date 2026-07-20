@@ -2,9 +2,13 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -12,6 +16,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
+	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 )
 
 // NewCmdPipeline interacts with Bitbucket Cloud pipelines.
@@ -35,8 +40,18 @@ type baseOptions struct {
 	Repo      string
 }
 
+// waitOptions bundles the --wait polling flags shared by run and view.
+type waitOptions struct {
+	Wait        bool
+	Interval    time.Duration
+	MaxInterval time.Duration
+	Timeout     time.Duration
+	waitForPoll func(context.Context, time.Duration) error
+}
+
 type runOptions struct {
 	baseOptions
+	waitOptions
 	Ref       string
 	Variables []string
 }
@@ -48,6 +63,7 @@ type listOptions struct {
 
 type viewOptions struct {
 	baseOptions
+	waitOptions
 	Identifier string // UUID or build number
 }
 
@@ -66,7 +82,11 @@ func newRunCmd(f *cmdutil.Factory) *cobra.Command {
 
 The pipeline runs against the specified Git ref (branch, tag, or commit). You can
 pass custom pipeline variables using the --var flag, which accepts KEY=VALUE pairs
-and can be repeated. This command is available for Bitbucket Cloud contexts only.`,
+and can be repeated. This command is available for Bitbucket Cloud contexts only.
+
+Use --wait to poll the triggered pipeline until it completes, with exponential
+backoff and jitter. Exit codes in --wait mode: 0 = pipeline succeeded,
+1 = pipeline completed unsuccessfully, 8 = timed out while still running.`,
 		Example: `  # Run the pipeline on the default branch
   bkt pipeline run
 
@@ -77,8 +97,14 @@ and can be repeated. This command is available for Bitbucket Cloud contexts only
   bkt pipeline run --ref main --var ENV=staging --var DEBUG=true
 
   # Run against a specific repository
-  bkt pipeline run --workspace myteam --repo backend-api --ref develop`,
+  bkt pipeline run --workspace myteam --repo backend-api --ref develop
+
+  # Trigger and wait for the result
+  bkt pipeline run --ref main --wait`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateWaitFlags(cmd, &opts.waitOptions); err != nil {
+				return err
+			}
 			return runPipelineRun(cmd, f, opts)
 		},
 	}
@@ -87,6 +113,7 @@ and can be repeated. This command is available for Bitbucket Cloud contexts only
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Ref, "ref", "main", "Git ref to run the pipeline on")
 	cmd.Flags().StringSliceVar(&opts.Variables, "var", nil, "Pipeline variable in KEY=VALUE form (repeatable)")
+	addWaitFlags(cmd, &opts.waitOptions, "Wait for the triggered pipeline to complete")
 
 	return cmd
 }
@@ -131,7 +158,11 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 
 Displays the pipeline state, result, and a breakdown of each step with its UUID,
 status, and name. The <id> argument accepts either a build number (e.g., 10) or a
-pipeline UUID. This command is available for Bitbucket Cloud contexts only.`,
+pipeline UUID. This command is available for Bitbucket Cloud contexts only.
+
+Use --wait to poll until the pipeline completes, with exponential backoff and
+jitter. Exit codes in --wait mode: 0 = pipeline succeeded, 1 = pipeline
+completed unsuccessfully, 8 = timed out while still running.`,
 		Example: `  # View pipeline run by build number
   bkt pipeline view 42
 
@@ -139,16 +170,23 @@ pipeline UUID. This command is available for Bitbucket Cloud contexts only.`,
   bkt pipeline view '{a1b2c3d4-e5f6-7890-abcd-ef1234567890}'
 
   # View a pipeline in a specific repository
-  bkt pipeline view 10 --workspace myteam --repo backend-api`,
+  bkt pipeline view 10 --workspace myteam --repo backend-api
+
+  # Wait for a running pipeline to finish
+  bkt pipeline view 42 --wait`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Identifier = args[0]
+			if err := validateWaitFlags(cmd, &opts.waitOptions); err != nil {
+				return err
+			}
 			return runPipelineView(cmd, f, opts)
 		},
 	}
 
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	addWaitFlags(cmd, &opts.waitOptions, "Wait for the pipeline to complete")
 
 	return cmd
 }
@@ -225,10 +263,45 @@ func runPipelineRun(cmd *cobra.Command, f *cmdutil.Factory, opts *runOptions) er
 		return err
 	}
 
-	if _, err := fmt.Fprintf(ios.Out, "✓ Triggered pipeline %s on %s/%s (%s)\n", pipeline.UUID, workspace, repo, pipeline.State.Name); err != nil {
+	if !opts.Wait {
+		_, err := fmt.Fprintf(ios.Out, "✓ Triggered pipeline %s on %s/%s (%s)\n", pipeline.UUID, workspace, repo, pipeline.State.Name)
 		return err
 	}
-	return nil
+
+	quietPoll, err := quietPollRequested(cmd)
+	if err != nil {
+		return err
+	}
+	if !quietPoll {
+		if _, err := fmt.Fprintf(ios.Out, "✓ Triggered pipeline %s on %s/%s (%s)\n", pipeline.UUID, workspace, repo, pipeline.State.Name); err != nil {
+			return err
+		}
+	}
+
+	pipeline, timedOut, err := waitForPipeline(cmd, ios, &opts.waitOptions, pipeline, func(c context.Context) (*bbcloud.Pipeline, error) {
+		return client.GetPipeline(c, workspace, repo, pipeline.UUID)
+	})
+	if err != nil || pipeline == nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"workspace": workspace,
+		"repo":      repo,
+		"pipeline":  pipeline,
+	}
+	if err := cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+		// Without a TTY the poll loop already printed the terminal status;
+		// match pr checks and skip the duplicate final print.
+		if !ios.IsStdoutTTY() {
+			return nil
+		}
+		_, err := fmt.Fprintf(ios.Out, "Pipeline #%d (%s): %s\n", pipeline.BuildNumber, pipeline.Target.Ref.Name, pipelineStatus(pipeline))
+		return err
+	}); err != nil {
+		return err
+	}
+	return waitExitError(pipeline, timedOut)
 }
 
 func runPipelineList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
@@ -314,7 +387,23 @@ func runPipelineView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) 
 		return err
 	}
 
-	steps, err := client.ListPipelineSteps(ctx, workspace, repo, pipeline.UUID)
+	var timedOut bool
+	if opts.Wait {
+		pipeline, timedOut, err = waitForPipeline(cmd, ios, &opts.waitOptions, pipeline, func(c context.Context) (*bbcloud.Pipeline, error) {
+			return client.GetPipeline(c, workspace, repo, pipeline.UUID)
+		})
+		if err != nil || pipeline == nil {
+			return err
+		}
+	}
+
+	// The wait path derives its own timeout/signal context, so cmd.Context()
+	// is still live here; give the steps fetch its own short deadline while
+	// preserving caller cancellation.
+	stepsCtx, stepsCancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+	defer stepsCancel()
+
+	steps, err := client.ListPipelineSteps(stepsCtx, workspace, repo, pipeline.UUID)
 	if err != nil {
 		return err
 	}
@@ -324,7 +413,7 @@ func runPipelineView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) 
 		"steps":    steps,
 	}
 
-	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
+	if err := cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 		if _, err := fmt.Fprintf(ios.Out, "%s\t%s\t%s\n", pipeline.UUID, pipeline.State.Name, pipeline.State.Result.Name); err != nil {
 			return err
 		}
@@ -339,7 +428,202 @@ func runPipelineView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) 
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	if opts.Wait {
+		return waitExitError(pipeline, timedOut)
+	}
+	return nil
+}
+
+// addWaitFlags registers the --wait polling flags shared by run and view.
+func addWaitFlags(cmd *cobra.Command, w *waitOptions, waitHelp string) {
+	cmd.Flags().BoolVar(&w.Wait, "wait", false, waitHelp)
+	cmd.Flags().DurationVar(&w.Interval, "interval", 10*time.Second, "Initial polling interval when using --wait")
+	cmd.Flags().DurationVar(&w.MaxInterval, "max-interval", 2*time.Minute, "Maximum polling interval (backoff cap)")
+	cmd.Flags().DurationVar(&w.Timeout, "timeout", 30*time.Minute, "Maximum time to wait for the pipeline (0 for no timeout)")
+}
+
+// validateWaitFlags enforces the same flag rules as `bkt pr checks`:
+// polling flags require --wait, and intervals must be sane.
+func validateWaitFlags(cmd *cobra.Command, w *waitOptions) error {
+	if !w.Wait {
+		for _, name := range []string{"interval", "max-interval", "timeout"} {
+			if cmd.Flags().Changed(name) {
+				return fmt.Errorf("--%s requires --wait", name)
+			}
+		}
+		return nil
+	}
+	if w.Interval <= 0 {
+		return fmt.Errorf("--interval must be positive")
+	}
+	if w.MaxInterval <= 0 {
+		return fmt.Errorf("--max-interval must be positive")
+	}
+	if w.MaxInterval < w.Interval {
+		return fmt.Errorf("--max-interval must be >= --interval")
+	}
+	return nil
+}
+
+// quietPollRequested reports whether structured output (--json/--yaml/
+// --template/--jq) is active, in which case poll progress must not be printed.
+func quietPollRequested(cmd *cobra.Command) (bool, error) {
+	settings, err := cmdutil.ResolveOutputSettings(cmd)
+	if err != nil {
+		return false, err
+	}
+	return settings.Format != "" || settings.Template != "" || settings.JQ != "", nil
+}
+
+// waitForPipeline polls until the pipeline completes, handling signal
+// cancellation, --timeout, and progress output. It returns the last known
+// pipeline and whether the wait timed out while the pipeline was still
+// running. A nil pipeline with nil error means the user cancelled.
+func waitForPipeline(cmd *cobra.Command, ios *iostreams.IOStreams, w *waitOptions, initial *bbcloud.Pipeline, fetch func(context.Context) (*bbcloud.Pipeline, error)) (*bbcloud.Pipeline, bool, error) {
+	if pipelineCompleted(initial) {
+		return initial, false, nil
+	}
+
+	quietPoll, err := quietPollRequested(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if w.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, w.Timeout)
+		defer cancel()
+	}
+
+	if !quietPoll {
+		ios.StartAlternateScreenBuffer()
+	}
+	pipeline, pollErr := pollPipelineUntilDone(ctx, ios, w, quietPoll, initial, fetch)
+	if !quietPoll {
+		ios.StopAlternateScreenBuffer()
+	}
+
+	if errors.Is(pollErr, context.Canceled) {
+		_, _ = fmt.Fprintln(ios.ErrOut, "\nOperation cancelled")
+		return nil, false, nil
+	}
+	if errors.Is(pollErr, context.DeadlineExceeded) {
+		_, _ = fmt.Fprintln(ios.ErrOut, "\nTimeout waiting for pipeline to complete")
+		return pipeline, !pipelineCompleted(pipeline), nil
+	}
+	if pollErr != nil {
+		return nil, false, pollErr
+	}
+	return pipeline, false, nil
+}
+
+// pollPipelineUntilDone polls fetch until the pipeline reaches a terminal
+// state, the context ends, or fetch fails repeatedly. The last successfully
+// fetched pipeline is always returned so callers can report partial state.
+func pollPipelineUntilDone(ctx context.Context, ios *iostreams.IOStreams, w *waitOptions, quietPoll bool, initial *bbcloud.Pipeline, fetch func(context.Context) (*bbcloud.Pipeline, error)) (*bbcloud.Pipeline, error) {
+	last := initial
+	iteration := 0
+	consecutiveErrors := 0
+	const maxConsecutiveErrors = 3
+
+	for {
+		if !quietPoll {
+			if iteration > 0 {
+				ios.ClearScreen()
+			}
+			if _, err := fmt.Fprintf(ios.Out, "Pipeline #%d (%s): %s\n", last.BuildNumber, last.Target.Ref.Name, pipelineStatus(last)); err != nil {
+				return last, err
+			}
+		}
+
+		if pipelineCompleted(last) {
+			return last, nil
+		}
+
+		next := cmdutil.PollInterval(w.Interval, w.MaxInterval, iteration+consecutiveErrors)
+		if !quietPoll {
+			if _, err := fmt.Fprintf(ios.Out, "\n  Waiting for pipeline to complete... (next poll in %s, Ctrl-C to cancel)\n", next.Round(time.Second)); err != nil {
+				return last, err
+			}
+		}
+		iteration++
+
+		if err := waitPipelinePoll(ctx, w, next); err != nil {
+			return last, err
+		}
+
+		p, err := fetch(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return last, ctx.Err()
+			}
+			consecutiveErrors++
+			if consecutiveErrors >= maxConsecutiveErrors {
+				return last, fmt.Errorf("fetch pipeline failed after %d attempts: %w", consecutiveErrors, err)
+			}
+			_, _ = fmt.Fprintf(ios.ErrOut, "  Warning: error fetching pipeline (attempt %d/%d): %v\n", consecutiveErrors, maxConsecutiveErrors, err)
+			continue
+		}
+		consecutiveErrors = 0
+		last = p
+	}
+}
+
+func waitPipelinePoll(ctx context.Context, w *waitOptions, d time.Duration) error {
+	if w.waitForPoll != nil {
+		return w.waitForPoll(ctx, d)
+	}
+
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// pipelineStatus renders a human-readable status such as
+// "IN_PROGRESS (RUNNING)" or "COMPLETED SUCCESSFUL".
+func pipelineStatus(p *bbcloud.Pipeline) string {
+	s := p.State.Name
+	if p.State.Result.Name != "" {
+		return s + " " + p.State.Result.Name
+	}
+	if p.State.Stage.Name != "" {
+		return s + " (" + p.State.Stage.Name + ")"
+	}
+	return s
+}
+
+// pipelineCompleted reports whether the pipeline reached a terminal state.
+func pipelineCompleted(p *bbcloud.Pipeline) bool {
+	return p != nil && strings.EqualFold(p.State.Name, "COMPLETED")
+}
+
+// pipelineSucceeded reports whether a completed pipeline finished successfully.
+func pipelineSucceeded(p *bbcloud.Pipeline) bool {
+	return p != nil && strings.EqualFold(p.State.Result.Name, "SUCCESSFUL")
+}
+
+// waitExitError maps the final wait outcome to the documented exit codes:
+// 0 = succeeded, 1 = completed unsuccessfully, 8 = timed out still running.
+func waitExitError(p *bbcloud.Pipeline, timedOut bool) error {
+	if timedOut {
+		return cmdutil.ErrPending
+	}
+	if !pipelineSucceeded(p) {
+		return cmdutil.ErrSilent
+	}
+	return nil
 }
 
 func runPipelineLogs(cmd *cobra.Command, f *cmdutil.Factory, opts *logsOptions) error {
