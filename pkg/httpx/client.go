@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -55,9 +56,8 @@ type Client struct {
 // refreshCall is a single in-flight token refresh that concurrent 401 paths
 // wait on instead of issuing their own refresh.
 type refreshCall struct {
-	done  chan struct{}
-	token string
-	err   error
+	done chan struct{}
+	err  error
 }
 
 // Options configures a Client.
@@ -289,43 +289,63 @@ func (c *Client) authorizationHeader() string {
 // the failed request was built, it simply retries with them; otherwise it
 // coalesces all concurrent callers into one tokenRefresher invocation and
 // installs the resulting bearer token.
+//
+// The stale-credential check and leader election happen in one refreshMu
+// critical section, so a goroutine that raced past a completed refresh cannot
+// become a redundant second leader (rotating refresh tokens make redundant
+// refreshes harmful, not just wasteful). Lock order is refreshMu -> credMu
+// (read); credMu is never held while acquiring refreshMu.
 func (c *Client) refreshCredentials(ctx context.Context, usedAuth string) error {
-	if h := c.authorizationHeader(); h != "" && h != usedAuth {
-		// Credentials rotated while this request was in flight; retry with
-		// the current ones without spending another refresh.
-		return nil
-	}
-
-	c.refreshMu.Lock()
-	if call := c.refreshInFlight; call != nil {
-		c.refreshMu.Unlock()
-		select {
-		case <-call.done:
-			return call.err
-		case <-ctx.Done():
-			return ctx.Err()
+	for {
+		c.refreshMu.Lock()
+		if h := c.authorizationHeader(); h != "" && h != usedAuth {
+			// Credentials rotated while this request was in flight; retry
+			// with the current ones without spending another refresh.
+			c.refreshMu.Unlock()
+			return nil
 		}
+		if call := c.refreshInFlight; call != nil {
+			c.refreshMu.Unlock()
+			select {
+			case <-call.done:
+				// Inherit real refresh failures, but not another request's
+				// context death: if the leader was cancelled while this
+				// caller is still live, contend for leadership again.
+				if isContextError(call.err) && ctx.Err() == nil {
+					continue
+				}
+				return call.err
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		call := &refreshCall{done: make(chan struct{})}
+		c.refreshInFlight = call
+		c.refreshMu.Unlock()
+
+		token, err := c.tokenRefresher(ctx)
+		if err == nil {
+			c.credMu.Lock()
+			c.password = token
+			// OAuth access tokens are always sent as Bearer regardless of
+			// the auth method the client was originally constructed with.
+			c.authMethod = "bearer"
+			c.credMu.Unlock()
+		}
+		call.err = err
+
+		c.refreshMu.Lock()
+		c.refreshInFlight = nil
+		c.refreshMu.Unlock()
+		close(call.done)
+
+		return err
 	}
-	call := &refreshCall{done: make(chan struct{})}
-	c.refreshInFlight = call
-	c.refreshMu.Unlock()
+}
 
-	call.token, call.err = c.tokenRefresher(ctx)
-	if call.err == nil {
-		c.credMu.Lock()
-		c.password = call.token
-		// OAuth access tokens are always sent as Bearer regardless of the
-		// auth method the client was originally constructed with.
-		c.authMethod = "bearer"
-		c.credMu.Unlock()
-	}
-
-	c.refreshMu.Lock()
-	c.refreshInFlight = nil
-	c.refreshMu.Unlock()
-	close(call.done)
-
-	return call.err
+// isContextError reports whether err is a context cancellation or deadline.
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (c *Client) applyRequestHook(req *http.Request) {

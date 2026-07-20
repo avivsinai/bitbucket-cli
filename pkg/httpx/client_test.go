@@ -1375,3 +1375,83 @@ func TestRefreshSkippedWhenCredentialsAlreadyRotated(t *testing.T) {
 		t.Fatalf("TokenRefresher called %d times, want exactly 1", got)
 	}
 }
+
+func TestFollowerRetriesWhenLeaderContextCancelled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer new-token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(payload{Message: "ok"})
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	var refreshCalls int32
+	leaderInRefresh := make(chan struct{})
+	client, err := New(Options{
+		BaseURL:  server.URL,
+		Username: "user",
+		Password: "old-token",
+		TokenRefresher: func(ctx context.Context) (string, error) {
+			if atomic.AddInt32(&refreshCalls, 1) == 1 {
+				close(leaderInRefresh)
+				<-ctx.Done() // first leader hangs until its request is cancelled
+				return "", ctx.Err()
+			}
+			return "new-token", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	defer cancelLeader()
+
+	var wg sync.WaitGroup
+	var leaderErr, followerErr error
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		req, err := client.NewRequest(leaderCtx, http.MethodGet, "/api", nil)
+		if err != nil {
+			leaderErr = err
+			return
+		}
+		var out payload
+		leaderErr = client.Do(req, &out)
+	}()
+
+	<-leaderInRefresh // leader is inside the refresher, holding the in-flight call
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+		if err != nil {
+			followerErr = err
+			return
+		}
+		var out payload
+		followerErr = client.Do(req, &out)
+	}()
+
+	// Give the follower a moment to join the in-flight call, then kill the
+	// leader. Either interleaving (follower waiting on the call, or arriving
+	// after it fails) must converge on the same outcome.
+	time.Sleep(50 * time.Millisecond)
+	cancelLeader()
+	wg.Wait()
+
+	if leaderErr == nil || !errors.Is(leaderErr, context.Canceled) {
+		t.Fatalf("leader err = %v, want context.Canceled", leaderErr)
+	}
+	if followerErr != nil {
+		t.Fatalf("follower err = %v, want success via replacement refresh", followerErr)
+	}
+	if got := atomic.LoadInt32(&refreshCalls); got != 2 {
+		t.Fatalf("TokenRefresher called %d times, want 2 (failed leader + follower replacement)", got)
+	}
+}
