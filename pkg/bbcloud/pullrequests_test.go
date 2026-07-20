@@ -1854,3 +1854,37 @@ func TestListWorkspacePullRequestsPageRejectsForeignNext(t *testing.T) {
 		t.Fatalf("err = %v, want endpoint rejection", err)
 	}
 }
+
+// Endpoint binding must be terminal, not substring containment: a same-host
+// path that merely contains the endpoint (trailing extra segment or a glued
+// prefix) is rejected, while a legitimate /2.0-prefixed reference round-trips.
+func TestNormalizeNextRefEnforcesTerminalEndpoint(t *testing.T) {
+	var apiPaths []string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiPaths = append(apiPaths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"values": []any{}})
+	}))
+	base := client // same-host references are built from the test server URL below
+
+	// Legitimate base-path-prefixed next reference round-trips.
+	if _, err := base.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, "/2.0/repositories/ws/repo/pullrequests?page=2"); err != nil {
+		t.Fatalf("valid /2.0 next reference rejected: %v", err)
+	}
+	if len(apiPaths) != 1 {
+		t.Fatalf("valid reference produced %d requests, want 1", len(apiPaths))
+	}
+
+	// Trailing extra segment (containment, not endpoint identity) rejected.
+	apiPaths = nil
+	if _, err := base.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, "/repositories/ws/repo/pullrequests/1"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("trailing-segment reference: err = %v, want rejection", err)
+	}
+	// Glued prefix (no segment boundary) rejected.
+	if _, err := base.ListRepoPullRequestsPage(context.Background(), "ws", "repo", bbcloud.PullRequestListOptions{}, "/evilrepositories/ws/repo/pullrequests"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("glued-prefix reference: err = %v, want rejection", err)
+	}
+	if len(apiPaths) != 0 {
+		t.Fatalf("rejected references still issued %d requests", len(apiPaths))
+	}
+}

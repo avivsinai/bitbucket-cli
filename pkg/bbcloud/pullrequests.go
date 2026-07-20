@@ -144,14 +144,18 @@ func pullRequestQFilter(opts PullRequestListOptions) string {
 
 // normalizeNextRef hardens caller-supplied opaque next references: the
 // reference is reduced to its request URI (so it can never point the
-// authenticated client at another host) and must target the endpoint the
-// page sequence started from. Anything else is rejected.
+// authenticated client at another host) and its path must END at the
+// endpoint the page sequence started from. HasSuffix (not Contains) enforces
+// terminal endpoint identity — a trailing "/1" or a glued "/prefixrepos..."
+// is rejected — while the endpoint's leading slash still admits a legitimate
+// base-path prefix such as /2.0.
 func normalizeNextRef(next, endpoint string) (string, error) {
 	u, err := url.Parse(next)
 	if err != nil {
 		return "", fmt.Errorf("invalid next page reference: %w", err)
 	}
-	if !strings.Contains(u.EscapedPath(), endpoint) {
+	path := u.EscapedPath()
+	if path != endpoint && !strings.HasSuffix(path, endpoint) {
 		return "", fmt.Errorf("next page reference does not target %s", endpoint)
 	}
 	return u.RequestURI(), nil
