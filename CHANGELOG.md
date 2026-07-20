@@ -5,6 +5,12 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt pipeline view --wait` and `bkt pipeline run --wait` poll a pipeline
+  until it completes, using the same backoff flags (`--interval`,
+  `--max-interval`, `--timeout`) and exit-code contract as
+  `bkt pr checks --wait`: 0 = succeeded, 1 = completed unsuccessfully,
+  8 = timed out while still running. (#252)
 
 ## [0.28.2] - 2026-06-06
 ### Fixed
