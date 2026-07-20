@@ -3,10 +3,13 @@ package pipeline
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -279,5 +282,212 @@ func TestPipelineViewStepsFetchHonorsCommandCancellation(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Fatalf("view took %v; steps fetch ignored command cancellation", elapsed)
+	}
+}
+
+const testPipelineUUID = "{a1b2c3d4-e5f6-4890-abcd-ef1234567890}"
+
+func pipelineJSONBody(state, result string) string {
+	res := ""
+	if result != "" {
+		res = fmt.Sprintf(`,"result":{"name":%q}`, result)
+	}
+	return fmt.Sprintf(`{"uuid":%q,"build_number":1,"state":{"name":%q%s},"target":{"ref":{"name":"main"}}}`, testPipelineUUID, state, res)
+}
+
+// fakePipelineServer serves TriggerPipeline (POST), GetPipeline (GET), and
+// ListPipelineSteps. Successive GET pipeline calls walk through states.
+func fakePipelineServer(t *testing.T, trigger [2]string, states [][2]string) *httptest.Server {
+	t.Helper()
+	var mu sync.Mutex
+	getCalls := 0
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/steps"):
+			_, _ = w.Write([]byte(`{"values":[]}`))
+		case r.Method == http.MethodPost:
+			_, _ = w.Write([]byte(pipelineJSONBody(trigger[0], trigger[1])))
+		default:
+			mu.Lock()
+			idx := min(getCalls, len(states)-1)
+			getCalls++
+			mu.Unlock()
+			_, _ = w.Write([]byte(pipelineJSONBody(states[idx][0], states[idx][1])))
+		}
+	}))
+}
+
+func pipelineTestFactory(srvURL string) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "cloud", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"cloud": {Kind: "cloud", BaseURL: srvURL, Username: "u", Token: "t"},
+		},
+	}
+	var out, errOut bytes.Buffer
+	f := &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: &out, ErrOut: &errOut},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+	return f, &out, &errOut
+}
+
+// registerOutputFlags mirrors the root command's persistent output flags so
+// ResolveOutputSettings sees them on the test command (its own root).
+func registerOutputFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().Bool("json", false, "")
+	cmd.PersistentFlags().Bool("yaml", false, "")
+	cmd.PersistentFlags().String("format", "", "")
+	cmd.PersistentFlags().String("jq", "", "")
+	cmd.PersistentFlags().String("template", "", "")
+}
+
+func TestPipelineViewWaitTimeoutReturnsErrPending(t *testing.T) {
+	srv := fakePipelineServer(t, [2]string{"", ""}, [][2]string{{"IN_PROGRESS", ""}})
+	defer srv.Close()
+
+	f, out, errOut := pipelineTestFactory(srv.URL)
+	cmd := newViewCmd(f)
+	registerOutputFlags(cmd)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--wait", "--timeout", "200ms"})
+
+	err := cmd.Execute()
+	if !errors.Is(err, cmdutil.ErrPending) {
+		t.Fatalf("err = %v, want ErrPending", err)
+	}
+	if !strings.Contains(errOut.String(), "Timeout waiting for pipeline") {
+		t.Errorf("stderr missing timeout notice: %q", errOut.String())
+	}
+	if !strings.Contains(out.String(), "IN_PROGRESS") {
+		t.Errorf("stdout missing final pipeline payload: %q", out.String())
+	}
+}
+
+func TestPipelineViewWaitFailedReturnsErrSilent(t *testing.T) {
+	srv := fakePipelineServer(t, [2]string{"", ""}, [][2]string{{"COMPLETED", "FAILED"}})
+	defer srv.Close()
+
+	f, out, _ := pipelineTestFactory(srv.URL)
+	cmd := newViewCmd(f)
+	registerOutputFlags(cmd)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"1", "--wait"})
+
+	err := cmd.Execute()
+	if !errors.Is(err, cmdutil.ErrSilent) {
+		t.Fatalf("err = %v, want ErrSilent", err)
+	}
+	if !strings.Contains(out.String(), "FAILED") {
+		t.Errorf("stdout missing failed status: %q", out.String())
+	}
+}
+
+func TestPipelineRunWaitStructuredOutputPurity(t *testing.T) {
+	srv := fakePipelineServer(t, [2]string{"PENDING", ""}, [][2]string{{"COMPLETED", "SUCCESSFUL"}})
+	defer srv.Close()
+
+	f, out, _ := pipelineTestFactory(srv.URL)
+	cmd := newRunCmd(f)
+	registerOutputFlags(cmd)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--ref", "main", "--wait", "--json", "--interval", "1s", "--max-interval", "1s"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	var doc struct {
+		Pipeline struct {
+			State struct {
+				Name   string `json:"name"`
+				Result struct {
+					Name string `json:"name"`
+				} `json:"result"`
+			} `json:"state"`
+		} `json:"pipeline"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout is not a single clean JSON document: %v\n%q", err, out.String())
+	}
+	if doc.Pipeline.State.Result.Name != "SUCCESSFUL" {
+		t.Errorf("final result = %q, want SUCCESSFUL", doc.Pipeline.State.Result.Name)
+	}
+	if strings.Contains(out.String(), "Triggered") {
+		t.Errorf("trigger progress text leaked into structured stdout: %q", out.String())
+	}
+}
+
+func TestPipelineRunWaitNonTTYPrintsStatusOnce(t *testing.T) {
+	srv := fakePipelineServer(t, [2]string{"PENDING", ""}, [][2]string{{"COMPLETED", "SUCCESSFUL"}})
+	defer srv.Close()
+
+	f, out, _ := pipelineTestFactory(srv.URL)
+	cmd := newRunCmd(f)
+	registerOutputFlags(cmd)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--ref", "main", "--wait", "--interval", "1s", "--max-interval", "1s"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := strings.Count(out.String(), "COMPLETED SUCCESSFUL"); got != 1 {
+		t.Errorf("terminal status printed %d times, want exactly once:\n%q", got, out.String())
+	}
+	if got := strings.Count(out.String(), "Triggered pipeline"); got != 1 {
+		t.Errorf("trigger line printed %d times, want exactly once", got)
+	}
+}
+
+func TestWaitForPipelineCancellation(t *testing.T) {
+	var out, errOut bytes.Buffer
+	ios := &iostreams.IOStreams{Out: &out, ErrOut: &errOut}
+	cmd := &cobra.Command{Use: "x"}
+	cmd.SetContext(context.Background())
+
+	w := &waitOptions{Wait: true, Interval: time.Millisecond, MaxInterval: time.Millisecond,
+		waitForPoll: func(context.Context, time.Duration) error { return context.Canceled }}
+
+	p, timedOut, err := waitForPipeline(cmd, ios, w, pipelineInState("IN_PROGRESS", "", "RUNNING"), func(context.Context) (*bbcloud.Pipeline, error) {
+		t.Fatal("fetch must not run after cancellation")
+		return nil, nil
+	})
+	if err != nil || p != nil || timedOut {
+		t.Fatalf("got (%v, %v, %v), want (nil, false, nil) on cancellation", p, timedOut, err)
+	}
+	if !strings.Contains(errOut.String(), "Operation cancelled") {
+		t.Errorf("stderr missing cancellation notice: %q", errOut.String())
+	}
+}
+
+func TestWaitForPipelineTimeout(t *testing.T) {
+	var out, errOut bytes.Buffer
+	ios := &iostreams.IOStreams{Out: &out, ErrOut: &errOut}
+	cmd := &cobra.Command{Use: "x"}
+	cmd.SetContext(context.Background())
+
+	w := &waitOptions{Wait: true, Interval: time.Millisecond, MaxInterval: time.Millisecond,
+		waitForPoll: func(context.Context, time.Duration) error { return context.DeadlineExceeded }}
+
+	p, timedOut, err := waitForPipeline(cmd, ios, w, pipelineInState("IN_PROGRESS", "", "RUNNING"), func(context.Context) (*bbcloud.Pipeline, error) {
+		return pipelineInState("IN_PROGRESS", "", "RUNNING"), nil
+	})
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if p == nil || !timedOut {
+		t.Fatalf("got (%v, timedOut=%v), want last pipeline with timedOut=true", p, timedOut)
+	}
+	if !strings.Contains(errOut.String(), "Timeout waiting for pipeline") {
+		t.Errorf("stderr missing timeout notice: %q", errOut.String())
 	}
 }
