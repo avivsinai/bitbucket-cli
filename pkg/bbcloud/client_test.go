@@ -528,6 +528,54 @@ func TestCommitStatusesPathEncoding(t *testing.T) {
 	}
 }
 
+func TestCommitStatusesPagePreservesAndNormalizesNext(t *testing.T) {
+	var requests []string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []CommitStatus{{State: "SUCCESSFUL", Key: "ci"}},
+			"next":   server.URL + "/repositories/team/repo/commit/abc/statuses?pagelen=100&page=2",
+		})
+	}))
+	t.Cleanup(server.Close)
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := client.CommitStatusesPage(context.Background(), "team", "repo", "abc", 100, "")
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if len(page.Values) != 1 || page.Next != "/repositories/team/repo/commit/abc/statuses?pagelen=100&page=2" {
+		t.Fatalf("first page = %+v", page)
+	}
+	if _, err := client.CommitStatusesPage(context.Background(), "team", "repo", "abc", 100, page.Next); err != nil {
+		t.Fatalf("next page: %v", err)
+	}
+	if len(requests) != 2 || requests[0] != "/repositories/team/repo/commit/abc/statuses?pagelen=100" || requests[1] != "/repositories/team/repo/commit/abc/statuses?pagelen=100&page=2" {
+		t.Fatalf("requests = %v", requests)
+	}
+}
+
+func TestCommitStatusesPageRejectsForeignNext(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	t.Cleanup(server.Close)
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.CommitStatusesPage(context.Background(), "team", "repo", "abc", 100, "https://evil.example/steal")
+	if err == nil || requests.Load() != 0 {
+		t.Fatalf("error = %v, requests = %d; want rejection before HTTP", err, requests.Load())
+	}
+}
+
 func TestNormalizeUUID(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -689,6 +737,62 @@ func TestListRepositoriesPaginates(t *testing.T) {
 	}
 	if hits != 2 {
 		t.Fatalf("expected 2 requests, got %d", hits)
+	}
+}
+
+func TestListRepositoriesPageReturnsOpaqueContinuation(t *testing.T) {
+	var hits int32
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		switch count {
+		case 1:
+			if r.URL.Path != "/repositories/ws" || r.URL.Query().Get("pagelen") != "2" {
+				t.Fatalf("first request = %s?%s", r.URL.Path, r.URL.RawQuery)
+			}
+			_ = json.NewEncoder(w).Encode(repositoryListPage{
+				Values: []Repository{{Slug: "repo1"}, {Slug: "repo2"}},
+				Next:   serverURL + "/repositories/ws?pagelen=2&page=2",
+			})
+		case 2:
+			if r.URL.Path != "/repositories/ws" || r.URL.Query().Get("page") != "2" {
+				t.Fatalf("second request = %s?%s", r.URL.Path, r.URL.RawQuery)
+			}
+			_ = json.NewEncoder(w).Encode(repositoryListPage{Values: []Repository{{Slug: "repo3"}}})
+		default:
+			t.Fatalf("unexpected request %d", count)
+		}
+	}))
+	serverURL = server.URL
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := client.ListRepositoriesPage(context.Background(), "ws", 2, "")
+	if err != nil {
+		t.Fatalf("first ListRepositoriesPage: %v", err)
+	}
+	if len(first.Values) != 2 || first.Next == "" {
+		t.Fatalf("first page = %+v", first)
+	}
+	second, err := client.ListRepositoriesPage(context.Background(), "ws", 2, first.Next)
+	if err != nil {
+		t.Fatalf("second ListRepositoriesPage: %v", err)
+	}
+	if len(second.Values) != 1 || second.Values[0].Slug != "repo3" || second.Next != "" {
+		t.Fatalf("second page = %+v", second)
+	}
+}
+
+func TestListRepositoriesPageRejectsWrongEndpoint(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("unexpected request")
+	}))
+	if _, err := client.ListRepositoriesPage(context.Background(), "ws", 2, "/2.0/user?page=2"); err == nil || !strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("error = %v, want wrong-endpoint rejection", err)
 	}
 }
 

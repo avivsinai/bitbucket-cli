@@ -101,6 +101,56 @@ func TestListRepositoriesPaginates(t *testing.T) {
 	}
 }
 
+func TestListRepositoriesPageReturnsContinuation(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/1.0/projects/PROJ/repos" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("limit = %q, want 2", got)
+		}
+		if got := r.URL.Query().Get("start"); got != "7" {
+			t.Fatalf("start = %q, want 7", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(paged[Repository]{
+			Values:        []Repository{{Slug: "repo1"}, {Slug: "repo2"}},
+			IsLastPage:    false,
+			NextPageStart: 9,
+		})
+	}))
+
+	page, err := client.ListRepositoriesPage(context.Background(), "PROJ", 2, 7)
+	if err != nil {
+		t.Fatalf("ListRepositoriesPage: %v", err)
+	}
+	if len(page.Values) != 2 || page.Values[0].Slug != "repo1" {
+		t.Fatalf("values = %+v", page.Values)
+	}
+	if page.IsLast || page.NextStart != 9 {
+		t.Fatalf("continuation = isLast:%v next:%d, want false/9", page.IsLast, page.NextStart)
+	}
+}
+
+func TestListRepositoriesPagePreservesEmptyNonFinalContinuation(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(paged[Repository]{
+			Values:        []Repository{},
+			IsLastPage:    false,
+			NextPageStart: 9,
+		})
+	}))
+
+	page, err := client.ListRepositoriesPage(context.Background(), "PROJ", 2, 7)
+	if err != nil {
+		t.Fatalf("ListRepositoriesPage: %v", err)
+	}
+	if page.IsLast || page.NextStart != 9 {
+		t.Fatalf("empty continuation = isLast:%v next:%d, want false/9", page.IsLast, page.NextStart)
+	}
+}
+
 func TestListRepositoriesRespectsLimit(t *testing.T) {
 	var hits int32
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -270,6 +320,31 @@ func TestCommitStatusesRequiresSHA(t *testing.T) {
 	_, err := client.CommitStatuses(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for empty SHA")
+	}
+}
+
+func TestCommitStatusesPagePreservesUpstreamPagination(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/build-status/1.0/commits/abc123" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.URL.Query().Get("limit") != "100" || r.URL.Query().Get("start") != "25" {
+			t.Fatalf("query = %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values":        []map[string]any{{"state": "SUCCESSFUL", "key": "ci"}},
+			"isLastPage":    false,
+			"nextPageStart": 125,
+		})
+	}))
+
+	page, err := client.CommitStatusesPage(context.Background(), "abc123", 100, 25)
+	if err != nil {
+		t.Fatalf("CommitStatusesPage: %v", err)
+	}
+	if len(page.Values) != 1 || page.Values[0].Key != "ci" || page.IsLast || page.NextStart != 125 {
+		t.Fatalf("page = %+v", page)
 	}
 }
 

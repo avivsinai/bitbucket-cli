@@ -517,6 +517,34 @@ func TestListPullRequestCommentsFlattensReplies(t *testing.T) {
 	}
 }
 
+func TestListPullRequestCommentsPagePreservesActivityPagination(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/repo/pull-requests/42/activities" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.URL.Query().Get("limit") != "3" || r.URL.Query().Get("start") != "14" {
+			t.Fatalf("query = %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{
+				{"action": "APPROVED"},
+				{"action": "COMMENTED", "comment": map[string]any{"id": 9, "text": "note"}},
+			},
+			"isLastPage":    false,
+			"nextPageStart": 17,
+		})
+	}))
+
+	page, err := client.ListPullRequestCommentsPage(context.Background(), "PROJ", "repo", 42, 3, 14)
+	if err != nil {
+		t.Fatalf("ListPullRequestCommentsPage: %v", err)
+	}
+	if len(page.Values) != 1 || page.Values[0].ID != 9 || page.IsLast || page.NextStart != 17 {
+		t.Fatalf("page = %+v", page)
+	}
+}
+
 func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 	var gotPutPath string
 	var gotBody map[string]any
@@ -1029,6 +1057,33 @@ func TestListRepoPullRequestsPageRoleValidation(t *testing.T) {
 	}
 	if _, err := client.ListRepoPullRequestsPage(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{Role: "OWNER", Username: "a"}); err == nil || !strings.Contains(err.Error(), "unsupported participant role") {
 		t.Fatalf("bad role: err = %v, want unsupported role", err)
+	}
+}
+
+func TestPullRequestPagesPreserveEmptyNonFinalContinuation(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values":        []any{},
+			"isLastPage":    false,
+			"nextPageStart": 25,
+		})
+	}))
+
+	repoPage, err := client.ListRepoPullRequestsPage(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{Limit: 25})
+	if err != nil {
+		t.Fatalf("ListRepoPullRequestsPage: %v", err)
+	}
+	if repoPage.IsLast || repoPage.NextStart != 25 {
+		t.Fatalf("repo page = %+v, want empty non-final continuation", repoPage)
+	}
+
+	dashboardPage, err := client.ListDashboardPullRequestsPage(context.Background(), bbdc.DashboardPullRequestsOptions{Role: "AUTHOR", Limit: 25}, 0)
+	if err != nil {
+		t.Fatalf("ListDashboardPullRequestsPage: %v", err)
+	}
+	if dashboardPage.IsLast || dashboardPage.NextStart != 25 {
+		t.Fatalf("dashboard page = %+v, want empty non-final continuation", dashboardPage)
 	}
 }
 

@@ -114,21 +114,53 @@ func TestGetContextToolRoundTrip(t *testing.T) {
 		DefaultScope: "PROJ",
 		DefaultRepo:  "api",
 	}
-	session := connectPair(t, New(snap, "test"))
+	session := connectPair(t, newServer(snap, "test", &fakeRepositoryBackend{}))
 
 	tools, err := session.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	if len(tools.Tools) != 1 || tools.Tools[0].Name != "bkt_get_context" {
-		t.Fatalf("tools = %+v, want exactly bkt_get_context", tools.Tools)
+	if len(tools.Tools) != 5 {
+		t.Fatalf("tools = %+v, want context plus four C.2a tools", tools.Tools)
 	}
-	tool := tools.Tools[0]
-	if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-		t.Fatal("bkt_get_context must advertise ReadOnlyHint: true — v1 is read-only")
+	wantTools := map[string]bool{
+		"bkt_get_context":           false,
+		"bkt_list_repositories":     false,
+		"bkt_get_repository":        false,
+		"bkt_list_pull_requests":    false,
+		"bkt_list_my_pull_requests": false,
 	}
-	if tool.OutputSchema == nil {
-		t.Fatal("bkt_get_context has no output schema; typed contract missing")
+	var tool *mcp.Tool
+	for _, candidate := range tools.Tools {
+		if _, ok := wantTools[candidate.Name]; !ok {
+			t.Fatalf("unexpected tool %q", candidate.Name)
+		}
+		wantTools[candidate.Name] = true
+		if candidate.Annotations == nil || !candidate.Annotations.ReadOnlyHint {
+			t.Fatalf("%s must advertise ReadOnlyHint: true", candidate.Name)
+		}
+		if candidate.InputSchema == nil || candidate.OutputSchema == nil {
+			t.Fatalf("%s missing typed input/output schema", candidate.Name)
+		}
+		if (candidate.Name == "bkt_list_repositories" || candidate.Name == "bkt_get_repository") &&
+			!strings.Contains(candidate.Description, "untrusted Bitbucket-authored data") {
+			t.Fatalf("%s must describe repository fields as untrusted: %q", candidate.Name, candidate.Description)
+		}
+		if candidate.Name == "bkt_get_context" {
+			tool = candidate
+		}
+	}
+	for name, found := range wantTools {
+		if !found {
+			t.Fatalf("tool list missing %s", name)
+		}
+	}
+	if tool == nil {
+		t.Fatalf("tools = %+v, missing bkt_get_context", tools.Tools)
+		return
+	}
+	if !strings.Contains(tool.Description, "Cloud OAuth") || !strings.Contains(tool.Description, "restart") {
+		t.Fatalf("bkt_get_context description must document frozen Cloud OAuth expiry: %q", tool.Description)
 	}
 	schemaJSON, err := json.Marshal(tool.OutputSchema)
 	if err != nil {
@@ -165,8 +197,8 @@ func TestGetContextToolRoundTrip(t *testing.T) {
 	if info.Capabilities == nil {
 		t.Fatal("capabilities must be a non-null array (empty is fine until platform features land)")
 	}
-	if !strings.Contains(string(raw), `"capabilities":[]`) {
-		t.Fatalf("capabilities must serialize as an empty array, got: %s", raw)
+	if !strings.Contains(string(raw), `"capabilities":["my_prs.role.reviewer"]`) {
+		t.Fatalf("DC capabilities must advertise cross-repository reviewer support, got: %s", raw)
 	}
 	for _, s := range []string{"token", "Token", "secret"} {
 		if string(raw) != "" && json.Valid(raw) && containsInsensitive(raw, s) {

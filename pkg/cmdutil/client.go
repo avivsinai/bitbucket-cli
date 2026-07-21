@@ -44,6 +44,21 @@ func NewDCClient(host *config.Host) (*bbdc.Client, error) {
 // When the host uses OAuth authentication, a TokenRefresher is wired to
 // transparently refresh expired tokens on 401.
 func NewCloudClient(host *config.Host) (*bbcloud.Client, error) {
+	return newCloudClient(host, true)
+}
+
+// NewFrozenCloudClient constructs a Bitbucket Cloud client that uses exactly
+// the supplied credential for its lifetime. OAuth credentials use bearer auth,
+// but the client never reopens the credential store or refreshes on 401.
+func NewFrozenCloudClient(host *config.Host) (*bbcloud.Client, error) {
+	if host == nil {
+		return nil, fmt.Errorf("missing host configuration")
+	}
+	frozen := *host
+	return newCloudClient(&frozen, false)
+}
+
+func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client, error) {
 	if host == nil {
 		return nil, fmt.Errorf("missing host configuration")
 	}
@@ -62,11 +77,13 @@ func NewCloudClient(host *config.Host) (*bbcloud.Client, error) {
 		},
 	}
 
-	if host.AuthMethod == "oauth" && secret.TokenFromEnv() == "" {
+	if host.AuthMethod == "oauth" && (!enableOAuthRefresh || secret.TokenFromEnv() == "") {
+		opts.AuthMethod = "bearer"
+	}
+	if enableOAuthRefresh && host.AuthMethod == "oauth" && secret.TokenFromEnv() == "" {
 		// Keyring-stored OAuth tokens use Bearer auth + auto-refresh.
 		// When BKT_TOKEN overrides, the caller controls the token type
 		// and auth method defaults to basic (matching API-token behavior).
-		opts.AuthMethod = "bearer"
 		hostKey, err := HostKeyFromURL(host.BaseURL)
 		if err != nil {
 			return nil, fmt.Errorf("resolve host key: %w", err)

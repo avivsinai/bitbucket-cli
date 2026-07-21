@@ -401,7 +401,10 @@ func (c *Client) Do(req *http.Request, v any) error {
 		}
 
 		c.updateRateLimit(resp)
-		c.applyAdaptiveThrottle()
+		if err := c.applyAdaptiveThrottle(req.Context()); err != nil {
+			_ = resp.Body.Close()
+			return err
+		}
 
 		if c.debug {
 			fmt.Fprintf(os.Stderr, "<-- %d %s\n", resp.StatusCode, http.StatusText(resp.StatusCode))
@@ -533,18 +536,37 @@ func decodeError(resp *http.Response) error {
 			msg = "CAPTCHA verification required: " + msg
 		}
 		msg = withBitbucketCloudAuthHint(msg)
-		return fmt.Errorf("%s: %s", resp.Status, msg)
+		return newHTTPError(resp, msg)
 	}
 
 	if msg := strings.TrimSpace(cloudPayload.Error.Message); msg != "" {
-		return fmt.Errorf("%s: %s", resp.Status, withBitbucketCloudAuthHint(msg))
+		return newHTTPError(resp, withBitbucketCloudAuthHint(msg))
 	}
 
 	if err == nil && len(data) > 0 {
-		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(data)))
+		return newHTTPError(resp, strings.TrimSpace(string(data)))
 	}
 
-	return fmt.Errorf("%s", resp.Status)
+	return newHTTPError(resp)
+}
+
+// HTTPError preserves the response status code for callers that need stable
+// classification while keeping the historical error text unchanged.
+type HTTPError struct {
+	StatusCode int
+	text       string
+}
+
+func (e *HTTPError) Error() string {
+	return e.text
+}
+
+func newHTTPError(resp *http.Response, message ...string) *HTTPError {
+	text := resp.Status
+	if len(message) > 0 {
+		text += ": " + message[0]
+	}
+	return &HTTPError{StatusCode: resp.StatusCode, text: text}
 }
 
 // isCaptchaException checks if the exception name indicates a CAPTCHA-locked account.
@@ -778,23 +800,30 @@ func (c *Client) updateRateLimit(resp *http.Response) {
 	c.rateMu.Unlock()
 }
 
-func (c *Client) applyAdaptiveThrottle() {
+func (c *Client) applyAdaptiveThrottle(ctx context.Context) error {
 	c.rateMu.RLock()
 	rl := c.rate
 	c.rateMu.RUnlock()
 
 	if rl.Remaining > 1 || rl.Reset.IsZero() {
-		return
+		return nil
 	}
 
 	sleep := time.Until(rl.Reset)
 	if sleep <= 0 {
-		return
+		return nil
 	}
 	if sleep > 5*time.Second {
 		sleep = 5 * time.Second
 	}
-	time.Sleep(sleep)
+	timer := time.NewTimer(sleep)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // MultipartFile represents a file for multipart/form-data upload.

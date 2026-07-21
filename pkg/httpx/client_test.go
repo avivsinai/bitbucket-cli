@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -206,6 +207,37 @@ func TestClientBackoffRespectsContextCancellation(t *testing.T) {
 	}
 }
 
+func TestAdaptiveThrottleRespectsContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-RateLimit-Limit", "100")
+		w.Header().Set("X-RateLimit-Remaining", "1")
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(2*time.Second).Unix(), 10))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(server.Close)
+	client, err := New(Options{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := client.NewRequest(ctx, http.MethodGet, "/throttled", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	time.AfterFunc(25*time.Millisecond, cancel)
+	start := time.Now()
+	err = client.Do(req, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Do error = %T %v, want context.Canceled", err, err)
+	}
+	if elapsed := time.Since(start); elapsed >= 250*time.Millisecond {
+		t.Fatalf("cancellation did not interrupt adaptive throttle: %v", elapsed)
+	}
+}
+
 func TestClientNewRequestNoDoubledBasePath(t *testing.T) {
 	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
 	if err != nil {
@@ -379,6 +411,12 @@ func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
 			body:    "",
 			wantMsg: "403 Forbidden",
 		},
+		{
+			name:    "whitespace body preserves historical separator",
+			status:  http.StatusForbidden,
+			body:    " \n",
+			wantMsg: "403 Forbidden: ",
+		},
 	}
 
 	for _, tt := range tests {
@@ -477,6 +515,10 @@ func TestDecodeErrorBitbucketCloudTokenHint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Atlassian account email") {
 		t.Fatalf("expected username hint, got %v", err)
+	}
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("error = %T %v, want typed HTTPError status 401", err, err)
 	}
 }
 
@@ -1220,6 +1262,10 @@ func TestTokenRefresherNotCalledTwice(t *testing.T) {
 	err = client.Do(req, nil)
 	if err == nil {
 		t.Fatal("expected error after two 401s")
+	}
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("error after refresh = %T %v, want typed HTTPError status 401", err, err)
 	}
 	if refreshCalls != 1 {
 		t.Fatalf("expected TokenRefresher called once, got %d", refreshCalls)

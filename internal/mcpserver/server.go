@@ -15,9 +15,9 @@ import (
 )
 
 // Snapshot is the frozen effective target resolved once at server startup.
-// It is a deep copy: later config edits require a server restart, and the
-// working directory never influences it (resolution skips git-remote
-// default detection).
+// It is a deep copy: later config or credential edits require a server restart,
+// and the working directory never influences it (resolution skips git-remote
+// default detection). Cloud OAuth access tokens do not refresh after startup.
 type Snapshot struct {
 	ContextName  string
 	Platform     string // "dc" or "cloud"
@@ -53,40 +53,47 @@ func ResolveSnapshot(f *cmdutil.Factory, contextOverride string) (*Snapshot, err
 	}, nil
 }
 
-// ContextInfo is the bkt_get_context result DTO. Field shapes are part of
-// the frozen v1 contract; never include credentials.
-type ContextInfo struct {
-	Platform     string   `json:"platform" jsonschema:"the pinned Bitbucket platform: dc (Data Center) or cloud"`
-	HostLabel    string   `json:"host_label" jsonschema:"the bkt config host entry this server is pinned to"`
-	DefaultScope string   `json:"default_scope,omitempty" jsonschema:"default scope (DC project key or Cloud workspace) used when a tool call omits the repository locator"`
-	DefaultRepo  string   `json:"default_repo,omitempty" jsonschema:"default repository slug used when a tool call omits the repository locator"`
-	Capabilities []string `json:"capabilities" jsonschema:"capability identifiers for the tools and roles this server supports on the pinned platform"`
-}
-
 // New builds the MCP server for the given frozen snapshot. All registered
 // tools are read-only in v1; addReadOnlyTool is the single registration path
 // and stamps truthful annotations.
-func New(snap *Snapshot, version string) *mcp.Server {
+func New(snap *Snapshot, version string) (*mcp.Server, error) {
+	backend, err := newPlatformBackend(snap)
+	if err != nil {
+		return nil, err
+	}
+	return newFullServer(snap, version, backend), nil
+}
+
+func newServer(snap *Snapshot, version string, backend platformBackend) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "bkt", Version: version}, nil)
-	registerGetContext(server, snap)
+	registry := newToolRegistry(server)
+	registerBaseTools(registry, snap, backend)
 	return server
 }
 
-// addReadOnlyTool registers a tool with truthful read-only annotations. Every
-// v1 tool must go through here; the write wave adds a separate gated path.
-func addReadOnlyTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	if tool.Annotations == nil {
-		tool.Annotations = &mcp.ToolAnnotations{}
-	}
-	tool.Annotations.ReadOnlyHint = true
-	mcp.AddTool(server, tool, handler)
+func registerBaseTools(registry *toolRegistry, snap *Snapshot, backend platformBackend) {
+	registerGetContext(registry, snap)
+	registerRepositoryTools(registry, snap, backend)
+	registerPullRequestListTools(registry, snap, backend)
 }
 
-// capabilities lists platform feature identifiers (e.g. my_prs.role.reviewer)
-// supported by the pinned platform. Empty until such features land in wave C;
-// identifiers are part of the public contract and must not be invented here.
+func newFullServer(snap *Snapshot, version string, backend fullPlatformBackend) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{Name: "bkt", Version: version}, nil)
+	registerFullTools(newToolRegistry(server), snap, backend)
+	return server
+}
+
+func registerFullTools(registry *toolRegistry, snap *Snapshot, backend fullPlatformBackend) {
+	registerBaseTools(registry, snap, backend)
+	registerPullRequestDetailTools(registry, snap, backend)
+}
+
+// capabilities enumerates only discriminating platform features. Universal
+// behavior is implied by the registered tool and is not repeated here.
 func capabilities(snap *Snapshot) []string {
-	_ = snap
+	if snap != nil && snap.Platform == "dc" {
+		return []string{"my_prs.role.reviewer"}
+	}
 	return []string{}
 }
 
@@ -124,13 +131,16 @@ var contextInfoSchema = &jsonschema.Schema{
 
 type getContextArgs struct{}
 
-func registerGetContext(server *mcp.Server, snap *Snapshot) {
-	addReadOnlyTool(server, &mcp.Tool{
+func registerGetContext(registry *toolRegistry, snap *Snapshot) {
+	addReadOnlyTool(registry, &mcp.Tool{
 		Name: "bkt_get_context",
 		Description: "Describe the Bitbucket target this server is pinned to: " +
 			"platform (dc or cloud), host label, default repository scope/slug, " +
-			"and the capabilities available here. Never returns credentials.",
+			"and the capabilities available here. Never returns credentials. " +
+			"For Cloud OAuth, the access token is frozen at startup; restart the server after it expires.",
 		OutputSchema: contextInfoSchema,
+	}, toolDocumentation{
+		Notes: []string{"Cloud OAuth access tokens are frozen at startup; after expiry, restart the MCP server."},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args getContextArgs) (*mcp.CallToolResult, ContextInfo, error) {
 		return nil, ContextInfo{
 			Platform:     snap.Platform,

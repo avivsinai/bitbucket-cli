@@ -2,6 +2,7 @@ package bbcloud
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -28,19 +29,21 @@ type RepositoryRef struct {
 
 // PullRequest models a Bitbucket Cloud pull request.
 type PullRequest struct {
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	State     string `json:"state"`
-	Draft     bool   `json:"draft"`
-	CreatedOn string `json:"created_on"`
-	UpdatedOn string `json:"updated_on"`
-	Author    struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	State       string `json:"state"`
+	Draft       bool   `json:"draft"`
+	CreatedOn   string `json:"created_on"`
+	UpdatedOn   string `json:"updated_on"`
+	Author      struct {
 		DisplayName string `json:"display_name"`
 		Username    string `json:"username"`
 		UUID        string `json:"uuid"`
 		AccountID   string `json:"account_id"`
 	} `json:"author"`
-	Source struct {
+	AuthorNickname string `json:"-"`
+	Source         struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
@@ -53,6 +56,9 @@ type PullRequest struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
+		Commit struct {
+			Hash string `json:"hash"`
+		} `json:"commit"`
 		Repository RepositoryRef `json:"repository"`
 	} `json:"destination"`
 	Links struct {
@@ -60,10 +66,41 @@ type PullRequest struct {
 			Href string `json:"href"`
 		} `json:"html"`
 	} `json:"links"`
-	Reviewers []User `json:"reviewers"`
-	Summary   struct {
+	Reviewers    []User                   `json:"reviewers"`
+	Participants []PullRequestParticipant `json:"participants,omitempty"`
+	Summary      struct {
 		Raw string `json:"raw"`
 	} `json:"summary"`
+}
+
+// UnmarshalJSON preserves the current anonymous Author field shape for
+// source compatibility while retaining Cloud's nickname field separately.
+func (p *PullRequest) UnmarshalJSON(data []byte) error {
+	type pullRequestAlias PullRequest
+	var decoded pullRequestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var extra struct {
+		Author struct {
+			Nickname string `json:"nickname"`
+		} `json:"author"`
+	}
+	if err := json.Unmarshal(data, &extra); err != nil {
+		return err
+	}
+	*p = PullRequest(decoded)
+	p.AuthorNickname = extra.Author.Nickname
+	return nil
+}
+
+// PullRequestParticipant retains the approval state Bitbucket Cloud returns
+// separately from the pull request's reviewer identities.
+type PullRequestParticipant struct {
+	User     User   `json:"user"`
+	Role     string `json:"role,omitempty"`
+	State    string `json:"state,omitempty"`
+	Approved *bool  `json:"approved,omitempty"`
 }
 
 // PullRequestListOptions configure PR listings. Mine and Reviewer carry a
@@ -113,9 +150,7 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSl
 
 	var params []string
 	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-	}
+	params = append(params, pullRequestStateParams(opts.State)...)
 	if q := pullRequestQFilter(opts); q != "" {
 		params = append(params, "q="+url.QueryEscape(q))
 	}
@@ -127,6 +162,17 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSl
 	)
 
 	return c.fetchPullRequestsPage(ctx, path)
+}
+
+func pullRequestStateParams(raw string) []string {
+	state := strings.ToUpper(strings.TrimSpace(raw))
+	if state == "" {
+		return nil
+	}
+	if state == "ALL" {
+		return []string{"state=OPEN", "state=MERGED", "state=DECLINED"}
+	}
+	return []string{"state=" + url.QueryEscape(state)}
 }
 
 // pullRequestQFilter builds the upstream BBQL q parameter from the identity
@@ -729,6 +775,60 @@ type PullRequestCommentResolution map[string]any
 type pullRequestCommentListPage struct {
 	Values []PullRequestComment `json:"values"`
 	Next   string               `json:"next"`
+}
+
+// PullRequestCommentsPage is one bounded Cloud comments page. Next is an
+// opaque continuation reference; callers must pass it back to this method.
+type PullRequestCommentsPage struct {
+	Values []PullRequestComment
+	Next   string
+}
+
+// ListPullRequestCommentsPage fetches one comments page without flattening
+// the rest of the sequence.
+func (c *Client) ListPullRequestCommentsPage(ctx context.Context, workspace, repoSlug string, prID, limit int, next string) (*PullRequestCommentsPage, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if prID <= 0 {
+		return nil, fmt.Errorf("pull request id must be positive")
+	}
+
+	endpoint := fmt.Sprintf("/repositories/%s/%s/pullrequests/%d/comments",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		prID,
+	)
+	path := endpoint
+	if next != "" {
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		path = normalized
+	} else {
+		if limit <= 0 || limit > 100 {
+			limit = 100
+		}
+		path += fmt.Sprintf("?pagelen=%d", limit)
+	}
+
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var page pullRequestCommentListPage
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
+	normalizedNext := ""
+	if page.Next != "" {
+		normalizedNext, err = normalizeNextRef(page.Next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &PullRequestCommentsPage{Values: page.Values, Next: normalizedNext}, nil
 }
 
 // ListPullRequestComments lists comments on a pull request.

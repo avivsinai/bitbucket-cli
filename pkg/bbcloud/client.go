@@ -76,6 +76,7 @@ func New(opts Options) (*Client, error) {
 type User struct {
 	UUID      string `json:"uuid"`
 	Username  string `json:"username"`
+	Nickname  string `json:"nickname,omitempty"`
 	AccountID string `json:"account_id"`
 	Display   string `json:"display_name"`
 }
@@ -115,6 +116,9 @@ type Repository struct {
 	Project struct {
 		Key string `json:"key"`
 	} `json:"project"`
+	MainBranch struct {
+		Name string `json:"name"`
+	} `json:"mainbranch,omitempty"`
 }
 
 // PipelineResult is a Bitbucket pipeline outcome object.
@@ -258,32 +262,25 @@ type repositoryListPage struct {
 	Next   string       `json:"next"`
 }
 
+// RepositoriesPage is one bounded page of repositories. Next is an opaque
+// reference to the following page; empty means the last page.
+type RepositoriesPage struct {
+	Values []Repository
+	Next   string
+}
+
 // ListRepositories enumerates repositories for the workspace.
 func (c *Client) ListRepositories(ctx context.Context, workspace string, limit int) ([]Repository, error) {
-	if workspace == "" {
-		return nil, fmt.Errorf("workspace is required")
-	}
-
 	pageLen := limit
 	if pageLen <= 0 || pageLen > 100 {
 		pageLen = 20
 	}
 
-	path := fmt.Sprintf("/repositories/%s?pagelen=%d",
-		url.PathEscape(workspace),
-		pageLen,
-	)
-
 	var repos []Repository
-
-	for path != "" {
-		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	next := ""
+	for {
+		page, err := c.ListRepositoriesPage(ctx, workspace, pageLen, next)
 		if err != nil {
-			return nil, err
-		}
-
-		var page repositoryListPage
-		if err := c.http.Do(req, &page); err != nil {
 			return nil, err
 		}
 
@@ -297,16 +294,52 @@ func (c *Client) ListRepositories(ctx context.Context, workspace string, limit i
 		if page.Next == "" {
 			break
 		}
-
-		// Bitbucket returns absolute URLs for next; reuse as-is.
-		pathURL, err := url.Parse(page.Next)
-		if err != nil {
-			return nil, err
-		}
-		path = pathURL.RequestURI()
+		next = page.Next
 	}
 
 	return repos, nil
+}
+
+// ListRepositoriesPage fetches one repository page and preserves the opaque
+// upstream continuation reference for bounded consumers.
+func (c *Client) ListRepositoriesPage(ctx context.Context, workspace string, limit int, next string) (*RepositoriesPage, error) {
+	if workspace == "" {
+		return nil, fmt.Errorf("workspace is required")
+	}
+
+	endpoint := fmt.Sprintf("/repositories/%s", url.PathEscape(workspace))
+	path := ""
+	if next != "" {
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		path = normalized
+	} else {
+		if limit <= 0 || limit > 100 {
+			limit = 20
+		}
+		path = fmt.Sprintf("%s?pagelen=%d", endpoint, limit)
+	}
+
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var page repositoryListPage
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
+
+	nextRef := ""
+	if page.Next != "" {
+		nextURL, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, err
+		}
+		nextRef = nextURL.RequestURI()
+	}
+	return &RepositoriesPage{Values: page.Values, Next: nextRef}, nil
 }
 
 // GetRepository retrieves repository details.
@@ -698,6 +731,63 @@ func (c *Client) CommitStatuses(ctx context.Context, workspace, repoSlug, commit
 	return statuses, nil
 }
 
+// CommitStatusesPage is one bounded Cloud commit-status page. Next is an
+// opaque continuation reference; callers must pass it back to this method.
+type CommitStatusesPage struct {
+	Values []CommitStatus
+	Next   string
+}
+
+// CommitStatusesPage fetches one commit-status page without flattening the
+// rest of the sequence.
+func (c *Client) CommitStatusesPage(ctx context.Context, workspace, repoSlug, commit string, limit int, next string) (*CommitStatusesPage, error) {
+	if workspace == "" || repoSlug == "" {
+		return nil, fmt.Errorf("workspace and repository slug are required")
+	}
+	if commit == "" {
+		return nil, fmt.Errorf("commit SHA is required")
+	}
+
+	endpoint := fmt.Sprintf("/repositories/%s/%s/commit/%s/statuses",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+		url.PathEscape(commit),
+	)
+	path := endpoint
+	if next != "" {
+		normalized, err := normalizeNextRef(next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		path = normalized
+	} else {
+		if limit <= 0 || limit > 100 {
+			limit = 100
+		}
+		path += fmt.Sprintf("?pagelen=%d", limit)
+	}
+
+	req, err := c.http.NewRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var page struct {
+		Values []CommitStatus `json:"values"`
+		Next   string         `json:"next"`
+	}
+	if err := c.http.Do(req, &page); err != nil {
+		return nil, err
+	}
+	normalizedNext := ""
+	if page.Next != "" {
+		normalizedNext, err = normalizeNextRef(page.Next, endpoint)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &CommitStatusesPage{Values: page.Values, Next: normalizedNext}, nil
+}
+
 // WorkspacePullRequestsOptions configures workspace-level PR listings.
 type WorkspacePullRequestsOptions struct {
 	State string
@@ -733,9 +823,7 @@ func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, u
 
 	var params []string
 	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	if state := strings.TrimSpace(opts.State); state != "" && !strings.EqualFold(state, "all") {
-		params = append(params, "state="+url.QueryEscape(strings.ToUpper(state)))
-	}
+	params = append(params, pullRequestStateParams(opts.State)...)
 
 	path := fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
 		url.PathEscape(workspace),
