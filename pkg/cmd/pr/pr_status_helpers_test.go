@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -192,20 +193,45 @@ func prGitHelperName() string {
 	return "git"
 }
 
+func TestPRGitHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_PR_GIT_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	args := prTestArgsAfterDoubleDash(os.Args)
+	if len(args) >= 2 && args[0] == "remote" && args[1] == "-v" {
+		_, _ = os.Stdout.WriteString(os.Getenv("PR_TEST_GIT_REMOTE_V_OUTPUT"))
+		os.Exit(0)
+	}
+	if len(args) >= 2 && args[0] == "remote" && args[1] == "get-url" {
+		_, _ = os.Stdout.WriteString(os.Getenv("PR_TEST_GIT_REMOTE_GET_URL_OUTPUT"))
+		os.Exit(0)
+	}
+	os.Exit(1)
+}
+
+func prTestArgsAfterDoubleDash(args []string) []string {
+	for i, arg := range args {
+		if arg == "--" {
+			return args[i+1:]
+		}
+	}
+	return nil
+}
+
 func writePRGitHelper(t *testing.T, target string) {
 	t.Helper()
 
 	if runtime.GOOS == "windows" {
+		exe, err := os.Executable()
+		if err != nil {
+			t.Fatalf("os.Executable: %v", err)
+		}
+		exe = strings.ReplaceAll(exe, "%", "%%")
 		script := "@echo off\r\n" +
-			"if \"%1\"==\"remote\" if \"%2\"==\"-v\" (\r\n" +
-			"  <nul set /p =%PR_TEST_GIT_REMOTE_V_OUTPUT%\r\n" +
-			"  exit /b 0\r\n" +
-			")\r\n" +
-			"if \"%1\"==\"remote\" if \"%2\"==\"get-url\" (\r\n" +
-			"  <nul set /p =%PR_TEST_GIT_REMOTE_GET_URL_OUTPUT%\r\n" +
-			"  exit /b 0\r\n" +
-			")\r\n" +
-			"exit /b 1\r\n"
+			"set GO_WANT_PR_GIT_HELPER_PROCESS=1\r\n" +
+			"\"" + exe + "\" -test.run=TestPRGitHelperProcess -- %*\r\n" +
+			"exit /b %ERRORLEVEL%\r\n"
 		if err := os.WriteFile(target, []byte(script), 0o644); err != nil {
 			t.Fatalf("WriteFile(%s): %v", target, err)
 		}

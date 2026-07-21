@@ -5,6 +5,11 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- `make build`, `make clean`, and `make test` now run on Windows GNU Make
+  using cmd.exe-pinned recipes and Windows-safe test helpers, while keeping
+  the existing Unix build and release script paths intact. A `windows-latest`
+  CI job verifies the Windows build and test path.
 
 ## [0.29.0] - 2026-07-21
 ### Added
