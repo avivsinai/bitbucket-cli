@@ -238,6 +238,15 @@ jobs:
             exit 1
           fi
 
+      - name: Validate WinGet publishing token
+        env:
+          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$WINGET_GITHUB_TOKEN" ]; then
+            echo "::error::WINGET_GITHUB_TOKEN must be set as a repository secret to publish the WinGet manifest PR"
+            exit 1
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
@@ -247,6 +256,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
           BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
           BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
 
