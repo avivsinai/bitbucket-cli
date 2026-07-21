@@ -367,17 +367,25 @@ func repoPullRequestParams(opts RepoPullRequestsOptions) ([]string, error) {
 // ListPullRequests lists pull requests for a repository, flattening pages up
 // to limit.
 func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, state string, limit int) ([]PullRequest, error) {
+	return c.ListPullRequestsWithOptions(ctx, projectKey, repoSlug, RepoPullRequestsOptions{State: state, Limit: limit})
+}
+
+// ListPullRequestsWithOptions flattens repository pull requests up to
+// opts.Limit, applying the state, participant role, and username filters
+// upstream on every page so they are honored before the limit. Here opts.Limit
+// is the total result cap (not a per-page size); paging is managed internally
+// and terminates on the last or an empty page. opts.Start is the initial page
+// offset.
+func (c *Client) ListPullRequestsWithOptions(ctx context.Context, projectKey, repoSlug string, opts RepoPullRequestsOptions) ([]PullRequest, error) {
 	const defaultPageSize = 25
 
-	var (
-		start = 0
-		all   []PullRequest
-	)
+	var all []PullRequest
+	start := opts.Start
 
 	for {
 		pageSize := defaultPageSize
-		if limit > 0 {
-			remaining := limit - len(all)
+		if opts.Limit > 0 {
+			remaining := opts.Limit - len(all)
 			if remaining <= 0 {
 				break
 			}
@@ -387,9 +395,11 @@ func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, sta
 		}
 
 		page, err := c.ListRepoPullRequestsPage(ctx, projectKey, repoSlug, RepoPullRequestsOptions{
-			State: state,
-			Limit: pageSize,
-			Start: start,
+			State:    opts.State,
+			Role:     opts.Role,
+			Username: opts.Username,
+			Limit:    pageSize,
+			Start:    start,
 		})
 		if err != nil {
 			return nil, err
@@ -403,8 +413,8 @@ func (c *Client) ListPullRequests(ctx context.Context, projectKey, repoSlug, sta
 		start = page.NextStart
 	}
 
-	if limit > 0 && len(all) > limit {
-		all = all[:limit]
+	if opts.Limit > 0 && len(all) > opts.Limit {
+		all = all[:opts.Limit]
 	}
 
 	return all, nil

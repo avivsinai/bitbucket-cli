@@ -102,7 +102,7 @@ func TestListRequiresMineWithoutRepo(t *testing.T) {
 			},
 			args:          []string{},
 			expectError:   true,
-			errorContains: "--mine is required when not specifying a repository",
+			errorContains: "--mine or --reviewer is required when not specifying a repository",
 		},
 		{
 			name: "cloud without repo and without mine",
@@ -6180,5 +6180,195 @@ func TestCreateCloudWithDefaultReviewersCurrentUserError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "resolving current user") {
 		t.Errorf("error = %q, want it to contain 'resolving current user'", err.Error())
+	}
+}
+
+func newReviewerTestFactory(cfg *config.Config, stdout, stderr *strings.Builder) *cmdutil.Factory {
+	return &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: stderr},
+		Config:         func() (*config.Config, error) { return cfg, nil },
+	}
+}
+
+func TestListReviewerAndMineAreMutuallyExclusive(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo1"}},
+		Hosts:         map[string]*config.Host{"main": {Kind: "dc", BaseURL: "https://example.invalid", Username: "u", Token: "t"}},
+	}
+	var out, errb strings.Builder
+	cmd := newListCmd(newReviewerTestFactory(cfg, &out, &errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"--mine", "--reviewer"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("err = %v, want mutual-exclusivity error", err)
+	}
+}
+
+func TestListDashboardDCReviewerUsesReviewerRole(t *testing.T) {
+	var gotRole string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/dashboard/pull-requests") {
+			gotRole = r.URL.Query().Get("role")
+			_ = json.NewEncoder(w).Encode(map[string]any{"values": []bbdc.PullRequest{{ID: 5, Title: "Review me", State: "OPEN"}}, "isLastPage": true})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "main", ProjectKey: "PROJ"}},
+		Hosts:         map[string]*config.Host{"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "t"}},
+	}
+	var out, errb strings.Builder
+	cmd := newListCmd(newReviewerTestFactory(cfg, &out, &errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"--reviewer"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotRole != "REVIEWER" {
+		t.Fatalf("dashboard role = %q, want REVIEWER (upstream filter)", gotRole)
+	}
+	if !strings.Contains(out.String(), "#5") {
+		t.Fatalf("output missing PR #5: %s", out.String())
+	}
+}
+
+func TestListReviewerRequiresRepositoryOnCloud(t *testing.T) {
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "cloud", Workspace: "workspace"}},
+		Hosts:         map[string]*config.Host{"cloud": {Kind: "cloud", BaseURL: "https://example.invalid", Username: "u", Token: "t"}},
+	}
+	var out, errb strings.Builder
+	cmd := newListCmd(newReviewerTestFactory(cfg, &out, &errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"--reviewer"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "requires a repository") {
+		t.Fatalf("err = %v, want Cloud reviewer-requires-repo error", err)
+	}
+}
+
+func TestListRepositoryCloudReviewerUsesReviewerBBQL(t *testing.T) {
+	origWd, _ := os.Getwd()
+	tmpDir := t.TempDir()
+	_ = os.Chdir(tmpDir)
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	const userUUID = "{550e8400-e29b-41d4-a716-446655440000}"
+	var gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/user":
+			_ = json.NewEncoder(w).Encode(map[string]any{"uuid": userUUID, "account_id": "557058:12345678-1234-1234-1234-123456789abc"})
+		case "/repositories/workspace/repo1/pullrequests":
+			gotQuery = r.URL.Query().Get("q")
+			_ = json.NewEncoder(w).Encode(map[string]any{"values": []map[string]any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "cloud", Workspace: "workspace", DefaultRepo: "repo1"}},
+		Hosts:         map[string]*config.Host{"cloud": {Kind: "cloud", BaseURL: server.URL, Username: "email@example.com", Token: "t"}},
+	}
+	var out, errb strings.Builder
+	cmd := newListCmd(newReviewerTestFactory(cfg, &out, &errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"--reviewer"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotQuery != `reviewers.uuid = "`+userUUID+`"` {
+		t.Fatalf("q = %q, want reviewers.uuid upstream filter", gotQuery)
+	}
+}
+
+func TestListRepositoryDCReviewerFiltersUpstreamBeforeLimit(t *testing.T) {
+	var gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/pull-requests") {
+			gotQuery = r.URL.RawQuery
+			// The server applies the participant filter, so it returns only the
+			// reviewer's PRs; the CLI must not re-filter or truncate before it.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values":     []bbdc.PullRequest{{ID: 1, Title: "Review me", State: "OPEN"}},
+				"isLastPage": true,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo1"}},
+		Hosts:         map[string]*config.Host{"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "t"}},
+	}
+	var out, errb strings.Builder
+	cmd := newListCmd(newReviewerTestFactory(cfg, &out, &errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"--reviewer", "--limit", "5"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The REVIEWER participant filter and username must be encoded in the
+	// upstream request, applied by Bitbucket before the limit.
+	for _, want := range []string{"role.1=REVIEWER", "username.1=testuser", "limit=5"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Fatalf("upstream query %q missing %q", gotQuery, want)
+		}
+	}
+	if !strings.Contains(out.String(), "#1") {
+		t.Fatalf("output missing PR #1: %s", out.String())
+	}
+}
+
+func TestListRepositoryCloudReviewerMissingIdentityError(t *testing.T) {
+	origWd, _ := os.Getwd()
+	tmpDir := t.TempDir()
+	_ = os.Chdir(tmpDir)
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/user" {
+			// No uuid or account_id — cannot form a stable reviewer identity.
+			_ = json.NewEncoder(w).Encode(map[string]any{"username": "legacy-name"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "cloud", Workspace: "workspace", DefaultRepo: "repo1"}},
+		Hosts:         map[string]*config.Host{"cloud": {Kind: "cloud", BaseURL: server.URL, Username: "email@example.com", Token: "t"}},
+	}
+	var out, errb strings.Builder
+	cmd := newListCmd(newReviewerTestFactory(cfg, &out, &errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"--reviewer"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "stable Bitbucket Cloud user identity") {
+		t.Fatalf("err = %v, want stable-identity error", err)
+	}
+	if strings.Contains(err.Error(), "--mine") {
+		t.Fatalf("reviewer error must not reference --mine: %v", err)
 	}
 }

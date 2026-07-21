@@ -1108,3 +1108,77 @@ func TestListDashboardPullRequestsPageEncodesRole(t *testing.T) {
 		}
 	}
 }
+
+func TestListPullRequestsWithOptionsAppliesFiltersAndPaginates(t *testing.T) {
+	var queries []string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("start") {
+		case "0":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values":        []map[string]any{{"id": 1}, {"id": 2}},
+				"isLastPage":    false,
+				"nextPageStart": 2,
+			})
+		case "2":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values":     []map[string]any{{"id": 3}},
+				"isLastPage": true,
+			})
+		default:
+			t.Fatalf("unexpected start in query %q", r.URL.RawQuery)
+		}
+	}))
+
+	prs, err := client.ListPullRequestsWithOptions(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{
+		State:    "OPEN",
+		Role:     "REVIEWER",
+		Username: "alice",
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatalf("ListPullRequestsWithOptions: %v", err)
+	}
+	if len(prs) != 3 || prs[0].ID != 1 || prs[2].ID != 3 {
+		t.Fatalf("prs = %+v, want three flattened across pages", prs)
+	}
+	if len(queries) != 2 {
+		t.Fatalf("made %d requests, want 2 pages", len(queries))
+	}
+	for i, q := range queries {
+		for _, want := range []string{"role.1=REVIEWER", "username.1=alice", "state=OPEN"} {
+			if !strings.Contains(q, want) {
+				t.Fatalf("page %d query %q missing %q (filters must be sent on every page)", i, q, want)
+			}
+		}
+	}
+}
+
+func TestListPullRequestsWithOptionsTerminatesOnEmptyNonFinalPage(t *testing.T) {
+	var requests int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.Header().Set("Content-Type", "application/json")
+		// isLastPage=false but no values and a non-advancing nextPageStart: a
+		// naive loop would spin forever. Termination must not depend on IsLast.
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values":        []map[string]any{},
+			"isLastPage":    false,
+			"nextPageStart": 0,
+		})
+	}))
+
+	prs, err := client.ListPullRequestsWithOptions(context.Background(), "PROJ", "repo", bbdc.RepoPullRequestsOptions{
+		Role: "REVIEWER", Username: "alice", Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListPullRequestsWithOptions: %v", err)
+	}
+	if len(prs) != 0 {
+		t.Fatalf("prs = %+v, want empty", prs)
+	}
+	if got := atomic.LoadInt32(&requests); got != 1 {
+		t.Fatalf("made %d requests, want exactly 1 (empty page must terminate)", got)
+	}
+}
