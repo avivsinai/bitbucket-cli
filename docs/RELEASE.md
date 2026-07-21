@@ -24,6 +24,7 @@
      - Checksums (`bkt_${VERSION}_checksums.txt`)
      - SBOMs (`sbom-${VERSION}.cyclonedx.json` via Syft)
    - Artifacts are uploaded to the GitHub Release page.
+   - A WinGet manifest PR is opened from `avivsinai/winget-pkgs` to `microsoft/winget-pkgs`.
    - The workflow emits GitHub build provenance attestations for the released files.
    - The `Publish skills` job in `release.yml` publishes the `bkt` skill as part
      of the same release run (skippable via the `skip-skill-publish` dispatch
@@ -45,6 +46,7 @@
   workflow secret validation, or `scripts/check-oauth-release-contract.sh`
   without an explicit breaking-change decision and changelog entry.
 - Refresh `flake.nix`'s `vendorHash` whenever `go.mod` or `go.sum` changes; do not wait until release time because Nix CI runs on pull requests. Use `make nix-update-vendor-hash` after dependency bumps.
+- WinGet publishing requires an `avivsinai/winget-pkgs` fork and a `WINGET_GITHUB_TOKEN` repository secret that can push to that fork and open PRs against `microsoft/winget-pkgs`.
 - `scripts/check-release-version.sh vX.Y.Z` now validates both metadata versions and the matching `CHANGELOG.md` heading.
 - If a release PR merges but the tag publish fails verification, fix forward with the next patch version instead of rewriting the failed tag.
 
