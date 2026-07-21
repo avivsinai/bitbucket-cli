@@ -111,11 +111,6 @@ release:
     scoop install bitbucket-cli
     ```
 
-    ### WinGet (Windows)
-    ```powershell
-    winget install AvivSinai.Bitbucket-CLI
-    ```
-
     ### Go Install
     ```bash
     go install github.com/avivsinai/bitbucket-cli/cmd/bkt@{{ .Tag }}
@@ -204,6 +199,7 @@ winget:
           owner: microsoft
           name: winget-pkgs
           branch: master
+    skip_upload: '{{ if eq .Env.WINGET_SKIP_UPLOAD "false" }}false{{ else }}true{{ end }}'
     commit_author:
       name: github-actions[bot]
       email: github-actions[bot]@users.noreply.github.com

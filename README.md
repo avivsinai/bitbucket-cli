@@ -29,12 +29,6 @@ scoop bucket add avivsinai https://github.com/avivsinai/scoop-bucket
 scoop install bitbucket-cli
 ```
 
-### WinGet (Windows)
-
-```powershell
-winget install AvivSinai.Bitbucket-CLI
-```
-
 ### Go Install
 
 ```bash

@@ -6,10 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 ### Added
-- Release automation now publishes WinGet manifests for `AvivSinai.Bitbucket-CLI`
-  and documents the Windows `winget install` path.
+- Release automation can generate WinGet manifests for
+  `AvivSinai.Bitbucket-CLI` and submit updates to `microsoft/winget-pkgs` after
+  the package's initial catalog entry is accepted. (#246)
 
-### Fixed
+### Changed
 - `make build`, `make clean`, and `make test` now run on Windows GNU Make
   using cmd.exe-pinned recipes and Windows-safe test helpers, while keeping
   the existing Unix build and release script paths intact. A `windows-latest`

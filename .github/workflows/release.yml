@@ -151,6 +151,8 @@ jobs:
         run: ./scripts/check-oauth-release-contract.sh
       - name: Check Homebrew formula test
         run: ./scripts/check-homebrew-formula-test.sh
+      - name: Check WinGet release contract
+        run: ./scripts/check-winget-release-contract.sh
       - name: Build CLI
         run: VERSION=${{ needs.prepare.outputs.tag }} make build
         env:
@@ -238,13 +240,18 @@ jobs:
             exit 1
           fi
 
-      - name: Validate WinGet publishing token
+      - name: Configure WinGet publishing
+        id: winget
+        shell: bash
         env:
           WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
         run: |
-          if [ -z "$WINGET_GITHUB_TOKEN" ]; then
-            echo "::error::WINGET_GITHUB_TOKEN must be set as a repository secret to publish the WinGet manifest PR"
-            exit 1
+          set -euo pipefail
+          if [[ -z "$WINGET_GITHUB_TOKEN" ]]; then
+            echo "::warning::WinGet publishing skipped: WINGET_GITHUB_TOKEN repository secret is not configured."
+            echo "skip_upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_upload=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run GoReleaser
@@ -257,6 +264,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+          WINGET_SKIP_UPLOAD: ${{ steps.winget.outputs.skip_upload }}
           BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
           BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
 

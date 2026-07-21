@@ -242,6 +242,7 @@ if [ "$skip_verify" -eq 0 ]; then
   go vet ./...
   make test
   ./scripts/check-homebrew-formula-test.sh
+  ./scripts/check-winget-release-contract.sh
   make build
 fi
 

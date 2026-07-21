@@ -24,7 +24,10 @@
      - Checksums (`bkt_${VERSION}_checksums.txt`)
      - SBOMs (`sbom-${VERSION}.cyclonedx.json` via Syft)
    - Artifacts are uploaded to the GitHub Release page.
-   - A WinGet manifest PR is opened from `avivsinai/winget-pkgs` to `microsoft/winget-pkgs`.
+   - GoReleaser generates WinGet manifests. After the initial package version is
+     accepted into the catalog, it attempts to open an update PR from
+     `avivsinai/winget-pkgs` to `microsoft/winget-pkgs` when the publishing
+     secret is configured.
    - The workflow emits GitHub build provenance attestations for the released files.
    - The `Publish skills` job in `release.yml` publishes the `bkt` skill as part
      of the same release run (skippable via the `skip-skill-publish` dispatch
@@ -34,6 +37,9 @@
 
 4. **Post-release**
    - Verify the release artifacts and SBOMs.
+   - Verify that the WinGet update PR was opened and passed upstream validation.
+     GoReleaser reports WinGet publishing errors without failing the release, so
+     a green release workflow is not proof that the package update landed.
    - Announce the release in the `CHANGELOG.md` (already updated) and discussions.
    - `CHANGELOG.md` already contains a fresh empty `Unreleased` section because the release script preserves it.
 
@@ -46,7 +52,15 @@
   workflow secret validation, or `scripts/check-oauth-release-contract.sh`
   without an explicit breaking-change decision and changelog entry.
 - Refresh `flake.nix`'s `vendorHash` whenever `go.mod` or `go.sum` changes; do not wait until release time because Nix CI runs on pull requests. Use `make nix-update-vendor-hash` after dependency bumps.
-- WinGet publishing requires an `avivsinai/winget-pkgs` fork and a `WINGET_GITHUB_TOKEN` repository secret that can push to that fork and open PRs against `microsoft/winget-pkgs`.
+- Submit the first package version manually with `wingetcreate new` and wait for
+  its `microsoft/winget-pkgs` PR to be accepted before advertising the
+  `winget install AvivSinai.Bitbucket-CLI` command. GoReleaser then handles
+  updates; it cannot create the initial catalog entry.
+- WinGet publishing requires an `avivsinai/winget-pkgs` fork and a classic PAT
+  stored only as the `WINGET_GITHUB_TOKEN` GitHub Actions repository secret.
+  Never put its value in repository files, workflow commands, arguments, or
+  logs. When the secret is absent, the workflow emits a warning and skips only
+  the WinGet upload; the rest of the release continues.
 - `scripts/check-release-version.sh vX.Y.Z` now validates both metadata versions and the matching `CHANGELOG.md` heading.
 - If a release PR merges but the tag publish fails verification, fix forward with the next patch version instead of rewriting the failed tag.
 

@@ -848,6 +848,12 @@ When --mine is set without a specific repository, the command lists pull
 requests authored by the authenticated user across all repositories. On Data
 Center this uses the dashboard API; on Cloud it queries the workspace.
 
+--reviewer is the reviewer-facing counterpart: it shows pull requests where the
+authenticated user is a requested reviewer. Without a repository, Data Center
+lists them across all repositories via the dashboard API; Bitbucket Cloud has
+no workspace-wide reviewer endpoint, so --reviewer there requires a repository.
+--mine and --reviewer cannot be combined.
+
 **Alias:** `ls`
 
 ### Usage
@@ -864,6 +870,7 @@ bkt pr list [flags]
 | `--mine` |  | Show pull requests authored by the authenticated user |
 | `--project` |  | Bitbucket project key override |
 | `--repo` |  | Repository slug override |
+| `--reviewer` |  | Show pull requests where the authenticated user is a requested reviewer |
 | `--state` |  | Filter by state (OPEN, MERGED, DECLINED) |
 | `--workspace` |  | Bitbucket workspace override (Cloud) |
 
@@ -889,6 +896,13 @@ bkt pr list [flags]
 
   # List your own pull requests across all repositories
   bkt pr list --mine
+
+  # List pull requests awaiting your review (Data Center: across all
+  # repositories; Bitbucket Cloud: add --repo)
+  bkt pr list --reviewer
+
+  # List pull requests awaiting your review in a specific repository
+  bkt pr list --reviewer --repo my-repo
 
   # List pull requests with a limit
   bkt pr list --limit 50 --state OPEN
