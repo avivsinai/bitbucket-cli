@@ -244,7 +244,9 @@ func (b *cloudBackend) getPullRequestChecks(ctx context.Context, locator Reposit
 		return nil, false, fmt.Errorf("pull request source commit is required")
 	}
 	sourceScope, sourceSlug, ok := strings.Cut(strings.TrimSpace(pr.Source.Repository.FullName), "/")
-	if !ok || strings.TrimSpace(sourceScope) == "" || strings.TrimSpace(sourceSlug) == "" {
+	sourceScope = strings.TrimSpace(sourceScope)
+	sourceSlug = strings.TrimSpace(sourceSlug)
+	if !ok || sourceScope == "" || sourceSlug == "" {
 		return nil, false, fmt.Errorf("pull request source repository identity is incomplete")
 	}
 	if slug := strings.TrimSpace(pr.Source.Repository.Slug); slug != "" {
@@ -258,7 +260,7 @@ func (b *cloudBackend) getPullRequestChecks(ctx context.Context, locator Reposit
 	for _, raw := range page.Values {
 		items = append(items, adaptCloudCheck(raw))
 	}
-	return items, page.Next != "" || len(items) > MaxListLimit, nil
+	return items, page.Next != "", nil
 }
 
 type boundedTextSink struct {
