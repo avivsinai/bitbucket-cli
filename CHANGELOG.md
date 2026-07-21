@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.29.0] - 2026-07-21
 ### Added
 - `bkt mcp serve` (experimental): a read-only Model Context Protocol server
   over stdio for AI agents, exposing Bitbucket Data Center and Cloud through a
@@ -30,6 +32,7 @@ All notable changes to this project will be documented here. The format follows
 - The HTTP client is now safe for concurrent use during OAuth token refresh:
   credential updates are mutex-protected and simultaneous 401 responses
   coalesce into a single token refresh instead of racing. (#257)
+
 
 ## [0.28.2] - 2026-06-06
 ### Fixed
@@ -612,7 +615,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.2...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.27.1...v0.28.0
