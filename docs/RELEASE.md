@@ -25,7 +25,11 @@
      - SBOMs (`sbom-${VERSION}.cyclonedx.json` via Syft)
    - Artifacts are uploaded to the GitHub Release page.
    - The workflow emits GitHub build provenance attestations for the released files.
-   - The `bkt` skill publish workflow runs from the CI-created tag.
+   - The `Publish skills` job in `release.yml` publishes the `bkt` skill as part
+     of the same release run (skippable via the `skip-skill-publish` dispatch
+     input). Separately, `notify-marketplace.yml` refreshes the marketplace on
+     every push to `master`. `publish-skill.yml` is a manual `workflow_dispatch`
+     fallback for re-publishing an existing tag.
 
 4. **Post-release**
    - Verify the release artifacts and SBOMs.
