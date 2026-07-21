@@ -7,22 +7,29 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 ### Added
 - `bkt mcp serve` (experimental): a read-only Model Context Protocol server
-  over stdio, pinning one bkt context resolved at startup. v1 registers
-  `bkt_get_context`; repository and pull-request tools land in upcoming
-  releases. Register with e.g. `claude mcp add bitbucket -- bkt mcp serve`.
-
-### Fixed
-- The HTTP client is now safe for concurrent use during OAuth token refresh:
-  credential updates are mutex-protected and simultaneous 401 responses
-  coalesce into a single token refresh instead of racing. Groundwork for the
-  upcoming MCP server, which issues parallel API calls.
-
-### Added
+  over stdio for AI agents, exposing Bitbucket Data Center and Cloud through a
+  single interface and reusing your existing `bkt` authentication. The server
+  pins one context resolved at startup — the working directory never changes
+  the target, and the credential is frozen for the process lifetime — and
+  registers nine tools: `bkt_get_context`, repository list/get, pull request
+  listing (repo-scoped with author/reviewer role filters, plus a cross-repo
+  "my pull requests" view), and pull request detail, unified diff, comments,
+  and checks. Role and state filters are applied by Bitbucket before the
+  result limit; list results are bounded with explicit truncation; pull
+  request descriptions, comment bodies, and diffs are size-bounded and tagged
+  as untrusted; errors are redacted and machine-readable; and the tool schemas
+  are frozen by a drift-checked contract. Register with e.g.
+  `claude mcp add bitbucket -- bkt mcp serve`. (#258–#263)
 - `bkt pipeline view --wait` and `bkt pipeline run --wait` poll a pipeline
   until it completes, using the same backoff flags (`--interval`,
   `--max-interval`, `--timeout`) and exit-code contract as
   `bkt pr checks --wait`: 0 = succeeded, 1 = completed unsuccessfully,
   8 = timed out while still running. (#252)
+
+### Fixed
+- The HTTP client is now safe for concurrent use during OAuth token refresh:
+  credential updates are mutex-protected and simultaneous 401 responses
+  coalesce into a single token refresh instead of racing. (#257)
 
 ## [0.28.2] - 2026-06-06
 ### Fixed
