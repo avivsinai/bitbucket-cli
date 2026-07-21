@@ -90,6 +90,7 @@ type listOptions struct {
 	State     string
 	Limit     int
 	Mine      bool
+	Reviewer  bool
 }
 
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
@@ -104,7 +105,13 @@ On Cloud, the workspace and repo are used instead.
 
 When --mine is set without a specific repository, the command lists pull
 requests authored by the authenticated user across all repositories. On Data
-Center this uses the dashboard API; on Cloud it queries the workspace.`,
+Center this uses the dashboard API; on Cloud it queries the workspace.
+
+--reviewer is the reviewer-facing counterpart: it shows pull requests where the
+authenticated user is a requested reviewer. Without a repository, Data Center
+lists them across all repositories via the dashboard API; Bitbucket Cloud has
+no workspace-wide reviewer endpoint, so --reviewer there requires a repository.
+--mine and --reviewer cannot be combined.`,
 		Example: `  # List open pull requests
   bkt pr list
 
@@ -114,9 +121,19 @@ Center this uses the dashboard API; on Cloud it queries the workspace.`,
   # List your own pull requests across all repositories
   bkt pr list --mine
 
+  # List pull requests awaiting your review (Data Center: across all
+  # repositories; Bitbucket Cloud: add --repo)
+  bkt pr list --reviewer
+
+  # List pull requests awaiting your review in a specific repository
+  bkt pr list --reviewer --repo my-repo
+
   # List pull requests with a limit
   bkt pr list --limit 50 --state OPEN`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.Mine && opts.Reviewer {
+				return fmt.Errorf("--mine and --reviewer cannot be combined")
+			}
 			return runList(cmd, f, opts)
 		},
 	}
@@ -127,6 +144,7 @@ Center this uses the dashboard API; on Cloud it queries the workspace.`,
 	cmd.Flags().StringVar(&opts.State, "state", opts.State, "Filter by state (OPEN, MERGED, DECLINED)")
 	cmd.Flags().IntVar(&opts.Limit, "limit", opts.Limit, "Maximum pull requests to list (0 for all)")
 	cmd.Flags().BoolVar(&opts.Mine, "mine", false, "Show pull requests authored by the authenticated user")
+	cmd.Flags().BoolVar(&opts.Reviewer, "reviewer", false, "Show pull requests where the authenticated user is a requested reviewer")
 
 	return cmd
 }
@@ -148,10 +166,10 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		projectKey := cmdutil.FirstNonEmpty(opts.Project, ctxCfg.ProjectKey)
 		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 
-		// If no repo specified, use the dashboard endpoint (requires --mine)
+		// If no repo specified, use the dashboard endpoint (requires --mine or --reviewer)
 		if repoSlug == "" {
-			if !opts.Mine {
-				return fmt.Errorf("--mine is required when not specifying a repository")
+			if !opts.Mine && !opts.Reviewer {
+				return fmt.Errorf("--mine or --reviewer is required when not specifying a repository")
 			}
 			return runListDashboardDC(cmd, f, ios, host, opts)
 		}
@@ -168,24 +186,42 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
-		prs, err := client.ListPullRequests(ctx, projectKey, repoSlug, opts.State, opts.Limit)
-		if err != nil {
-			return err
-		}
-
-		if opts.Mine {
+		var prs []bbdc.PullRequest
+		if opts.Reviewer {
 			if host.Username == "" {
-				return fmt.Errorf("--mine requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)")
+				return fmt.Errorf("--reviewer requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)")
 			}
-			filtered := prs[:0]
-			current := strings.ToLower(host.Username)
-			for _, pr := range prs {
-				author := strings.ToLower(cmdutil.FirstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
-				if author == current {
-					filtered = append(filtered, pr)
+			// Apply the REVIEWER participant filter upstream (before the limit)
+			// rather than filtering a limited page client-side.
+			prs, err = client.ListPullRequestsWithOptions(ctx, projectKey, repoSlug, bbdc.RepoPullRequestsOptions{
+				State:    opts.State,
+				Role:     "REVIEWER",
+				Username: host.Username,
+				Limit:    opts.Limit,
+			})
+			if err != nil {
+				return err
+			}
+		} else {
+			prs, err = client.ListPullRequests(ctx, projectKey, repoSlug, opts.State, opts.Limit)
+			if err != nil {
+				return err
+			}
+
+			if opts.Mine {
+				if host.Username == "" {
+					return fmt.Errorf("--mine requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)")
 				}
+				filtered := prs[:0]
+				current := strings.ToLower(host.Username)
+				for _, pr := range prs {
+					author := strings.ToLower(cmdutil.FirstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
+					if author == current {
+						filtered = append(filtered, pr)
+					}
+				}
+				prs = filtered
 			}
-			prs = filtered
 		}
 
 		payload := map[string]any{
@@ -217,8 +253,13 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		workspace := cmdutil.FirstNonEmpty(opts.Workspace, ctxCfg.Workspace)
 		repoSlug := cmdutil.FirstNonEmpty(opts.Repo, ctxCfg.DefaultRepo)
 
-		// If no repo specified, use the workspace endpoint (requires --mine)
+		// If no repo specified, use the workspace endpoint (requires --mine).
+		// Bitbucket Cloud has no workspace-wide reviewer endpoint, so --reviewer
+		// needs a specific repository.
 		if repoSlug == "" {
+			if opts.Reviewer {
+				return fmt.Errorf("--reviewer requires a repository on Bitbucket Cloud; the workspace pull request endpoint filters by author only. Use --reviewer with --repo")
+			}
 			if !opts.Mine {
 				return fmt.Errorf("--mine is required when not specifying a repository")
 			}
@@ -241,21 +282,28 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		defer cancel()
 
 		mine := ""
-		if opts.Mine {
+		reviewer := ""
+		if opts.Mine || opts.Reviewer {
 			currentUser, err := client.CurrentUser(ctx)
 			if err != nil {
-				return fmt.Errorf("resolve current Bitbucket Cloud user for --mine: %w", err)
+				return fmt.Errorf("resolve current Bitbucket Cloud user: %w", err)
 			}
-			mine, err = cloudRepositoryMineIdentity(*currentUser)
+			identity, err := cloudRepositoryUserIdentity(*currentUser)
 			if err != nil {
 				return err
+			}
+			if opts.Mine {
+				mine = identity
+			} else {
+				reviewer = identity
 			}
 		}
 
 		prs, err := client.ListPullRequests(ctx, workspace, repoSlug, bbcloud.PullRequestListOptions{
-			State: opts.State,
-			Limit: opts.Limit,
-			Mine:  mine,
+			State:    opts.State,
+			Limit:    opts.Limit,
+			Mine:     mine,
+			Reviewer: reviewer,
 		})
 		if err != nil {
 			return err
@@ -301,9 +349,13 @@ func runListDashboardDC(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.I
 	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
 
+	role := "AUTHOR"
+	if opts.Reviewer {
+		role = "REVIEWER"
+	}
 	prs, err := client.ListDashboardPullRequests(ctx, bbdc.DashboardPullRequestsOptions{
 		State: opts.State,
-		Role:  "AUTHOR",
+		Role:  role,
 		Limit: opts.Limit,
 	})
 	if err != nil {
@@ -415,14 +467,14 @@ func runListWorkspaceCloud(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 	})
 }
 
-func cloudRepositoryMineIdentity(user bbcloud.User) (string, error) {
+func cloudRepositoryUserIdentity(user bbcloud.User) (string, error) {
 	if normalized := bbcloud.NormalizeUUID(user.UUID); normalized != "" {
 		return normalized, nil
 	}
 	if accountID := strings.TrimSpace(user.AccountID); accountID != "" {
 		return accountID, nil
 	}
-	return "", fmt.Errorf("could not determine stable Bitbucket Cloud user identity for --mine; /user returned no UUID or account ID")
+	return "", fmt.Errorf("could not determine a stable Bitbucket Cloud user identity; /user returned no UUID or account ID")
 }
 
 func cloudWorkspaceMineIdentity(user bbcloud.User, host *config.Host) (string, error) {
