@@ -39,6 +39,11 @@ func GenerateAll(root *cobra.Command, binName, outDir string) error {
 		if err := writeFile(path, binName, cmd); err != nil {
 			return err
 		}
+		if cmd.Name() == "mcp" {
+			if err := appendMCPRegistry(path); err != nil {
+				return err
+			}
+		}
 	}
 
 	if len(standalones) > 0 {
