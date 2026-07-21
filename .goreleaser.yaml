@@ -169,3 +169,37 @@ scoops:
     commit_author:
       name: github-actions[bot]
       email: github-actions[bot]@users.noreply.github.com
+winget:
+  - name: bkt
+    publisher: Aviv Sinai
+    package_identifier: AvivSinai.Bitbucket-CLI
+    package_name: Bitbucket CLI
+    short_description: "CLI for Bitbucket Cloud and Data Center"
+    description: "CLI for Bitbucket Cloud and Data Center - manage repos, PRs, and pipelines"
+    homepage: https://github.com/avivsinai/bitbucket-cli
+    publisher_url: https://github.com/avivsinai
+    publisher_support_url: https://github.com/avivsinai/bitbucket-cli/issues
+    license: MIT
+    license_url: https://github.com/avivsinai/bitbucket-cli/blob/master/LICENSE
+    ids:
+      - bkt-archive
+    url_template: "https://github.com/avivsinai/bitbucket-cli/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    path: "manifests/a/AvivSinai/Bitbucket-CLI/{{ .Version }}"
+    tags:
+      - bkt
+      - bitbucket
+      - git
+    repository:
+      owner: avivsinai
+      name: winget-pkgs
+      token: "{{ .Env.WINGET_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    skip_upload: '{{ if eq .Env.WINGET_SKIP_UPLOAD "false" }}false{{ else }}true{{ end }}'
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com

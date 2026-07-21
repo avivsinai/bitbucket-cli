@@ -5,6 +5,11 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Release automation can generate WinGet manifests for
+  `AvivSinai.Bitbucket-CLI` and submit updates to `microsoft/winget-pkgs` after
+  the package's initial catalog entry is accepted. (#246)
+
 ### Changed
 - `make build`, `make clean`, and `make test` now run on Windows GNU Make
   using cmd.exe-pinned recipes and Windows-safe test helpers, while keeping

@@ -37,6 +37,9 @@ jobs:
       - name: Check Homebrew formula test
         run: ./scripts/check-homebrew-formula-test.sh
 
+      - name: Check WinGet release contract
+        run: ./scripts/check-winget-release-contract.sh
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
