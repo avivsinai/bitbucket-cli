@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.30.0] - 2026-07-22
 ### Added
 - `bkt pr list --reviewer` lists pull requests where the authenticated user is
   a requested reviewer. Data Center supports dashboard-wide and
@@ -30,6 +32,7 @@ All notable changes to this project will be documented here. The format follows
   additional `errors[]` entries while preserving the existing first-line
   status/message format. LF/CRLF boundary blank lines no longer add stray
   stderr lines. (#269)
+
 
 ## [0.29.0] - 2026-07-21
 ### Added
@@ -640,7 +643,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.0...v0.28.1
