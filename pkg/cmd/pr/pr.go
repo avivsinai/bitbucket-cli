@@ -747,6 +747,8 @@ type createOptions struct {
 	Project              string
 	Workspace            string
 	Repo                 string
+	SourceProject        string
+	SourceRepo           string
 	Title                string
 	Source               string
 	Target               string
@@ -1018,6 +1020,10 @@ Reviewers can be added with repeatable --reviewer flags.
 --with-default-reviewers merges the repository's configured default reviewers
 into the reviewer list. On Cloud, the current user is automatically excluded.
 
+On Data Center, --source-project and --source-repo select a fork repository for
+the source branch. Each defaults to the destination project or repository when
+omitted. These flags are rejected on Bitbucket Cloud.
+
 Draft pull requests are supported on Cloud (always) and on Data Center 8.18+
 via the --draft flag.`,
 		Example: `  # Create a pull request with auto-detected title
@@ -1030,7 +1036,11 @@ via the --draft flag.`,
   bkt pr create -t "Fix login bug" --reviewer alice --reviewer bob --close-source
 
   # Create a draft pull request
-  bkt pr create --title "WIP: new feature" --draft`,
+  bkt pr create --title "WIP: new feature" --draft
+
+  # Create from a Data Center fork into an upstream repository
+  bkt pr create --source-project FORK --source-repo contributor-fork \
+    --project DEST --repo upstream --source feature --target main`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// --body and --description are mutually exclusive aliases
 			if cmd.Flags().Changed("body") && cmd.Flags().Changed("description") {
@@ -1059,6 +1069,8 @@ via the --draft flag.`,
 	cmd.Flags().StringVar(&opts.Project, "project", "", "Bitbucket project key override")
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket workspace override (Cloud)")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
+	cmd.Flags().StringVar(&opts.SourceProject, "source-project", "", "Source project key (Data Center only; defaults to --project)")
+	cmd.Flags().StringVar(&opts.SourceRepo, "source-repo", "", "Source repository slug (Data Center only; defaults to --repo)")
 	cmd.Flags().StringVar(&opts.Title, "title", "", "Pull request title (defaults to the first unique commit subject)")
 	cmd.Flags().StringVar(&opts.Description, "description", "", "Pull request description")
 	cmd.Flags().StringVarP(&opts.Body, "body", "b", "", "Pull request description (alias for --description)")
@@ -1084,6 +1096,9 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 	if err != nil {
 		return err
 	}
+	if host.Kind == "cloud" && (cmd.Flags().Changed("source-project") || cmd.Flags().Changed("source-repo")) {
+		return fmt.Errorf("--source-project and --source-repo are only supported on Bitbucket Data Center")
+	}
 
 	if err := applyCreateDefaults(cmd.Context(), opts, host); err != nil {
 		return err
@@ -1104,10 +1119,17 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
+		sourceProjectKey := cmdutil.FirstNonEmpty(opts.SourceProject, projectKey)
+		sourceRepoSlug := cmdutil.FirstNonEmpty(opts.SourceRepo, repoSlug)
 
 		reviewers := opts.Reviewers
 		if opts.WithDefaultReviewers {
-			defaultUsers, err := getDCDefaultReviewers(ctx, client, projectKey, repoSlug, opts.Source, opts.Target)
+			defaultUsers, err := getDCDefaultReviewersForRepositories(
+				ctx, client,
+				projectKey, repoSlug,
+				sourceProjectKey, sourceRepoSlug,
+				opts.Source, opts.Target,
+			)
 			if err != nil {
 				return err
 			}
@@ -1115,13 +1137,15 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 		}
 
 		pr, err := client.CreatePullRequest(ctx, projectKey, repoSlug, bbdc.CreatePROptions{
-			Title:        opts.Title,
-			Description:  opts.Description,
-			SourceBranch: opts.Source,
-			TargetBranch: opts.Target,
-			Reviewers:    reviewers,
-			CloseSource:  opts.CloseSource,
-			Draft:        opts.Draft,
+			Title:            opts.Title,
+			Description:      opts.Description,
+			SourceBranch:     opts.Source,
+			TargetBranch:     opts.Target,
+			SourceProjectKey: sourceProjectKey,
+			SourceRepoSlug:   sourceRepoSlug,
+			Reviewers:        reviewers,
+			CloseSource:      opts.CloseSource,
+			Draft:            opts.Draft,
 		})
 		if err != nil {
 			return err
@@ -1550,7 +1574,27 @@ func cloudReviewerIDs(reviewers []bbcloud.User) []string {
 }
 
 func getDCDefaultReviewers(ctx context.Context, client *bbdc.Client, projectKey, repoSlug, sourceRef, targetRef string) ([]bbdc.User, error) {
-	defaultUsers, err := client.GetDefaultReviewers(ctx, projectKey, repoSlug, sourceRef, targetRef)
+	return getDCDefaultReviewersForRepositories(
+		ctx, client,
+		projectKey, repoSlug,
+		projectKey, repoSlug,
+		sourceRef, targetRef,
+	)
+}
+
+func getDCDefaultReviewersForRepositories(
+	ctx context.Context,
+	client *bbdc.Client,
+	targetProjectKey, targetRepoSlug string,
+	sourceProjectKey, sourceRepoSlug string,
+	sourceRef, targetRef string,
+) ([]bbdc.User, error) {
+	defaultUsers, err := client.GetDefaultReviewersForRepositories(
+		ctx,
+		targetProjectKey, targetRepoSlug,
+		sourceProjectKey, sourceRepoSlug,
+		sourceRef, targetRef,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("fetching default reviewers: %w", err)
 	}
