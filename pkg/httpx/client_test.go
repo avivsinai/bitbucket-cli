@@ -397,7 +397,7 @@ func TestDecodeErrorPrioritizesCaptchaException(t *testing.T) {
 			name:    "captcha exception prioritized over generic error",
 			status:  http.StatusForbidden,
 			body:    `{"errors":[{"message":"XSRF check failed","exceptionName":""},{"message":"Account locked","exceptionName":"com.atlassian.bitbucket.auth.CaptchaRequiredAuthenticationException"}]}`,
-			wantMsg: "403 Forbidden: CAPTCHA verification required: Account locked",
+			wantMsg: "403 Forbidden: CAPTCHA verification required: Account locked\n  XSRF check failed",
 		},
 		{
 			name:    "normal error without captcha",
@@ -480,6 +480,209 @@ func TestDecodeErrorStructuredMessage(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Invalid project key") {
 		t.Fatalf("expected structured error message, got %v", err)
+	}
+}
+
+func TestDecodeErrorRendersDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errors": []map[string]any{
+				{
+					"context":       nil,
+					"message":       "Pull request creation was canceled.",
+					"exceptionName": "com.atlassian.bitbucket.pull.PullRequestOpenCanceledException",
+					"details": []string{
+						"Pull requests must open in draft state - non-draft creation is blocked.\n\n1. Create the pull request as draft instead",
+					},
+				},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL, Retry: RetryPolicy{MaxAttempts: 1}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodPost, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	err = client.Do(req, nil)
+	if err == nil {
+		t.Fatal("expected error for 400 response")
+	}
+
+	got := err.Error()
+	// First line preserves the historical "<status>: <message>" format so
+	// scripts that grep the first line keep working.
+	firstLine := strings.SplitN(got, "\n", 2)[0]
+	if !strings.HasSuffix(firstLine, "Pull request creation was canceled.") {
+		t.Fatalf("first line = %q, want it to end with the primary message", firstLine)
+	}
+	// details[] must now be surfaced (previously dropped).
+	if !strings.Contains(got, "Pull requests must open in draft state") {
+		t.Fatalf("expected details to be rendered, got %q", got)
+	}
+	if !strings.Contains(got, "Create the pull request as draft instead") {
+		t.Fatalf("expected multi-line detail to be rendered, got %q", got)
+	}
+}
+
+func TestDecodeErrorRendersAllErrorsAndDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errors": []map[string]any{
+				{"message": "First problem", "details": []string{"fix the first thing"}},
+				{"message": "Second problem", "details": []string{"fix the second thing"}},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL, Retry: RetryPolicy{MaxAttempts: 1}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	err = client.Do(req, nil)
+	if err == nil {
+		t.Fatal("expected error for 400 response")
+	}
+
+	got := err.Error()
+	// Assert structure, not just presence: the prioritized (first) error is the
+	// primary line; the second is a secondary continuation. Check ordering plus
+	// the 2-space indent for secondary messages and 4-space indent for details.
+	firstLine := strings.SplitN(got, "\n", 2)[0]
+	if !strings.HasSuffix(firstLine, "First problem") {
+		t.Fatalf("first line = %q, want it to end with the primary message", firstLine)
+	}
+	if !strings.Contains(got, "\n    fix the first thing") {
+		t.Fatalf("expected primary detail indented 4 spaces, got %q", got)
+	}
+	if !strings.Contains(got, "\n  Second problem") {
+		t.Fatalf("expected secondary message indented 2 spaces, got %q", got)
+	}
+	if !strings.Contains(got, "\n    fix the second thing") {
+		t.Fatalf("expected secondary detail indented 4 spaces, got %q", got)
+	}
+	prev := -1
+	for _, s := range []string{"First problem", "fix the first thing", "Second problem", "fix the second thing"} {
+		idx := strings.Index(got, s)
+		if idx <= prev {
+			t.Fatalf("expected %q to appear in order after the previous item; got %q", s, got)
+		}
+		prev = idx
+	}
+}
+
+func TestDecodeErrorTrimsCRLFAndSkipsEmptyDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errors": []map[string]any{
+				{
+					"message": "Blocked",
+					// A CRLF-delimited multi-line detail, plus a whitespace-only entry.
+					"details": []string{"line one\r\nline two", "   "},
+				},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL, Retry: RetryPolicy{MaxAttempts: 1}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req, err := client.NewRequest(context.Background(), http.MethodPost, "/api", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	got := client.Do(req, nil)
+	if got == nil {
+		t.Fatal("expected error for 400 response")
+	}
+	out := got.Error()
+	if strings.Contains(out, "\r") {
+		t.Fatalf("expected CR to be trimmed from CRLF details, got %q", out)
+	}
+	if !strings.Contains(out, "\n    line one") || !strings.Contains(out, "\n    line two") {
+		t.Fatalf("expected both CRLF detail lines rendered indented, got %q", out)
+	}
+	// The whitespace-only detail entry must be skipped: no stray blank line.
+	if strings.Contains(out, "\n    \n") || strings.HasSuffix(out, "\n") {
+		t.Fatalf("expected no stray blank line from empty detail entry, got %q", out)
+	}
+}
+
+func TestDecodeErrorTrimsBoundaryBlankLinesFromDetails(t *testing.T) {
+	tests := []struct {
+		name   string
+		detail string
+		want   string
+	}{
+		{
+			name:   "trailing LF",
+			detail: "step one\n",
+			want:   "400 Bad Request: Blocked\n    step one",
+		},
+		{
+			name:   "trailing CRLF",
+			detail: "step one\r\n",
+			want:   "400 Bad Request: Blocked\n    step one",
+		},
+		{
+			name:   "boundary blank lines with internal blank line",
+			detail: "\r\n \t\r\nstep one\r\n\r\nstep two\r\n \t\r\n",
+			want:   "400 Bad Request: Blocked\n    step one\n\n    step two",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"errors": []map[string]any{
+						{"message": "Blocked", "details": []string{tt.detail}},
+					},
+				})
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{BaseURL: server.URL, Retry: RetryPolicy{MaxAttempts: 1}})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			req, err := client.NewRequest(context.Background(), http.MethodPost, "/api", nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+
+			err = client.Do(req, nil)
+			if err == nil {
+				t.Fatal("expected error for 400 response")
+			}
+			if got := err.Error(); got != tt.want {
+				t.Fatalf("error = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

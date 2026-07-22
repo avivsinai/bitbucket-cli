@@ -498,8 +498,9 @@ func (c *Client) Do(req *http.Request, v any) error {
 
 func decodeError(resp *http.Response) error {
 	type apiErrEntry struct {
-		Message       string `json:"message"`
-		ExceptionName string `json:"exceptionName"`
+		Message       string   `json:"message"`
+		ExceptionName string   `json:"exceptionName"`
+		Details       []string `json:"details"`
 	}
 	type apiErr struct {
 		Errors []apiErrEntry `json:"errors"`
@@ -521,14 +522,18 @@ func decodeError(resp *http.Response) error {
 	}
 
 	if len(payload.Errors) > 0 {
-		// Prioritize user-actionable errors like CAPTCHA over generic ones
-		bestErr := payload.Errors[0]
-		for _, e := range payload.Errors {
+		// Prioritize user-actionable errors like CAPTCHA over generic ones.
+		// Track the index so the second loop below can skip the already-printed
+		// best entry positionally; apiErrEntry is non-comparable now (it has a
+		// slice field), so we cannot skip it by value.
+		bestIdx := 0
+		for i, e := range payload.Errors {
 			if isCaptchaException(e.ExceptionName) {
-				bestErr = e
+				bestIdx = i
 				break
 			}
 		}
+		bestErr := payload.Errors[bestIdx]
 
 		msg := bestErr.Message
 		// Add hint for CAPTCHA-locked accounts
@@ -536,7 +541,27 @@ func decodeError(resp *http.Response) error {
 			msg = "CAPTCHA verification required: " + msg
 		}
 		msg = withBitbucketCloudAuthHint(msg)
-		return newHTTPError(resp, msg)
+
+		// Preserve the historical single-line "<status>: <message>" prefix so
+		// scripts that grep the first line keep working, then append any
+		// actionable details and additional errors on indented continuation
+		// lines. Bitbucket's details[] often carry the real remediation (e.g.
+		// "create the pull request as draft instead"), which was previously
+		// dropped.
+		var b strings.Builder
+		b.WriteString(msg)
+		appendErrorDetails(&b, bestErr.Details)
+		for j, e := range payload.Errors {
+			if j == bestIdx {
+				continue
+			}
+			if m := strings.TrimSpace(e.Message); m != "" {
+				b.WriteString(errorContinuationIndent)
+				b.WriteString(m)
+			}
+			appendErrorDetails(&b, e.Details)
+		}
+		return newHTTPError(resp, b.String())
 	}
 
 	if msg := strings.TrimSpace(cloudPayload.Error.Message); msg != "" {
@@ -548,6 +573,45 @@ func decodeError(resp *http.Response) error {
 	}
 
 	return newHTTPError(resp)
+}
+
+// Indentation for continuation lines rendered under the primary error message:
+// a secondary error message sits at 2 spaces and its detail lines at 4, forming
+// a small tree. Kept as constants so the spacing is defined in one place.
+const (
+	errorContinuationIndent = "\n  "
+	errorDetailIndent       = "\n    "
+)
+
+// appendErrorDetails writes each non-empty line from a Bitbucket error entry's
+// details[] to b, indented under the message. Individual detail strings may
+// themselves contain embedded newlines (Bitbucket frequently formats multi-step
+// guidance this way), so each embedded line is indented consistently and blank
+// lines within an entry are preserved. Leading and trailing blank lines are
+// ignored, entirely empty/whitespace-only entries are skipped, and CR is
+// trimmed so CRLF-delimited details do not leave a trailing \r on the stable
+// stderr output.
+func appendErrorDetails(b *strings.Builder, details []string) {
+	for _, d := range details {
+		lines := strings.Split(d, "\n")
+		start := 0
+		for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+			start++
+		}
+		end := len(lines)
+		for end > start && strings.TrimSpace(lines[end-1]) == "" {
+			end--
+		}
+		for _, line := range lines[start:end] {
+			line = strings.TrimRight(line, " \t\r")
+			if line == "" {
+				b.WriteString("\n")
+				continue
+			}
+			b.WriteString(errorDetailIndent)
+			b.WriteString(line)
+		}
+	}
 }
 
 // HTTPError preserves the response status code for callers that need stable
