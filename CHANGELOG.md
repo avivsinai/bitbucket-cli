@@ -6,6 +6,15 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 ### Added
+- `bkt pr list --reviewer` lists pull requests where the authenticated user is
+  a requested reviewer. Data Center supports dashboard-wide and
+  repository-scoped views; Bitbucket Cloud supports repository-scoped
+  filtering and requires a repository from the active context or `--repo`.
+  `--mine` and `--reviewer` are mutually exclusive. (#253)
+- `bkt pr create --source-project` and `--source-repo` create Data Center pull
+  requests from a fork repository into an independent destination repository,
+  including cross-repository default-reviewer resolution. The flags are
+  rejected on Bitbucket Cloud. (#268)
 - Release automation can generate WinGet manifests for
   `AvivSinai.Bitbucket-CLI` and submit updates to `microsoft/winget-pkgs` after
   the package's initial catalog entry is accepted. (#246)
@@ -15,6 +24,12 @@ All notable changes to this project will be documented here. The format follows
   using cmd.exe-pinned recipes and Windows-safe test helpers, while keeping
   the existing Unix build and release script paths intact. A `windows-latest`
   CI job verifies the Windows build and test path.
+
+### Fixed
+- Bitbucket API errors now surface actionable `errors[].details[]` text and
+  additional `errors[]` entries while preserving the existing first-line
+  status/message format. LF/CRLF boundary blank lines no longer add stray
+  stderr lines. (#269)
 
 ## [0.29.0] - 2026-07-21
 ### Added
