@@ -622,6 +622,10 @@ Reviewers can be added with repeatable --reviewer flags.
 --with-default-reviewers merges the repository's configured default reviewers
 into the reviewer list. On Cloud, the current user is automatically excluded.
 
+On Data Center, --source-project and --source-repo select a fork repository for
+the source branch. Each defaults to the destination project or repository when
+omitted. These flags are rejected on Bitbucket Cloud.
+
 Draft pull requests are supported on Cloud (always) and on Data Center 8.18+
 via the --draft flag.
 
@@ -644,6 +648,8 @@ bkt pr create [flags]
 | `--repo` |  | Repository slug override |
 | `--reviewer` |  | Reviewer username or {UUID} (repeatable) |
 | `--source` |  | Source branch (defaults to the current branch) |
+| `--source-project` |  | Source project key (Data Center only; defaults to --project) |
+| `--source-repo` |  | Source repository slug (Data Center only; defaults to --repo) |
 | `--target` |  | Target branch (defaults to the remote's default branch) |
 | `--title` |  | Pull request title (defaults to the first unique commit subject) |
 | `--with-default-reviewers` |  | Add repository default reviewers |
@@ -674,6 +680,10 @@ bkt pr create [flags]
 
   # Create a draft pull request
   bkt pr create --title "WIP: new feature" --draft
+
+  # Create from a Data Center fork into an upstream repository
+  bkt pr create --source-project FORK --source-repo contributor-fork \
+    --project DEST --repo upstream --source feature --target main
 ```
 
 ## bkt pr decline

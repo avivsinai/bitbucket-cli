@@ -376,13 +376,15 @@ func flattenComments(c PullRequestComment, depth int) []PullRequestComment {
 
 // CreatePROptions configures pull request creation.
 type CreatePROptions struct {
-	Title        string
-	Description  string
-	SourceBranch string
-	TargetBranch string
-	Reviewers    []string
-	CloseSource  bool
-	Draft        bool
+	Title            string
+	Description      string
+	SourceBranch     string
+	TargetBranch     string
+	SourceProjectKey string
+	SourceRepoSlug   string
+	Reviewers        []string
+	CloseSource      bool
+	Draft            bool
 }
 
 // CreatePullRequest creates a pull request between branches.
@@ -397,14 +399,23 @@ func (c *Client) CreatePullRequest(ctx context.Context, projectKey, repoSlug str
 		return nil, fmt.Errorf("title is required")
 	}
 
+	sourceProjectKey := projectKey
+	if opts.SourceProjectKey != "" {
+		sourceProjectKey = opts.SourceProjectKey
+	}
+	sourceRepoSlug := repoSlug
+	if opts.SourceRepoSlug != "" {
+		sourceRepoSlug = opts.SourceRepoSlug
+	}
+
 	body := map[string]any{
 		"title":       opts.Title,
 		"description": opts.Description,
 		"fromRef": map[string]any{
 			"id": ensureRef(opts.SourceBranch),
 			"repository": map[string]any{
-				"slug":    repoSlug,
-				"project": map[string]any{"key": strings.ToUpper(projectKey)},
+				"slug":    sourceRepoSlug,
+				"project": map[string]any{"key": strings.ToUpper(sourceProjectKey)},
 			},
 		},
 		"toRef": map[string]any{
