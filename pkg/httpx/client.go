@@ -587,15 +587,22 @@ const (
 // details[] to b, indented under the message. Individual detail strings may
 // themselves contain embedded newlines (Bitbucket frequently formats multi-step
 // guidance this way), so each embedded line is indented consistently and blank
-// lines within an entry are preserved. Entirely empty/whitespace-only entries
-// are skipped (they would otherwise emit a stray blank line), and CR is trimmed
-// so CRLF-delimited details do not leave a trailing \r on the stable stderr output.
+// lines within an entry are preserved. Leading and trailing blank lines are
+// ignored, entirely empty/whitespace-only entries are skipped, and CR is
+// trimmed so CRLF-delimited details do not leave a trailing \r on the stable
+// stderr output.
 func appendErrorDetails(b *strings.Builder, details []string) {
 	for _, d := range details {
-		if strings.TrimSpace(d) == "" {
-			continue
+		lines := strings.Split(d, "\n")
+		start := 0
+		for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+			start++
 		}
-		for _, line := range strings.Split(d, "\n") {
+		end := len(lines)
+		for end > start && strings.TrimSpace(lines[end-1]) == "" {
+			end--
+		}
+		for _, line := range lines[start:end] {
 			line = strings.TrimRight(line, " \t\r")
 			if line == "" {
 				b.WriteString("\n")

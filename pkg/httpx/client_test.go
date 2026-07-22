@@ -630,6 +630,62 @@ func TestDecodeErrorTrimsCRLFAndSkipsEmptyDetails(t *testing.T) {
 	}
 }
 
+func TestDecodeErrorTrimsBoundaryBlankLinesFromDetails(t *testing.T) {
+	tests := []struct {
+		name   string
+		detail string
+		want   string
+	}{
+		{
+			name:   "trailing LF",
+			detail: "step one\n",
+			want:   "400 Bad Request: Blocked\n    step one",
+		},
+		{
+			name:   "trailing CRLF",
+			detail: "step one\r\n",
+			want:   "400 Bad Request: Blocked\n    step one",
+		},
+		{
+			name:   "boundary blank lines with internal blank line",
+			detail: "\r\n \t\r\nstep one\r\n\r\nstep two\r\n \t\r\n",
+			want:   "400 Bad Request: Blocked\n    step one\n\n    step two",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"errors": []map[string]any{
+						{"message": "Blocked", "details": []string{tt.detail}},
+					},
+				})
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(Options{BaseURL: server.URL, Retry: RetryPolicy{MaxAttempts: 1}})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			req, err := client.NewRequest(context.Background(), http.MethodPost, "/api", nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+
+			err = client.Do(req, nil)
+			if err == nil {
+				t.Fatal("expected error for 400 response")
+			}
+			if got := err.Error(); got != tt.want {
+				t.Fatalf("error = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDecodeErrorBitbucketCloudTokenHint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
