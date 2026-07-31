@@ -10,7 +10,7 @@ Prepares a release PR from master by:
 - verifying HEAD matches origin/master
 - creating release/vX.Y.Z
 - moving CHANGELOG.md's Unreleased section into a versioned release entry
-- bumping skill/plugin metadata versions
+- bumping skill/plugin metadata versions and syncing skill mirrors
 - validating the release metadata
 - optionally running check-skills/gofmt/vet/test/build
 - creating and pushing the release commit
@@ -229,6 +229,7 @@ for path in changed:
     print(f"  - {path}")
 PY
 
+make sync-skills
 ./scripts/check-release-version.sh "$tag"
 
 if [ "$skip_verify" -eq 0 ]; then
@@ -246,7 +247,7 @@ if [ "$skip_verify" -eq 0 ]; then
   make build
 fi
 
-git add CHANGELOG.md skills/*/SKILL.md .claude-plugin/plugin.json
+git add CHANGELOG.md skills/*/SKILL.md .claude/skills/bkt .agents/skills/bkt .claude-plugin/plugin.json
 [ -f .codex-plugin/plugin.json ] && git add .codex-plugin/plugin.json
 
 git diff --cached --quiet && {

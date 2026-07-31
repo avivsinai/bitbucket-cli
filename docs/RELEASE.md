@@ -8,7 +8,9 @@
      - This verifies the worktree is clean and at `origin/master`.
      - It creates `release/vX.Y.Z`.
      - It turns `Unreleased` into `## [X.Y.Z] - YYYY-MM-DD`.
-     - It bumps `skills/*/SKILL.md`, `.claude-plugin/plugin.json`, and `.codex-plugin/plugin.json`.
+     - It bumps `skills/*/SKILL.md`, syncs the committed `.claude/skills/` and
+       `.agents/skills/` mirrors, and updates `.claude-plugin/plugin.json` and
+       `.codex-plugin/plugin.json`.
      - It runs `./scripts/check-release-version.sh`, `make check-skills`, `gofmt`, `go vet`, `make test`, and `make build`.
      - It commits `chore(release): vX.Y.Z`, pushes the release branch, opens a PR, and enables squash auto-merge by default.
 

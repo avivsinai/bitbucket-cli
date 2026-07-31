@@ -43,22 +43,33 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientID=$(BKT_OAUTH_CLIENT_ID) \
 	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientSecret=$(BKT_OAUTH_CLIENT_SECRET)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills check-generated-skill release-local generate-skill nix-update-vendor-hash require-bash
+.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills sync-skills check-generated-skill release-local generate-skill nix-update-vendor-hash require-bash
 
 build: $(BIN)
 
-# Skill integrity: skills/ is canonical, .claude/skills/ and .agents/skills/ are symlinks
+# Skill integrity: skills/ is canonical; .claude/skills/ and .agents/skills/ are mirrors.
 check-skills:
 ifeq ($(OS),Windows_NT)
-	@powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; Write-Host 'Checking skill symlinks...'; foreach ($$link in @('.claude/skills/bkt','.agents/skills/bkt')) { $$item=Get-Item -LiteralPath $$link -Force; if (-not (($$item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) { Write-Error ($$link + ' is not a symlink'); exit 1 }; $$target=$$item.Target; if ($$target -is [array]) { $$target=$$target[0] }; if (($$target -ne '../../skills/bkt') -and ($$target -ne '..\..\skills\bkt')) { Write-Error ($$link + ' target is not ../../skills/bkt'); exit 1 } }; Write-Host 'Skill symlinks valid'"
+	@powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; Write-Host 'Checking skill mirrors...'; foreach ($$mirror in @('.claude/skills/bkt','.agents/skills/bkt')) { $$item=Get-Item -LiteralPath $$mirror -Force; if (-not $$item.PSIsContainer -or (($$item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) { Write-Error ($$mirror + ' is not a regular directory'); exit 1 }; git diff --no-index --quiet -- skills/bkt $$mirror; if ($$LASTEXITCODE -ne 0) { Write-Error ($$mirror + ' content mismatch; run make sync-skills'); exit 1 } }; Write-Host 'Skill mirrors valid'"
 else
-	@echo "Checking skill symlinks..."
-	@test -L .claude/skills/bkt || (echo "ERROR: .claude/skills/bkt is not a symlink" && exit 1)
-	@test -L .agents/skills/bkt || (echo "ERROR: .agents/skills/bkt is not a symlink" && exit 1)
-	@test "$$(readlink .claude/skills/bkt)" = "../../skills/bkt" || (echo "ERROR: .claude/skills/bkt target is not ../../skills/bkt" && exit 1)
-	@test "$$(readlink .agents/skills/bkt)" = "../../skills/bkt" || (echo "ERROR: .agents/skills/bkt target is not ../../skills/bkt" && exit 1)
-	@diff -rq skills/bkt .claude/skills/bkt || (echo "ERROR: .claude/skills/bkt content mismatch" && exit 1)
-	@echo "Skill symlinks valid"
+	@echo "Checking skill mirrors..."
+	@for mirror in .claude/skills/bkt .agents/skills/bkt; do \
+		test -d "$$mirror" && test ! -L "$$mirror" || { echo "ERROR: $$mirror is not a regular directory"; exit 1; }; \
+		git diff --no-index --quiet -- skills/bkt "$$mirror" || { echo "ERROR: $$mirror content mismatch; run make sync-skills"; exit 1; }; \
+	done
+	@echo "Skill mirrors valid"
+endif
+
+sync-skills:
+ifeq ($(OS),Windows_NT)
+	@powershell -NoProfile -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; if (-not (Test-Path -LiteralPath skills/bkt -PathType Container)) { Write-Error 'skills/bkt is not a directory'; exit 1 }; foreach ($$mirror in @('.claude/skills/bkt','.agents/skills/bkt')) { if (Test-Path -LiteralPath $$mirror) { Remove-Item -LiteralPath $$mirror -Recurse -Force }; Copy-Item -LiteralPath skills/bkt -Destination $$mirror -Recurse }; Write-Host 'Skill mirrors synced'"
+else
+	@test -d skills/bkt || { echo "ERROR: skills/bkt is not a directory"; exit 1; }
+	@for mirror in .claude/skills/bkt .agents/skills/bkt; do \
+		rm -rf "$$mirror"; \
+		cp -R skills/bkt "$$mirror"; \
+	done
+	@echo "Skill mirrors synced"
 endif
 
 $(BIN): $(SOURCES) go.mod go.sum
@@ -108,6 +119,7 @@ clean:
 
 generate-skill:
 	$(GO) run ./cmd/docgen -o skills/bkt/rules
+	$(MAKE) sync-skills
 
 check-generated-skill: require-bash
 ifeq ($(OS),Windows_NT)
