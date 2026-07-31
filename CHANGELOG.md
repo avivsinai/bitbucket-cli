@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- ChatGPT GitHub imports no longer fail on unsupported skill symlinks; the
+  Claude and agent skill paths are now committed directory mirrors. (#279)
+
 ## [0.30.0] - 2026-07-22
 ### Added
 - `bkt pr list --reviewer` lists pull requests where the authenticated user is
