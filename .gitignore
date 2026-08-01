@@ -4,6 +4,9 @@ dist/
 sbom.cdx.json
 tmp
 
+# promptcode exports
+promptcode_*.md
+
 # Go
 bin/
 *.test

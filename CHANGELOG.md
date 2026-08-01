@@ -6,9 +6,18 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Documented WinGet installation (`winget install AvivSinai.Bitbucket-CLI`) in
+  the README now that the package is available in the catalog.
+
 ### Fixed
 - ChatGPT GitHub imports no longer fail on unsupported skill symlinks; the
   Claude and agent skill paths are now committed directory mirrors. (#279)
+- Corrected support and governance docs to point at GitHub Issues: removed a
+  reference to a non-existent community Slack and to GitHub Discussions, which
+  are not enabled for this repository.
+- Removed an accidentally committed `promptcode_bitbucket-cli-full.md` export
+  and ignored `promptcode_*.md` so generated dumps stay out of version control.
 
 ## [0.30.0] - 2026-07-22
 ### Added

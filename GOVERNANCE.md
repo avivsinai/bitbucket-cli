@@ -11,7 +11,7 @@
 
 ## Decision making
 
-- Day-to-day decisions happen in issues, PRs, or discussions.
+- Day-to-day decisions happen in issues or PRs.
 - Significant changes (CLI UX, API surface, security posture) require an
   accepted design proposal or RFC tracked in `docs/rfcs/` (future enhancement).
 - Maintainers aim for consensus. If consensus cannot be reached, the maintainer
@@ -27,8 +27,8 @@ published in `docs/notes/` when applicable.
 - Demonstrate sustained, high-quality contributions for at least two release
   cycles.
 - Show ownership over an area (e.g., pipelines, config, docs).
-- Request nomination via GitHub Discussions. Existing maintainers will vote and
-  record the outcome in the discussion.
+- Request nomination by opening an issue. Existing maintainers will vote and
+  record the outcome there.
 
 ## Stepping down
 

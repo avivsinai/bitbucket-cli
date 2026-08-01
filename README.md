@@ -22,6 +22,12 @@
 brew install avivsinai/tap/bitbucket-cli
 ```
 
+### WinGet (Windows)
+
+```powershell
+winget install AvivSinai.Bitbucket-CLI
+```
+
 ### Scoop (Windows)
 
 ```powershell
