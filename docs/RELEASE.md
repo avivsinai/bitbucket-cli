@@ -42,7 +42,8 @@
    - Verify that the WinGet update PR was opened and passed upstream validation.
      GoReleaser reports WinGet publishing errors without failing the release, so
      a green release workflow is not proof that the package update landed.
-   - Announce the release in the `CHANGELOG.md` (already updated) and discussions.
+   - Announce the release via the `CHANGELOG.md` entry (already updated), which
+     CI uses as the GitHub Release notes.
    - `CHANGELOG.md` already contains a fresh empty `Unreleased` section because the release script preserves it.
 
 ## Guardrails

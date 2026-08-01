@@ -20,7 +20,7 @@ requests, docs fixes, and release automation improvements.
   make sbom   # optional but encouraged if you have syft installed
   ```
 
-- For non-trivial changes, open an issue or discussion first so we can align on
+- For non-trivial changes, open an issue first so we can align on
   direction.
 
 ## Testing
@@ -79,5 +79,5 @@ The detailed steps live in [`docs/RELEASE.md`](docs/RELEASE.md). In short:
 ## Community roles
 
 Governance and decision-making guidelines live in [GOVERNANCE.md](GOVERNANCE.md).
-If you're interested in becoming a maintainer, open a discussion thread so we
+If you're interested in becoming a maintainer, open an issue so we
 can chat about expectations.
