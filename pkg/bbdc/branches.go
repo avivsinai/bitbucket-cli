@@ -142,7 +142,7 @@ func (c *Client) SetDefaultBranch(ctx context.Context, projectKey, repoSlug, bra
 		"id": ensureRef(branch),
 	}
 
-	req, err := c.http.NewRequest(ctx, "PUT", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/settings/default-branch",
+	req, err := c.http.NewRequest(ctx, "PUT", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/default-branch",
 		url.PathEscape(projectKey),
 		url.PathEscape(repoSlug),
 	), body)
