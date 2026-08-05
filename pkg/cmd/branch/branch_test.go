@@ -364,7 +364,7 @@ func TestBranchDeleteRejectsCloud(t *testing.T) {
 
 func TestBranchSetDefaultDC(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || !strings.Contains(r.URL.Path, "/settings/default-branch") {
+		if r.Method != http.MethodPut || r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/my-repo/default-branch" {
 			http.NotFound(w, r)
 			return
 		}

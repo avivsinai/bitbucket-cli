@@ -11,6 +11,8 @@ All notable changes to this project will be documented here. The format follows
   the README now that the package is available in the catalog.
 
 ### Fixed
+- Creating a Bitbucket Data Center repository with a default branch no longer
+  reports a false 404 after the repository has already been created.
 - ChatGPT GitHub imports no longer fail on unsupported skill symlinks; the
   Claude and agent skill paths are now committed directory mirrors. (#279)
 - Corrected support and governance docs to point at GitHub Issues: removed a
