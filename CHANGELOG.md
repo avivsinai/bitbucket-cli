@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-08-05
 ### Added
 - Documented WinGet installation (`winget install AvivSinai.Bitbucket-CLI`) in
   the README now that the package is available in the catalog.
@@ -20,6 +21,7 @@ All notable changes to this project will be documented here. The format follows
   are not enabled for this repository.
 - Removed an accidentally committed `promptcode_bitbucket-cli-full.md` export
   and ignored `promptcode_*.md` so generated dumps stay out of version control.
+
 
 ## [0.30.0] - 2026-07-22
 ### Added
@@ -658,7 +660,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.1...HEAD
+[0.30.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.1...v0.28.2
