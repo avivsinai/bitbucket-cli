@@ -13,6 +13,79 @@ type ReviewerGroup struct {
 	ID   int    `json:"id"`
 }
 
+// ReviewerGroupScope identifies the entity a reviewer group is defined on.
+type ReviewerGroupScope struct {
+	Type       string `json:"type"`
+	ResourceID int    `json:"resourceId"`
+}
+
+// ProjectReviewerGroup represents a reviewer group defined in a project's settings.
+type ProjectReviewerGroup struct {
+	ID          int                `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Scope       ReviewerGroupScope `json:"scope"`
+	Users       []User             `json:"users"`
+}
+
+// ListProjectReviewerGroups returns the reviewer groups defined in a project's
+// settings. A limit of 0 returns all groups.
+func (c *Client) ListProjectReviewerGroups(ctx context.Context, projectKey string, limit int) ([]ProjectReviewerGroup, error) {
+	if projectKey == "" {
+		return nil, fmt.Errorf("project key is required")
+	}
+
+	const defaultPageSize = 25
+
+	var (
+		start = 0
+		found []ProjectReviewerGroup
+	)
+
+	for {
+		pageSize := defaultPageSize
+		if limit > 0 {
+			remaining := limit - len(found)
+			if remaining <= 0 {
+				break
+			}
+			if remaining < pageSize {
+				pageSize = remaining
+			}
+		}
+
+		path := fmt.Sprintf("/rest/api/1.0/projects/%s/settings/reviewer-groups?limit=%d&start=%d",
+			url.PathEscape(projectKey), pageSize, start)
+		req, err := c.http.NewRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp paged[ProjectReviewerGroup]
+		if err := c.http.Do(req, &resp); err != nil {
+			return nil, err
+		}
+
+		found = append(found, resp.Values...)
+
+		if limit > 0 && len(found) >= limit {
+			found = found[:limit]
+			break
+		}
+
+		if resp.IsLastPage || len(resp.Values) == 0 {
+			break
+		}
+
+		if resp.NextPageStart <= start {
+			return nil, fmt.Errorf("invalid pagination response: nextPageStart %d did not advance from %d", resp.NextPageStart, start)
+		}
+		start = resp.NextPageStart
+	}
+
+	return found, nil
+}
+
 // ListReviewerGroups returns reviewer groups associated with a repository's default reviewers.
 func (c *Client) ListReviewerGroups(ctx context.Context, projectKey, repoSlug string) ([]ReviewerGroup, error) {
 	if projectKey == "" || repoSlug == "" {
