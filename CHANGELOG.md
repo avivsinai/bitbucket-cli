@@ -5,6 +5,10 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt project reviewer-groups list` lists the reviewer groups defined in a
+  Bitbucket Data Center project's settings, including each group's members.
+  The project is resolved from the active context or `--project`. (#290)
 
 ## [0.30.1] - 2026-08-05
 ### Added

@@ -31,6 +31,7 @@ other commands.`,
 	}
 
 	cmd.AddCommand(newListCmd(f))
+	cmd.AddCommand(newReviewerGroupsCmd(f))
 
 	return cmd
 }
