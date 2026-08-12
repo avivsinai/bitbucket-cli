@@ -112,7 +112,8 @@ bkt project reviewer-groups <command> [flags]
 
 List the reviewer groups defined in a Bitbucket Data Center project's
 settings, including each group's members. The project is resolved from the
-active context unless overridden with --project.
+active context unless overridden with --project. Use --limit to control the
+number of results returned.
 
 This command is only available for Data Center hosts. Attempting to run it
 against a Cloud context will return an error.
@@ -146,8 +147,11 @@ bkt project reviewer-groups list [flags]
 ### Examples
 
 ```bash
-# List reviewer groups for the active context project
+# List reviewer groups for the active context project (default limit of 30)
   bkt project reviewer-groups list
+
+  # List all reviewer groups without a limit
+  bkt project reviewer-groups ls --limit 0
 
   # List reviewer groups for a specific project
   bkt project reviewer-groups list --project PLATFORM

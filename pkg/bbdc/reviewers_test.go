@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/avivsinai/bitbucket-cli/pkg/bbdc"
@@ -150,7 +151,8 @@ func TestListProjectReviewerGroups(t *testing.T) {
 				},
 			})
 		default:
-			t.Fatalf("unexpected start %q", r.URL.Query().Get("start"))
+			t.Errorf("unexpected start %q", r.URL.Query().Get("start"))
+			http.Error(w, "unexpected start", http.StatusBadRequest)
 		}
 	}))
 
@@ -182,12 +184,14 @@ func TestListProjectReviewerGroupsLimit(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if got := r.URL.Query().Get("limit"); got != "1" {
-			t.Fatalf("limit = %q, want 1", got)
+			t.Errorf("limit = %q, want 1", got)
 		}
+		// Over-return to prove the client truncates to the requested limit.
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"isLastPage": false,
+			"isLastPage": true,
 			"values": []map[string]any{
 				{"id": 1, "name": "one"},
+				{"id": 2, "name": "two"},
 			},
 		})
 	}))
@@ -198,6 +202,27 @@ func TestListProjectReviewerGroupsLimit(t *testing.T) {
 	}
 	if len(groups) != 1 || groups[0].Name != "one" {
 		t.Fatalf("unexpected groups: %#v", groups)
+	}
+}
+
+func TestListProjectReviewerGroupsStalledPagination(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isLastPage":    false,
+			"nextPageStart": 0,
+			"values": []map[string]any{
+				{"id": 1, "name": "one"},
+			},
+		})
+	}))
+
+	_, err := client.ListProjectReviewerGroups(context.Background(), "PROJ", 0)
+	if err == nil {
+		t.Fatal("expected error for non-advancing pagination")
+	}
+	if !strings.Contains(err.Error(), "did not advance") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

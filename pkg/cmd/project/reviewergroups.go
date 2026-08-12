@@ -38,19 +38,25 @@ type reviewerGroupsListOptions struct {
 }
 
 func newReviewerGroupsListCmd(f *cmdutil.Factory) *cobra.Command {
-	opts := &reviewerGroupsListOptions{}
+	opts := &reviewerGroupsListOptions{
+		Limit: 30,
+	}
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List project reviewer groups (DC only)",
 		Long: `List the reviewer groups defined in a Bitbucket Data Center project's
 settings, including each group's members. The project is resolved from the
-active context unless overridden with --project.
+active context unless overridden with --project. Use --limit to control the
+number of results returned.
 
 This command is only available for Data Center hosts. Attempting to run it
 against a Cloud context will return an error.`,
-		Example: `  # List reviewer groups for the active context project
+		Example: `  # List reviewer groups for the active context project (default limit of 30)
   bkt project reviewer-groups list
+
+  # List all reviewer groups without a limit
+  bkt project reviewer-groups ls --limit 0
 
   # List reviewer groups for a specific project
   bkt project reviewer-groups list --project PLATFORM

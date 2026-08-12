@@ -236,6 +236,25 @@ func TestProjectReviewerGroupsListProjectOverride(t *testing.T) {
 	}
 }
 
+func TestProjectReviewerGroupsListLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("limit"); got != "5" {
+			t.Errorf("limit = %q, want 5", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isLastPage": true,
+			"values":     []any{},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	f, _, stderr := newTestFactory(dcConfig(srv.URL))
+	if err := runProjectCmd(t, f, "reviewer-groups", "list", "--limit", "5"); err != nil {
+		t.Fatalf("unexpected error: %v (stderr=%s)", err, stderr.String())
+	}
+}
+
 func TestProjectReviewerGroupsListEmpty(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

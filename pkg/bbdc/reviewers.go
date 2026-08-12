@@ -77,6 +77,9 @@ func (c *Client) ListProjectReviewerGroups(ctx context.Context, projectKey strin
 			break
 		}
 
+		if resp.NextPageStart <= start {
+			return nil, fmt.Errorf("invalid pagination response: nextPageStart %d did not advance from %d", resp.NextPageStart, start)
+		}
 		start = resp.NextPageStart
 	}
 
