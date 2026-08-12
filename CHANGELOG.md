@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.31.0] - 2026-08-12
 ### Added
 - `bkt project reviewer-groups list` lists the reviewer groups defined in a
   Bitbucket Data Center project's settings, including each group's members.
@@ -664,7 +666,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.1...v0.31.0
 [0.30.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.28.2...v0.29.0
