@@ -77,6 +77,9 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 		},
 	}
 
+	if host.AuthMethod != "oauth" {
+		opts.AuthMethod = host.AuthMethod
+	}
 	if host.AuthMethod == "oauth" && (!enableOAuthRefresh || secret.TokenFromEnv() == "") {
 		opts.AuthMethod = "bearer"
 	}

@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Headless Bitbucket Cloud authentication now supports repository, project,
+  and workspace access tokens through `BKT_AUTH_METHOD=bearer` without
+  requiring `BKT_USERNAME`.
+
 ## [0.31.0] - 2026-08-12
 ### Added
 - `bkt project reviewer-groups list` lists the reviewer groups defined in a

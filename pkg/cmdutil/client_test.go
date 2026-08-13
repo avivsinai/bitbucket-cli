@@ -34,6 +34,27 @@ func TestNewCloudClientBasicAuth(t *testing.T) {
 	}
 }
 
+func TestNewCloudClientBearerAuth(t *testing.T) {
+	host := &config.Host{
+		Kind:       "cloud",
+		BaseURL:    "https://api.bitbucket.org/2.0",
+		AuthMethod: "bearer",
+		Token:      "repository-access-token",
+	}
+
+	client, err := NewCloudClient(host)
+	if err != nil {
+		t.Fatalf("NewCloudClient error: %v", err)
+	}
+	req, err := client.HTTP().NewRequest(context.Background(), http.MethodGet, "/repositories/team/repo", nil)
+	if err != nil {
+		t.Fatalf("NewRequest error: %v", err)
+	}
+	if got := req.Header.Get("Authorization"); got != "Bearer repository-access-token" {
+		t.Errorf("Authorization = %q, want bearer repository access token", got)
+	}
+}
+
 func TestNewCloudClientOAuthWiresRefresher(t *testing.T) {
 	host := &config.Host{
 		Kind:       "cloud",
@@ -72,6 +93,14 @@ func TestNewCloudClientOAuthSkipsRefresherWithBKTToken(t *testing.T) {
 	}
 	if client == nil {
 		t.Fatal("expected client, got nil")
+	}
+	req, err := client.HTTP().NewRequest(context.Background(), http.MethodGet, "/user", nil)
+	if err != nil {
+		t.Fatalf("NewRequest error: %v", err)
+	}
+	username, token, ok := req.BasicAuth()
+	if !ok || username != "erank_ai21" || token != "env-override" {
+		t.Errorf("BasicAuth = (%q, %q, %t), want OAuth host env override as basic auth", username, token, ok)
 	}
 }
 
