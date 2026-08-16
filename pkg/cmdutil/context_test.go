@@ -383,6 +383,27 @@ func TestHostFromEnv(t *testing.T) {
 			token:   "cloud-token",
 			wantErr: "BKT_USERNAME",
 		},
+		{
+			name:       "Cloud bearer without username is supported",
+			rawURL:     "https://bitbucket.org",
+			token:      "repository-access-token",
+			authMethod: "bearer",
+			wantHost:   &hostAssert{key: "api.bitbucket.org", kind: "cloud", authMethod: "bearer"},
+		},
+		{
+			name:       "Cloud bearer auth method is normalized",
+			rawURL:     "https://bitbucket.org",
+			token:      "repository-access-token",
+			authMethod: " BEARER ",
+			wantHost:   &hostAssert{key: "api.bitbucket.org", kind: "cloud", authMethod: "bearer"},
+		},
+		{
+			name:       "Cloud rejects unsupported auth method",
+			rawURL:     "https://bitbucket.org",
+			token:      "cloud-token",
+			authMethod: "digest",
+			wantErr:    "unsupported BKT_AUTH_METHOD",
+		},
 	}
 
 	for _, tt := range tests {
@@ -909,6 +930,50 @@ func TestLoadHostTokenOAuthRequiresBKTUsername(t *testing.T) {
 	err := loadHostToken("bkt", "api.bitbucket.org", host)
 	if err == nil {
 		t.Fatal("expected error for OAuth host without BKT_USERNAME")
+	}
+	if !strings.Contains(err.Error(), "BKT_USERNAME") {
+		t.Errorf("error = %v, want BKT_USERNAME mention", err)
+	}
+}
+
+func TestLoadHostTokenOAuthOverrideAcceptsCloudBearerWithoutUsername(t *testing.T) {
+	t.Setenv(secret.EnvToken, "repository-access-token")
+	t.Setenv(secret.EnvUsername, "")
+	t.Setenv(secret.EnvAuthMethod, " BEARER ")
+
+	host := &config.Host{
+		Kind:       "cloud",
+		BaseURL:    "https://api.bitbucket.org/2.0",
+		Username:   "old-oauth-user",
+		AuthMethod: "oauth",
+	}
+
+	if err := loadHostToken("bkt", "api.bitbucket.org", host); err != nil {
+		t.Fatalf("loadHostToken error: %v", err)
+	}
+	if host.Token != "repository-access-token" {
+		t.Errorf("Token = %q, want repository-access-token", host.Token)
+	}
+	if host.AuthMethod != "bearer" {
+		t.Errorf("AuthMethod = %q, want bearer", host.AuthMethod)
+	}
+}
+
+func TestLoadHostTokenOAuthBasicOverrideStillRequiresBKTUsername(t *testing.T) {
+	t.Setenv(secret.EnvToken, "api-token")
+	t.Setenv(secret.EnvUsername, "")
+	t.Setenv(secret.EnvAuthMethod, "basic")
+
+	host := &config.Host{
+		Kind:       "cloud",
+		BaseURL:    "https://api.bitbucket.org/2.0",
+		Username:   "old-oauth-user",
+		AuthMethod: "oauth",
+	}
+
+	err := loadHostToken("bkt", "api.bitbucket.org", host)
+	if err == nil {
+		t.Fatal("expected error for basic override without BKT_USERNAME")
 	}
 	if !strings.Contains(err.Error(), "BKT_USERNAME") {
 		t.Errorf("error = %v, want BKT_USERNAME mention", err)

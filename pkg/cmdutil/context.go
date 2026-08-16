@@ -251,7 +251,7 @@ func mergeEnvHost(executable, key string, base config.Host) (*config.Host, error
 	if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
 		h.Username = u
 	}
-	if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
+	if m := strings.ToLower(strings.TrimSpace(os.Getenv(secret.EnvAuthMethod))); m != "" {
 		h.AuthMethod = m
 	}
 	return &h, nil
@@ -268,14 +268,16 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 		host.Token = envToken
 		// Apply BKT_USERNAME and BKT_AUTH_METHOD so that OAuth-saved hosts
 		// (where Username is a Bitbucket ID, not an email) work correctly
-		// when overridden with a Cloud API token.
+		// when overridden with a Cloud API token or resource access token.
+		requiresCloudUsername := host.AuthMethod == "oauth" && host.Kind == "cloud"
+		if m := strings.ToLower(strings.TrimSpace(os.Getenv(secret.EnvAuthMethod))); m != "" {
+			host.AuthMethod = m
+			requiresCloudUsername = requiresCloudUsername && m != "bearer"
+		}
 		if u := strings.TrimSpace(os.Getenv(secret.EnvUsername)); u != "" {
 			host.Username = u
-		} else if host.AuthMethod == "oauth" && host.Kind == "cloud" {
+		} else if requiresCloudUsername {
 			return fmt.Errorf("BKT_USERNAME is required when overriding an OAuth-authenticated Cloud host with BKT_TOKEN; set BKT_USERNAME to your Atlassian account email")
-		}
-		if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
-			host.AuthMethod = m
 		}
 		return nil
 	}
@@ -388,15 +390,20 @@ func hostFromEnv(rawURL string) (string, *config.Host, error) {
 	}
 
 	username := strings.TrimSpace(os.Getenv(secret.EnvUsername))
-	authMethod := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod))
+	authMethod := strings.ToLower(strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)))
 
 	if isCloud {
-		// Cloud only supports basic auth; a username (Atlassian account email)
-		// is always required.
-		if username == "" {
+		// User API tokens use basic auth with an Atlassian account email, while
+		// repository, project, and workspace access tokens use bearer auth.
+		if authMethod == "" {
+			authMethod = "basic"
+		}
+		if authMethod != "basic" && authMethod != "bearer" {
+			return "", nil, fmt.Errorf("unsupported BKT_AUTH_METHOD %q; use basic or bearer", authMethod)
+		}
+		if authMethod == "basic" && username == "" {
 			return "", nil, fmt.Errorf("BKT_USERNAME is required for Bitbucket Cloud; set it to your Atlassian account email")
 		}
-		authMethod = "basic"
 	} else {
 		// DC: default to bearer when no username is available so that PAT-only
 		// headless flows work without requiring BKT_AUTH_METHOD=bearer.
