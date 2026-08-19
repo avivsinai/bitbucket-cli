@@ -11,6 +11,11 @@ All notable changes to this project will be documented here. The format follows
   and workspace access tokens through `BKT_AUTH_METHOD=bearer` without
   requiring `BKT_USERNAME`.
 
+### Changed
+- The README first screen now shows Homebrew install plus a recorded
+  `bkt --help` session (`docs/demo.gif` and `docs/demo.svg`). No
+  credentials are used.
+
 ## [0.31.0] - 2026-08-12
 ### Added
 - `bkt project reviewer-groups list` lists the reviewer groups defined in a

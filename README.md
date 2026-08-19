@@ -12,6 +12,17 @@
 
 `bkt` is a stand-alone Bitbucket command-line interface that targets Bitbucket Data Center **and** Bitbucket Cloud. It mirrors the ergonomics of `gh` and delivers a consistent JSON/YAML contract for automation.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="Recorded terminal: brew install avivsinai/tap/bitbucket-cli, then bkt --help" width="860">
+</p>
+
+```bash
+brew install avivsinai/tap/bitbucket-cli
+bkt --help
+```
+
+Recorded from a real `bkt --help` run — no Bitbucket login or token required. Other installers: [WinGet](#winget-windows), [Scoop](#scoop-windows), [Nix](#nix-nixos--nix-darwin--linux--macos), [Go](#go-install), [binaries](#binary-downloads).
+
 **Built for AI & automation:** Drop `bkt` into Claude Code, Codex and other coding agents, or shell scripts and they inherit structured output, predictable flags, and safe defaults—no glue code required.
 
 ## Installation
