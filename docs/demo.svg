@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="866" height="879" viewBox="0 0 866 879" role="img" aria-labelledby="title desc">
+  <title id="title">bkt install and help</title>
+  <desc id="desc">Real session recorded from bkt 0.31.0. Commands: brew install avivsinai/tap/bitbucket-cli then bkt --help. No credentials are used.</desc>
+  <defs>
+    <linearGradient id="bg" x1="80" y1="20" x2="826" y2="859" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#11344A"/>
+      <stop offset="0.55" stop-color="#0D2534"/>
+      <stop offset="1" stop-color="#091820"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#173F55"/>
+      <stop offset="1" stop-color="#102836"/>
+    </linearGradient>
+    <clipPath id="clipBrew">
+      <rect x="38" y="53" width="0" height="27">
+        <animate attributeName="width" values="0;0;330;330" keyTimes="0.0000;0.0227;0.1909;1.0000"
+                 dur="11.0s" repeatCount="indefinite"/>
+      </rect>
+    </clipPath>
+    <clipPath id="clipHelpCmd">
+      <rect x="38" y="70" width="0" height="27">
+        <animate attributeName="width" values="0;0;88;88" keyTimes="0.0000;0.2318;0.3227;1.0000"
+                 dur="11.0s" repeatCount="indefinite"/>
+      </rect>
+    </clipPath>
+  </defs>
+  <style>
+    text {
+      font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+    }
+  </style>
+
+  <rect width="866" height="879" rx="16" fill="url(#bg)"/>
+  <rect width="866" height="40" rx="16" fill="url(#bar)"/>
+  <rect y="24" width="866" height="16" fill="url(#bar)"/>
+  <circle cx="22" cy="20" r="5.5" fill="#FF5F57"/>
+  <circle cx="40" cy="20" r="5.5" fill="#FEBC2E"/>
+  <circle cx="58" cy="20" r="5.5" fill="#28C840"/>
+  <text x="433.0" y="25" text-anchor="middle" fill="#8BA3B0" font-size="12px">bkt — Bitbucket CLI</text>
+
+  <!-- prompt 1 + brew command -->
+  <text x="24" y="69" xml:space="preserve"><tspan fill="#7DE0D3">$</tspan><tspan fill="#F7FAFC"> </tspan></text>
+  <g clip-path="url(#clipBrew)">
+    <text x="38" y="69" fill="#F7FAFC">brew install avivsinai/tap/bitbucket-cli</text>
+  </g>
+
+  <!-- prompt 2 + help command -->
+  <text x="24" y="86" xml:space="preserve"><tspan fill="#7DE0D3">$</tspan><tspan fill="#F7FAFC"> </tspan>
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.2227;0.2273;1" dur="11.0s" repeatCount="indefinite"/>
+  </text>
+  <g clip-path="url(#clipHelpCmd)">
+    <text x="38" y="86" fill="#F7FAFC">bkt --help</text>
+  </g>
+
+  <!-- real help output -->
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.3455;0.3473;1" dur="11.0s" repeatCount="indefinite"/>
+      <text x="24" y="103" xml:space="preserve"><tspan fill="#F7FAFC">Work seamlessly with Bitbucket Data Center and Cloud from the command line.</tspan></text>
+      <text x="24" y="120" xml:space="preserve"><tspan fill="#F7FAFC"> </tspan></text>
+      <text x="24" y="137" xml:space="preserve"><tspan fill="#7DE0D3">Common flows:</tspan></text>
+      <text x="24" y="154" xml:space="preserve"><tspan fill="#C2E66E">  bkt auth login https://bitbucket.example.com</tspan></text>
+      <text x="24" y="171" xml:space="preserve"><tspan fill="#C2E66E">  bkt pr list --mine</tspan></text>
+      <text x="24" y="188" xml:space="preserve"><tspan fill="#C2E66E">  bkt status pr 123 --json</tspan></text>
+      <text x="24" y="205" xml:space="preserve"><tspan fill="#F7FAFC"> </tspan></text>
+      <text x="24" y="222" xml:space="preserve"><tspan fill="#7DE0D3">Usage:</tspan></text>
+      <text x="24" y="239" xml:space="preserve"><tspan fill="#C2E66E">  bkt [flags]</tspan></text>
+      <text x="24" y="256" xml:space="preserve"><tspan fill="#C2E66E">  bkt [command]</tspan></text>
+      <text x="24" y="273" xml:space="preserve"><tspan fill="#F7FAFC"> </tspan></text>
+      <text x="24" y="290" xml:space="preserve"><tspan fill="#7DE0D3">Available Commands:</tspan></text>
+      <text x="24" y="307" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">admin</tspan><tspan fill="#F7FAFC">       Administrative operations for Bitbucket (DC only)</tspan></text>
+      <text x="24" y="324" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">api</tspan><tspan fill="#F7FAFC">         Make raw Bitbucket API requests</tspan></text>
+      <text x="24" y="341" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">auth</tspan><tspan fill="#F7FAFC">        Manage Bitbucket authentication credentials</tspan></text>
+      <text x="24" y="358" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">branch</tspan><tspan fill="#F7FAFC">      Inspect and manage branches</tspan></text>
+      <text x="24" y="375" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">commit</tspan><tspan fill="#F7FAFC">      Work with commits</tspan></text>
+      <text x="24" y="392" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">completion</tspan><tspan fill="#F7FAFC">  Generate the autocompletion script for the specified shell</tspan></text>
+      <text x="24" y="409" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">context</tspan><tspan fill="#F7FAFC">     Manage Bitbucket CLI contexts</tspan></text>
+      <text x="24" y="426" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">extension</tspan><tspan fill="#F7FAFC">   Manage bkt CLI extensions</tspan></text>
+      <text x="24" y="443" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">help</tspan><tspan fill="#F7FAFC">        Help about any command</tspan></text>
+      <text x="24" y="460" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">issue</tspan><tspan fill="#F7FAFC">       Work with Bitbucket Cloud issues (Cloud only)</tspan></text>
+      <text x="24" y="477" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">mcp</tspan><tspan fill="#F7FAFC">         Model Context Protocol server for agents</tspan></text>
+      <text x="24" y="494" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">perms</tspan><tspan fill="#F7FAFC">       Manage Bitbucket permissions (DC only)</tspan></text>
+      <text x="24" y="511" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">pipeline</tspan><tspan fill="#F7FAFC">    Run and inspect Bitbucket Cloud pipelines (Cloud only)</tspan></text>
+      <text x="24" y="528" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">pr</tspan><tspan fill="#F7FAFC">          Manage pull requests</tspan></text>
+      <text x="24" y="545" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">project</tspan><tspan fill="#F7FAFC">     Work with Bitbucket projects (DC only)</tspan></text>
+      <text x="24" y="562" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">repo</tspan><tspan fill="#F7FAFC">        Work with Bitbucket repositories</tspan></text>
+      <text x="24" y="579" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">status</tspan><tspan fill="#F7FAFC">      Inspect commit and pull request statuses</tspan></text>
+      <text x="24" y="596" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">variable</tspan><tspan fill="#F7FAFC">    Manage pipeline variables (Cloud only)</tspan></text>
+      <text x="24" y="613" xml:space="preserve"><tspan fill="#5E7A88">  </tspan><tspan fill="#C2E66E">webhook</tspan><tspan fill="#F7FAFC">     Manage Bitbucket webhooks</tspan></text>
+      <text x="24" y="630" xml:space="preserve"><tspan fill="#F7FAFC"> </tspan></text>
+      <text x="24" y="647" xml:space="preserve"><tspan fill="#7DE0D3">Flags:</tspan></text>
+      <text x="24" y="664" xml:space="preserve"><tspan fill="#8BA3B0">  -c, --context string    Active Bitbucket context name</tspan></text>
+      <text x="24" y="681" xml:space="preserve"><tspan fill="#8BA3B0">      --format string     Output format: json or yaml (alias for --json/--yaml)</tspan></text>
+      <text x="24" y="698" xml:space="preserve"><tspan fill="#8BA3B0">  -h, --help              help for bkt</tspan></text>
+      <text x="24" y="715" xml:space="preserve"><tspan fill="#8BA3B0">      --jq string         Apply a jq expression to JSON output (requires --json or --format json)</tspan></text>
+      <text x="24" y="732" xml:space="preserve"><tspan fill="#8BA3B0">      --json              Output in JSON format when supported</tspan></text>
+      <text x="24" y="749" xml:space="preserve"><tspan fill="#8BA3B0">      --template string   Render output using Go templates</tspan></text>
+      <text x="24" y="766" xml:space="preserve"><tspan fill="#8BA3B0">  -v, --version           version for bkt</tspan></text>
+      <text x="24" y="783" xml:space="preserve"><tspan fill="#8BA3B0">      --yaml              Output in YAML format when supported</tspan></text>
+      <text x="24" y="800" xml:space="preserve"><tspan fill="#F7FAFC"> </tspan></text>
+      <text x="24" y="817" xml:space="preserve"><tspan fill="#8BA3B0">Use "bkt [command] --help" for more information about a command.</tspan></text>
+    <text x="24" y="851" xml:space="preserve"><tspan fill="#7DE0D3">$</tspan></text>
+  </g>
+
+  <!-- cursor follows the typed command, then rests on the trailing prompt -->
+  <rect width="7" height="14" rx="1" fill="#7DE0D3">
+    <animate attributeName="x"
+             values="38;38;360;360;38;118;40;40"
+             keyTimes="0;0.0227;0.1909;0.2227;0.2318;0.3227;0.3455;1"
+             dur="11.0s" repeatCount="indefinite"/>
+    <animate attributeName="y"
+             values="57;57;57;74;74;74;839;839"
+             keyTimes="0;0.0227;0.2227;0.2273;0.2318;0.3227;0.3455;1"
+             dur="11.0s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.46;0.50;0.96;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+</svg>
