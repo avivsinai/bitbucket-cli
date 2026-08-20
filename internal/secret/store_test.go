@@ -125,6 +125,112 @@ func TestConfigureFileBackend_HeadlessNoPassphrase(t *testing.T) {
 	}
 }
 
+func TestDefaultBackends_WindowsIsWinCredOnly(t *testing.T) {
+	t.Parallel()
+
+	got := defaultBackendsFor("windows", false)
+	if len(got) != 1 || got[0] != keyring.WinCredBackend {
+		t.Fatalf("windows default backends = %v, want [wincred]", got)
+	}
+	if usesFileBackend(got) {
+		t.Fatal("windows default path must not include the file backend")
+	}
+	if chunkSizeForBackends(got) != winCredMaxBlobSize {
+		t.Fatalf("windows default must enable WinCred chunking, got %d", chunkSizeForBackends(got))
+	}
+
+	headless := defaultBackendsFor("windows", true)
+	if len(headless) != 1 || headless[0] != keyring.WinCredBackend {
+		t.Fatalf("windows headless backends = %v, want [wincred]", headless)
+	}
+}
+
+func TestResolveAllowedBackends_DefaultExcludesFile(t *testing.T) {
+	t.Setenv(envBackend, "")
+	t.Setenv(envAllowInsecure, "")
+
+	got := resolveAllowedBackends(openOptions{})
+	if usesFileBackend(got) {
+		t.Fatal("default path must not enable the file backend without opt-in")
+	}
+	if chunkSizeForBackends(got) != chunkSizeForBackends(defaultBackends()) {
+		t.Fatal("default chunk limit should match platform native backends")
+	}
+}
+
+func TestResolveAllowedBackends_AllowFileDoesNotReplaceNative(t *testing.T) {
+	t.Setenv(envBackend, "")
+	t.Setenv(envAllowInsecure, "")
+
+	got := resolveAllowedBackends(openOptions{allowFile: true})
+	native := defaultBackends()
+	if len(got) != len(native)+1 {
+		t.Fatalf("allowFile should append file, got %v (native %v)", got, native)
+	}
+	for i, backend := range native {
+		if got[i] != backend {
+			t.Fatalf("allowFile reordered native backends: got %v, native %v", got, native)
+		}
+	}
+	if got[len(got)-1] != keyring.FileBackend {
+		t.Fatalf("file should be last, got %v", got)
+	}
+	if runtime.GOOS == "windows" && got[0] != keyring.WinCredBackend {
+		t.Fatal("windows must keep WinCred first; file is not a silent size-error fallback")
+	}
+}
+
+func TestChunkSizeForBackends(t *testing.T) {
+	t.Parallel()
+
+	if got := chunkSizeForBackends([]keyring.BackendType{keyring.WinCredBackend}); got != winCredMaxBlobSize {
+		t.Fatalf("wincred = %d, want %d", got, winCredMaxBlobSize)
+	}
+	if got := chunkSizeForBackends([]keyring.BackendType{keyring.WinCredBackend, keyring.FileBackend}); got != winCredMaxBlobSize {
+		t.Fatalf("wincred+file = %d, want %d (file must not disable chunking)", got, winCredMaxBlobSize)
+	}
+	if got := chunkSizeForBackends([]keyring.BackendType{keyring.FileBackend}); got != 0 {
+		t.Fatalf("file-only = %d, want 0", got)
+	}
+	if got := chunkSizeForBackends(defaultBackendsFor("linux", false)); got != 0 {
+		t.Fatalf("linux default = %d, want 0", got)
+	}
+	if got := chunkSizeForBackends(defaultBackendsFor("darwin", false)); got != 0 {
+		t.Fatalf("darwin default = %d, want 0", got)
+	}
+}
+
+func TestBuildConfig_DefaultDoesNotRequireInsecureEnv(t *testing.T) {
+	t.Setenv(envBackend, "")
+	t.Setenv(envAllowInsecure, "")
+	t.Setenv(envPassphrase, "")
+	t.Setenv(envFileDir, "")
+
+	cfg, err := buildConfig()
+	if err != nil {
+		t.Fatalf("buildConfig: %v", err)
+	}
+	if usesFileBackend(cfg.AllowedBackends) {
+		t.Fatal("default buildConfig must not enable the file backend")
+	}
+}
+
+func TestOpen_FileBackendDoesNotEnableWinCredChunking(t *testing.T) {
+	t.Setenv(envBackend, "file")
+	t.Setenv(envAllowInsecure, "1")
+	t.Setenv(envPassphrase, "test-pass")
+	dir := t.TempDir()
+	t.Setenv(envFileDir, dir)
+
+	store, err := Open(WithAllowFileFallback(true), WithPassphrase("test-pass"), WithFileDir(dir))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if store.maxChunkSize != 0 {
+		t.Fatalf("file-only Open set maxChunkSize=%d, want 0", store.maxChunkSize)
+	}
+}
+
 func TestConfigureFileBackend_HeadlessWithPassphrase(t *testing.T) {
 	// Simulate headless with passphrase provided.
 	t.Setenv("SSH_TTY", "/dev/pts/0")

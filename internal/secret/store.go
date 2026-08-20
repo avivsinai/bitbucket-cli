@@ -128,7 +128,8 @@ func timeoutHint() string {
 
 // Store wraps access to the configured keyring backend.
 type Store struct {
-	kr keyring.Keyring
+	kr           keyring.Keyring
+	maxChunkSize int // 0 means the backend has no blob-size limit
 }
 
 type openOptions struct {
@@ -185,7 +186,10 @@ func Open(opts ...Option) (*Store, error) {
 		return nil, fmt.Errorf("open keyring: %w", err)
 	}
 
-	return &Store{kr: kr}, nil
+	return &Store{
+		kr:           kr,
+		maxChunkSize: chunkSizeForBackends(cfg.AllowedBackends),
+	}, nil
 }
 
 // buildConfig assembles the keyring.Config the same way Open does, without
@@ -278,11 +282,7 @@ func (s *Store) Set(key, value string) error {
 
 	return s.withTimeout(func() error {
 		return withDarwinKeychainLock(func() error {
-			return s.kr.Set(keyring.Item{
-				Key:   key,
-				Data:  []byte(value),
-				Label: fmt.Sprintf("bkt %s", key),
-			})
+			return s.setValue(key, value)
 		})
 	})
 }
@@ -293,11 +293,11 @@ func (s *Store) Get(key string) (string, error) {
 		return "", errors.New("secret store not initialized")
 	}
 
-	var item keyring.Item
+	var value string
 	err := s.withTimeout(func() error {
 		return withDarwinKeychainLock(func() error {
 			var getErr error
-			item, getErr = s.kr.Get(key)
+			value, getErr = s.getValue(key)
 			return getErr
 		})
 	})
@@ -308,7 +308,7 @@ func (s *Store) Get(key string) (string, error) {
 		return "", err
 	}
 
-	return string(item.Data), nil
+	return value, nil
 }
 
 // Delete removes a stored secret. Missing items are treated as success.
@@ -319,7 +319,7 @@ func (s *Store) Delete(key string) error {
 
 	err := s.withTimeout(func() error {
 		return withDarwinKeychainLock(func() error {
-			return s.kr.Remove(key)
+			return s.deleteValue(key)
 		})
 	})
 	if err == nil || errors.Is(err, keyring.ErrKeyNotFound) || errors.Is(err, os.ErrNotExist) {
@@ -374,15 +374,21 @@ func resolveAllowedBackends(opts openOptions) []keyring.BackendType {
 }
 
 func defaultBackends() []keyring.BackendType {
-	switch runtime.GOOS {
+	return defaultBackendsFor(runtime.GOOS, IsHeadless())
+}
+
+func defaultBackendsFor(goos string, headless bool) []keyring.BackendType {
+	switch goos {
 	case "darwin":
 		return []keyring.BackendType{keyring.KeychainBackend}
 	case "windows":
+		// WinCred only. File is never a silent fallback — oversized OAuth
+		// blobs are stored as multiple WinCred items (see chunk.go).
 		return []keyring.BackendType{keyring.WinCredBackend}
 	default:
 		// In headless environments (SSH without X11, containers, etc.),
 		// skip GUI-based backends that would hang waiting for unlock prompts.
-		if IsHeadless() {
+		if headless {
 			return []keyring.BackendType{
 				keyring.KeyCtlBackend,
 				keyring.PassBackend,
