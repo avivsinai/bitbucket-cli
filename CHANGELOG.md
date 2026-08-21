@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-08-21
 ### Added
 - Headless Bitbucket Cloud authentication now supports repository, project,
   and workspace access tokens through `BKT_AUTH_METHOD=bearer` without
@@ -22,6 +23,7 @@ All notable changes to this project will be documented here. The format follows
   secret across multiple WinCred items. Token refresh write-back uses the
   same store. The default Windows path stays WinCred; oversized writes
   never fall back to the encrypted file backend. (#298)
+
 
 ## [0.31.0] - 2026-08-12
 ### Added
@@ -683,7 +685,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.1...HEAD
+[0.31.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.1...v0.31.0
 [0.30.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.29.0...v0.30.0
