@@ -16,6 +16,13 @@ All notable changes to this project will be documented here. The format follows
   `bkt --help` session (`docs/demo.gif` and `docs/demo.svg`). No
   credentials are used.
 
+### Fixed
+- Windows Cloud `--web` login now stores OAuth credentials that exceed
+  Windows Credential Manager's 2560-byte blob limit by splitting the
+  secret across multiple WinCred items. Token refresh write-back uses the
+  same store. The default Windows path stays WinCred; oversized writes
+  never fall back to the encrypted file backend. (#298)
+
 ## [0.31.0] - 2026-08-12
 ### Added
 - `bkt project reviewer-groups list` lists the reviewer groups defined in a
