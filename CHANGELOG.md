@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- The list repos operation now returns the 'archived' flag for Bitbucket Server.
 
 ## [0.31.1] - 2026-08-21
 ### Added

@@ -130,23 +130,25 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		}
 
 		type repoSummary struct {
-			Project string   `json:"project"`
-			Slug    string   `json:"slug"`
-			Name    string   `json:"name"`
-			ID      int      `json:"id"`
-			WebURL  string   `json:"web_url,omitempty"`
-			Clone   []string `json:"clone_urls,omitempty"`
+			Project  string   `json:"project"`
+			Slug     string   `json:"slug"`
+			Name     string   `json:"name"`
+			ID       int      `json:"id"`
+			Archived bool     `json:"archived"`
+			WebURL   string   `json:"web_url,omitempty"`
+			Clone    []string `json:"clone_urls,omitempty"`
 		}
 
 		var summaries []repoSummary
 		for _, repo := range repos {
 			summaries = append(summaries, repoSummary{
-				Project: repo.Project.Key,
-				Slug:    repo.Slug,
-				Name:    repo.Name,
-				ID:      repo.ID,
-				WebURL:  firstLinkDC(repo, "web"),
-				Clone:   cloneLinksDC(repo),
+				Project:  repo.Project.Key,
+				Slug:     repo.Slug,
+				Name:     repo.Name,
+				ID:       repo.ID,
+				Archived: repo.Archived,
+				WebURL:   firstLinkDC(repo, "web"),
+				Clone:    cloneLinksDC(repo),
 			})
 		}
 
@@ -363,21 +365,23 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		}
 
 		type repoDetails struct {
-			Project string   `json:"project"`
-			Slug    string   `json:"slug"`
-			Name    string   `json:"name"`
-			ID      int      `json:"id"`
-			WebURL  string   `json:"web_url,omitempty"`
-			Clone   []string `json:"clone_urls,omitempty"`
+			Project  string   `json:"project"`
+			Slug     string   `json:"slug"`
+			Name     string   `json:"name"`
+			ID       int      `json:"id"`
+			Archived bool     `json:"archived"`
+			WebURL   string   `json:"web_url,omitempty"`
+			Clone    []string `json:"clone_urls,omitempty"`
 		}
 
 		details := repoDetails{
-			Project: repo.Project.Key,
-			Slug:    repo.Slug,
-			Name:    repo.Name,
-			ID:      repo.ID,
-			WebURL:  firstLinkDC(*repo, "web"),
-			Clone:   cloneLinksDC(*repo),
+			Project:  repo.Project.Key,
+			Slug:     repo.Slug,
+			Name:     repo.Name,
+			ID:       repo.ID,
+			Archived: repo.Archived,
+			WebURL:   firstLinkDC(*repo, "web"),
+			Clone:    cloneLinksDC(*repo),
 		}
 
 		return cmdutil.WriteOutput(cmd, ios.Out, details, func() error {
@@ -385,6 +389,9 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 				return err
 			}
 			if _, err := fmt.Fprintf(ios.Out, "Name: %s\n", details.Name); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "Archived: %t\n", details.Archived); err != nil {
 				return err
 			}
 			if details.WebURL != "" {

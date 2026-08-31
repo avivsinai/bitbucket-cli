@@ -88,6 +88,7 @@ type Repository struct {
 	Slug          string   `json:"slug"`
 	Name          string   `json:"name"`
 	ID            int      `json:"id"`
+	Archived      bool     `json:"archived"`
 	Project       *Project `json:"project"`
 	DefaultBranch string   `json:"defaultBranch,omitempty"`
 	Links         struct {

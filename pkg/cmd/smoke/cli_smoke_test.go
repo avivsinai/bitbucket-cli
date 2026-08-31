@@ -70,9 +70,10 @@ func TestRepoListDataCenterJSONOutput(t *testing.T) {
 
 	mock.StubRepoList("BKT", 7, repoListResponse{
 		Values: []repoPayload{{
-			Slug: "sample",
-			Name: "Sample Repo",
-			ID:   7,
+			Slug:     "sample",
+			Name:     "Sample Repo",
+			ID:       7,
+			Archived: true,
 			Project: projectRef{
 				Key: "BKT",
 			},
@@ -96,11 +97,12 @@ func TestRepoListDataCenterJSONOutput(t *testing.T) {
 	var payload struct {
 		Project string `json:"project"`
 		Repos   []struct {
-			Project string   `json:"project"`
-			Slug    string   `json:"slug"`
-			Name    string   `json:"name"`
-			ID      int      `json:"id"`
-			Clone   []string `json:"clone_urls"`
+			Project  string   `json:"project"`
+			Slug     string   `json:"slug"`
+			Name     string   `json:"name"`
+			ID       int      `json:"id"`
+			Archived bool     `json:"archived"`
+			Clone    []string `json:"clone_urls"`
 		} `json:"repositories"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
@@ -115,6 +117,9 @@ func TestRepoListDataCenterJSONOutput(t *testing.T) {
 	repo := payload.Repos[0]
 	if repo.Slug != "sample" || repo.Project != "BKT" || repo.Name != "Sample Repo" {
 		t.Fatalf("unexpected repo payload: %+v", repo)
+	}
+	if !repo.Archived {
+		t.Fatalf("expected repository to be archived: %+v", repo)
 	}
 	if len(repo.Clone) != 1 || repo.Clone[0] != "ssh://git@bitbucket.example.com/BKT/sample.git (ssh)" {
 		t.Fatalf("unexpected clone URLs: %v", repo.Clone)
@@ -393,6 +398,7 @@ type repoPayload struct {
 	Slug       string      `json:"slug"`
 	Name       string      `json:"name"`
 	ID         int         `json:"id"`
+	Archived   bool        `json:"archived"`
 	Project    projectRef  `json:"project"`
 	WebLinks   []string    `json:"web_links"`
 	CloneLinks []cloneLink `json:"clone_links"`
@@ -410,11 +416,12 @@ func (r repoListResponse) page(limit int) map[string]any {
 			"clone": repo.CloneLinks,
 		}
 		values = append(values, map[string]any{
-			"slug":    repo.Slug,
-			"name":    repo.Name,
-			"id":      repo.ID,
-			"project": map[string]any{"key": repo.Project.Key},
-			"links":   links,
+			"slug":     repo.Slug,
+			"name":     repo.Name,
+			"id":       repo.ID,
+			"archived": repo.Archived,
+			"project":  map[string]any{"key": repo.Project.Key},
+			"links":    links,
 		})
 	}
 
