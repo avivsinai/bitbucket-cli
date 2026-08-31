@@ -167,7 +167,11 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			}
 
 			for _, r := range summaries {
-				if _, err := fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, r.Name); err != nil {
+				name := r.Name
+				if r.Archived {
+					name += " (archived)"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, name); err != nil {
 					return err
 				}
 				if r.WebURL != "" {
@@ -284,6 +288,7 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:   "view [repository]",
 		Short: "Display details for a repository",
 		Long: `Display details for a repository, including its name, web URL, and clone URLs.
+On Data Center, output also includes whether the repository is archived.
 
 On Data Center, the project key and repository slug are resolved from the active
 context or overridden with --project and --repo. On Cloud, the workspace and

@@ -36,6 +36,14 @@ func TestRepoListDataCenterTextOutput(t *testing.T) {
 				{Name: "ssh", Href: "ssh://git@bitbucket.example.com/BKT/sample.git"},
 				{Name: "http", Href: "https://bitbucket.example.com/scm/bkt/sample.git"},
 			},
+		}, {
+			Slug:     "legacy",
+			Name:     "Legacy Repo",
+			ID:       43,
+			Archived: true,
+			Project: projectRef{
+				Key: "BKT",
+			},
 		}},
 	})
 
@@ -50,8 +58,14 @@ func TestRepoListDataCenterTextOutput(t *testing.T) {
 	}
 
 	got := stdout
-	if !strings.Contains(got, "BKT/sample\tSample Repo") {
+	if !strings.Contains(got, "BKT/sample\tSample Repo\n") {
 		t.Fatalf("expected repo summary in output, got:\n%s", got)
+	}
+	if strings.Contains(got, "BKT/sample\tSample Repo (archived)") {
+		t.Fatalf("did not expect archived marker on active repo, got:\n%s", got)
+	}
+	if !strings.Contains(got, "BKT/legacy\tLegacy Repo (archived)") {
+		t.Fatalf("expected archived suffix on list row, got:\n%s", got)
 	}
 	if !strings.Contains(got, "web:   "+mock.URL()+"/projects/BKT/repos/sample") {
 		t.Fatalf("expected web link in output, got:\n%s", got)
@@ -126,6 +140,115 @@ func TestRepoListDataCenterJSONOutput(t *testing.T) {
 	}
 	if calls := mock.RepoListCalls(); calls != 1 {
 		t.Fatalf("expected single repo list request, got %d", calls)
+	}
+}
+
+func TestRepoViewDataCenterTextOutput(t *testing.T) {
+	mock := newBitbucketMock(t, "admin", "admin123")
+	defer mock.Close()
+
+	mock.StubRepoGet("BKT", "sample", repoPayload{
+		Slug:     "sample",
+		Name:     "Sample Repo",
+		ID:       42,
+		Archived: true,
+		Project: projectRef{
+			Key: "BKT",
+		},
+		WebLinks: []string{mock.URL() + "/projects/BKT/repos/sample"},
+		CloneLinks: []cloneLink{
+			{Name: "ssh", Href: "ssh://git@bitbucket.example.com/BKT/sample.git"},
+			{Name: "http", Href: "https://bitbucket.example.com/scm/bkt/sample.git"},
+		},
+	})
+
+	cfg := configForMock(mock.URL(), "admin", "admin123", "smoke", "bkt", "")
+
+	stdout, stderr, err := runCLI(t, cfg, "repo", "view", "sample")
+	if err != nil {
+		t.Fatalf("repo view returned error: %v (stderr=%s)", err, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr output, got %q", stderr)
+	}
+
+	if !strings.Contains(stdout, "BKT/sample (42)") {
+		t.Fatalf("expected repo heading in output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "Name: Sample Repo") {
+		t.Fatalf("expected repo name in output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "Archived: true") {
+		t.Fatalf("expected archived line in output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "Web:  "+mock.URL()+"/projects/BKT/repos/sample") {
+		t.Fatalf("expected web link in output, got:\n%s", stdout)
+	}
+	if calls := mock.RepoGetCalls(); calls != 1 {
+		t.Fatalf("expected single repo get request, got %d", calls)
+	}
+}
+
+func TestRepoViewDataCenterJSONOutput(t *testing.T) {
+	mock := newBitbucketMock(t, "svc", "token")
+	defer mock.Close()
+
+	mock.StubRepoGet("BKT", "sample", repoPayload{
+		Slug: "sample",
+		Name: "Sample Repo",
+		ID:   7,
+		Project: projectRef{
+			Key: "BKT",
+		},
+		CloneLinks: []cloneLink{
+			{Name: "ssh", Href: "ssh://git@bitbucket.example.com/BKT/sample.git"},
+		},
+	})
+
+	cfg := configForMock(mock.URL(), "svc", "token", "json", "bkt", "")
+
+	stdout, stderr, err := runCLI(t, cfg, "repo", "view", "sample", "--json")
+	if err != nil {
+		t.Fatalf("repo view --json error: %v (stderr=%s)", err, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr output, got %q", stderr)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		t.Fatalf("failed to decode JSON output: %v\nstdout=%s", err, stdout)
+	}
+	archivedRaw, ok := raw["archived"]
+	if !ok {
+		t.Fatalf("expected archived field in JSON output, got %s", stdout)
+	}
+	if string(archivedRaw) != "false" {
+		t.Fatalf("expected archived=false in JSON (no omitempty), got %s", archivedRaw)
+	}
+
+	var payload struct {
+		Project  string   `json:"project"`
+		Slug     string   `json:"slug"`
+		Name     string   `json:"name"`
+		ID       int      `json:"id"`
+		Archived bool     `json:"archived"`
+		Clone    []string `json:"clone_urls"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("failed to decode JSON output: %v\nstdout=%s", err, stdout)
+	}
+	if payload.Slug != "sample" || payload.Project != "BKT" || payload.Name != "Sample Repo" {
+		t.Fatalf("unexpected repo payload: %+v", payload)
+	}
+	if payload.Archived {
+		t.Fatalf("expected repository not to be archived: %+v", payload)
+	}
+	if len(payload.Clone) != 1 || payload.Clone[0] != "ssh://git@bitbucket.example.com/BKT/sample.git (ssh)" {
+		t.Fatalf("unexpected clone URLs: %v", payload.Clone)
+	}
+	if calls := mock.RepoGetCalls(); calls != 1 {
+		t.Fatalf("expected single repo get request, got %d", calls)
 	}
 }
 
@@ -232,8 +355,10 @@ type bitbucketMock struct {
 	server       *httptest.Server
 	expectedAuth string
 	repoStub     repoStub
+	repoGetStub  repoGetStub
 	projectStub  projectStub
 	repoCalls    atomic.Int32
+	repoGetCalls atomic.Int32
 	projectCalls atomic.Int32
 }
 
@@ -242,6 +367,13 @@ type repoStub struct {
 	projectKey    string
 	expectedLimit int
 	response      repoListResponse
+}
+
+type repoGetStub struct {
+	enabled    bool
+	projectKey string
+	slug       string
+	response   repoPayload
 }
 
 type projectStub struct {
@@ -277,6 +409,15 @@ func (m *bitbucketMock) StubRepoList(projectKey string, limit int, resp repoList
 	}
 }
 
+func (m *bitbucketMock) StubRepoGet(projectKey, slug string, resp repoPayload) {
+	m.repoGetStub = repoGetStub{
+		enabled:    true,
+		projectKey: projectKey,
+		slug:       slug,
+		response:   resp,
+	}
+}
+
 func (m *bitbucketMock) StubProjectList(limit int, resp projectListResponse) {
 	m.projectStub = projectStub{
 		enabled:       true,
@@ -289,12 +430,18 @@ func (m *bitbucketMock) RepoListCalls() int {
 	return int(m.repoCalls.Load())
 }
 
+func (m *bitbucketMock) RepoGetCalls() int {
+	return int(m.repoGetCalls.Load())
+}
+
 func (m *bitbucketMock) ProjectListCalls() int {
 	return int(m.projectCalls.Load())
 }
 
 func (m *bitbucketMock) dispatch(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/rest/api/1.0/projects/") && strings.Contains(r.URL.Path, "/repos/"):
+		m.handleRepoGet(w, r)
 	case strings.HasPrefix(r.URL.Path, "/rest/api/1.0/projects/") && strings.HasSuffix(r.URL.Path, "/repos"):
 		m.handleRepoList(w, r)
 	case r.URL.Path == "/rest/api/1.0/projects":
@@ -344,6 +491,44 @@ func (m *bitbucketMock) handleRepoList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.writeJSON(w, m.repoStub.response.page(m.repoStub.expectedLimit))
+}
+
+func (m *bitbucketMock) handleRepoGet(w http.ResponseWriter, r *http.Request) {
+	if !m.repoGetStub.enabled {
+		http.NotFound(w, r)
+		return
+	}
+	m.repoGetCalls.Add(1)
+
+	if err := m.assertAuth(r); err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "unsupported method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	segments := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	var projectKey, slug string
+	for i := 0; i < len(segments); i++ {
+		if segments[i] == "projects" && i+1 < len(segments) {
+			projectKey = segments[i+1]
+		}
+		if segments[i] == "repos" && i+1 < len(segments) {
+			slug = segments[i+1]
+		}
+	}
+	if projectKey == "" || slug == "" {
+		http.Error(w, "unexpected path", http.StatusBadRequest)
+		return
+	}
+	if projectKey != m.repoGetStub.projectKey || slug != m.repoGetStub.slug {
+		http.Error(w, fmt.Sprintf("expected %s/%s, got %s/%s", m.repoGetStub.projectKey, m.repoGetStub.slug, projectKey, slug), http.StatusBadRequest)
+		return
+	}
+
+	m.writeJSON(w, repoAPIObject(m.repoGetStub.response))
 }
 
 func (m *bitbucketMock) handleProjectList(w http.ResponseWriter, r *http.Request) {
@@ -408,21 +593,24 @@ type repoListResponse struct {
 	Values []repoPayload
 }
 
+func repoAPIObject(repo repoPayload) map[string]any {
+	return map[string]any{
+		"slug":     repo.Slug,
+		"name":     repo.Name,
+		"id":       repo.ID,
+		"archived": repo.Archived,
+		"project":  map[string]any{"key": repo.Project.Key},
+		"links": map[string]any{
+			"web":   toWebLinks(repo.WebLinks),
+			"clone": repo.CloneLinks,
+		},
+	}
+}
+
 func (r repoListResponse) page(limit int) map[string]any {
 	var values []map[string]any
 	for _, repo := range r.Values {
-		links := map[string]any{
-			"web":   toWebLinks(repo.WebLinks),
-			"clone": repo.CloneLinks,
-		}
-		values = append(values, map[string]any{
-			"slug":     repo.Slug,
-			"name":     repo.Name,
-			"id":       repo.ID,
-			"archived": repo.Archived,
-			"project":  map[string]any{"key": repo.Project.Key},
-			"links":    links,
-		})
+		values = append(values, repoAPIObject(repo))
 	}
 
 	return map[string]any{
