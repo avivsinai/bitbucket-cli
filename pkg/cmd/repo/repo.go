@@ -130,23 +130,25 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		}
 
 		type repoSummary struct {
-			Project string   `json:"project"`
-			Slug    string   `json:"slug"`
-			Name    string   `json:"name"`
-			ID      int      `json:"id"`
-			WebURL  string   `json:"web_url,omitempty"`
-			Clone   []string `json:"clone_urls,omitempty"`
+			Project  string   `json:"project"`
+			Slug     string   `json:"slug"`
+			Name     string   `json:"name"`
+			ID       int      `json:"id"`
+			Archived bool     `json:"archived"`
+			WebURL   string   `json:"web_url,omitempty"`
+			Clone    []string `json:"clone_urls,omitempty"`
 		}
 
 		var summaries []repoSummary
 		for _, repo := range repos {
 			summaries = append(summaries, repoSummary{
-				Project: repo.Project.Key,
-				Slug:    repo.Slug,
-				Name:    repo.Name,
-				ID:      repo.ID,
-				WebURL:  firstLinkDC(repo, "web"),
-				Clone:   cloneLinksDC(repo),
+				Project:  repo.Project.Key,
+				Slug:     repo.Slug,
+				Name:     repo.Name,
+				ID:       repo.ID,
+				Archived: repo.Archived,
+				WebURL:   firstLinkDC(repo, "web"),
+				Clone:    cloneLinksDC(repo),
 			})
 		}
 
@@ -165,7 +167,11 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			}
 
 			for _, r := range summaries {
-				if _, err := fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, r.Name); err != nil {
+				name := r.Name
+				if r.Archived {
+					name += " (archived)"
+				}
+				if _, err := fmt.Fprintf(ios.Out, "%s/%s\t%s\n", r.Project, r.Slug, name); err != nil {
 					return err
 				}
 				if r.WebURL != "" {
@@ -282,6 +288,7 @@ func newViewCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:   "view [repository]",
 		Short: "Display details for a repository",
 		Long: `Display details for a repository, including its name, web URL, and clone URLs.
+On Data Center, output also includes whether the repository is archived.
 
 On Data Center, the project key and repository slug are resolved from the active
 context or overridden with --project and --repo. On Cloud, the workspace and
@@ -363,21 +370,23 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 		}
 
 		type repoDetails struct {
-			Project string   `json:"project"`
-			Slug    string   `json:"slug"`
-			Name    string   `json:"name"`
-			ID      int      `json:"id"`
-			WebURL  string   `json:"web_url,omitempty"`
-			Clone   []string `json:"clone_urls,omitempty"`
+			Project  string   `json:"project"`
+			Slug     string   `json:"slug"`
+			Name     string   `json:"name"`
+			ID       int      `json:"id"`
+			Archived bool     `json:"archived"`
+			WebURL   string   `json:"web_url,omitempty"`
+			Clone    []string `json:"clone_urls,omitempty"`
 		}
 
 		details := repoDetails{
-			Project: repo.Project.Key,
-			Slug:    repo.Slug,
-			Name:    repo.Name,
-			ID:      repo.ID,
-			WebURL:  firstLinkDC(*repo, "web"),
-			Clone:   cloneLinksDC(*repo),
+			Project:  repo.Project.Key,
+			Slug:     repo.Slug,
+			Name:     repo.Name,
+			ID:       repo.ID,
+			Archived: repo.Archived,
+			WebURL:   firstLinkDC(*repo, "web"),
+			Clone:    cloneLinksDC(*repo),
 		}
 
 		return cmdutil.WriteOutput(cmd, ios.Out, details, func() error {
@@ -385,6 +394,9 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 				return err
 			}
 			if _, err := fmt.Fprintf(ios.Out, "Name: %s\n", details.Name); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(ios.Out, "Archived: %t\n", details.Archived); err != nil {
 				return err
 			}
 			if details.WebURL != "" {

@@ -5,6 +5,11 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Data Center `bkt repo list` and `bkt repo view` include the repository
+  `archived` flag in structured output (always present, including `false`).
+  Human `repo view` prints `Archived: true|false`; archived `repo list` rows
+  get an `(archived)` suffix. Bitbucket Cloud is unchanged.
 
 ## [0.31.1] - 2026-08-21
 ### Added
