@@ -375,3 +375,165 @@ func TestRepoCreateRejectsHostNoOpFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestRepoListDataCenterMarksArchivedRows(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/rest/api/1.0/projects/PROJ/repos" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isLastPage": true,
+			"values": []map[string]any{
+				{
+					"slug":     "active",
+					"name":     "Active Repo",
+					"id":       1,
+					"archived": false,
+					"project":  map[string]any{"key": "PROJ"},
+				},
+				{
+					"slug":     "legacy",
+					"name":     "Legacy Repo",
+					"id":       2,
+					"archived": true,
+					"project":  map[string]any{"key": "PROJ"},
+				},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := dcRepoConfig(server.URL)
+	stdout := &strings.Builder{}
+	cmd := newListCmd(repoTestFactory(cfg, stdout))
+	cmd.SetContext(context.Background())
+	cmd.PersistentFlags().Bool("json", false, "")
+	cmd.SetArgs([]string{"--limit", "25"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("repo list: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "PROJ/active\tActive Repo\n") {
+		t.Fatalf("expected active repo row, got %q", out)
+	}
+	if strings.Contains(out, "PROJ/active\tActive Repo (archived)") {
+		t.Fatalf("did not expect archived marker on active repo, got %q", out)
+	}
+	if !strings.Contains(out, "PROJ/legacy\tLegacy Repo (archived)") {
+		t.Fatalf("expected archived suffix, got %q", out)
+	}
+
+	stdout.Reset()
+	cmd = newListCmd(repoTestFactory(cfg, stdout))
+	cmd.SetContext(context.Background())
+	cmd.PersistentFlags().Bool("json", false, "")
+	cmd.SetArgs([]string{"--limit", "25", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("repo list --json: %v", err)
+	}
+	var payload struct {
+		Repos []struct {
+			Slug     string `json:"slug"`
+			Archived bool   `json:"archived"`
+		} `json:"repositories"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
+		t.Fatalf("decode list JSON: %v\n%s", err, stdout.String())
+	}
+	if len(payload.Repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(payload.Repos))
+	}
+	if payload.Repos[0].Slug != "active" || payload.Repos[0].Archived {
+		t.Fatalf("unexpected first repo: %+v", payload.Repos[0])
+	}
+	if payload.Repos[1].Slug != "legacy" || !payload.Repos[1].Archived {
+		t.Fatalf("unexpected second repo: %+v", payload.Repos[1])
+	}
+	if !strings.Contains(stdout.String(), `"archived": false`) {
+		t.Fatalf("expected archived=false in JSON, got %s", stdout.String())
+	}
+}
+
+func TestRepoViewDataCenterArchivedOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/sample" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"slug":     "sample",
+			"name":     "Sample Repo",
+			"id":       42,
+			"archived": true,
+			"project":  map[string]any{"key": "PROJ"},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := dcRepoConfig(server.URL)
+	stdout := &strings.Builder{}
+	cmd := newViewCmd(repoTestFactory(cfg, stdout))
+	cmd.SetContext(context.Background())
+	cmd.PersistentFlags().Bool("json", false, "")
+	cmd.SetArgs([]string{"sample"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("repo view: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "PROJ/sample (42)") {
+		t.Fatalf("expected heading, got %q", out)
+	}
+	if !strings.Contains(out, "Archived: true") {
+		t.Fatalf("expected Archived line, got %q", out)
+	}
+
+	stdout.Reset()
+	cmd = newViewCmd(repoTestFactory(cfg, stdout))
+	cmd.SetContext(context.Background())
+	cmd.PersistentFlags().Bool("json", false, "")
+	cmd.SetArgs([]string{"sample", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("repo view --json: %v", err)
+	}
+	var payload struct {
+		Slug     string `json:"slug"`
+		Archived bool   `json:"archived"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
+		t.Fatalf("decode view JSON: %v\n%s", err, stdout.String())
+	}
+	if payload.Slug != "sample" || !payload.Archived {
+		t.Fatalf("unexpected view payload: %+v", payload)
+	}
+	if !strings.Contains(stdout.String(), `"archived": true`) {
+		t.Fatalf("expected archived=true in JSON, got %s", stdout.String())
+	}
+}
+
+func dcRepoConfig(baseURL string) *config.Config {
+	return &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", ProjectKey: "PROJ"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "dc", BaseURL: baseURL, Token: "test-token"},
+		},
+	}
+}
+
+func repoTestFactory(cfg *config.Config, stdout *strings.Builder) *cmdutil.Factory {
+	return &cmdutil.Factory{
+		AppVersion:     "test",
+		ExecutableName: "bkt",
+		IOStreams:      &iostreams.IOStreams{Out: stdout, ErrOut: &strings.Builder{}},
+		Config: func() (*config.Config, error) {
+			return cfg, nil
+		},
+	}
+}
