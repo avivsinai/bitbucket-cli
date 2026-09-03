@@ -370,6 +370,7 @@ bkt branch create release/1.9 --from main    # Data Center branch utils
 bkt perms repo list --project DATA --repo platform-api
 bkt webhook create --name "CI" --url https://ci.example.com/hook --event repo:refs_changed
 bkt pipeline run --workspace myteam --repo api --ref main --var ENV=staging
+bkt pipeline run --ref master --selector-type custom --selector-pattern deploy-to-production
 bkt extension install https://github.com/example/bkt-hello.git
 bkt extension exec hello -- --flag=1
 bkt status pipeline {pipeline-uuid}

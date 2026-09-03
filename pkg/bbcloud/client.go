@@ -418,7 +418,14 @@ func (c *Client) CreateRepository(ctx context.Context, workspace string, input C
 // TriggerPipelineInput configures a pipeline run.
 type TriggerPipelineInput struct {
 	Ref       string
+	Selector  *PipelineSelector
 	Variables map[string]string
+}
+
+// PipelineSelector identifies a pipeline definition in bitbucket-pipelines.yml.
+type PipelineSelector struct {
+	Type    string
+	Pattern string
 }
 
 // TriggerPipeline triggers a new pipeline for the repo.
@@ -429,13 +436,25 @@ func (c *Client) TriggerPipeline(ctx context.Context, workspace, repoSlug string
 	if in.Ref == "" {
 		return nil, fmt.Errorf("ref is required")
 	}
+	if err := validatePipelineSelector(in.Selector); err != nil {
+		return nil, err
+	}
+
+	target := map[string]any{
+		"ref_type": "branch",
+		"type":     "pipeline_ref_target",
+		"ref_name": in.Ref,
+	}
+	if in.Selector != nil {
+		selector := map[string]any{"type": in.Selector.Type}
+		if in.Selector.Pattern != "" {
+			selector["pattern"] = in.Selector.Pattern
+		}
+		target["selector"] = selector
+	}
 
 	body := map[string]any{
-		"target": map[string]any{
-			"ref_type": "branch",
-			"type":     "pipeline_ref_target",
-			"ref_name": in.Ref,
-		},
+		"target": target,
 	}
 	if len(in.Variables) > 0 {
 		vars := make([]map[string]any, 0, len(in.Variables))
@@ -464,6 +483,25 @@ func (c *Client) TriggerPipeline(ctx context.Context, workspace, repoSlug string
 		return nil, err
 	}
 	return &pipeline, nil
+}
+
+func validatePipelineSelector(selector *PipelineSelector) error {
+	if selector == nil {
+		return nil
+	}
+	if strings.TrimSpace(selector.Type) == "" {
+		return fmt.Errorf("pipeline selector type is required")
+	}
+	if selector.Type == "default" {
+		if selector.Pattern != "" {
+			return fmt.Errorf("pipeline selector pattern must be omitted for type default")
+		}
+		return nil
+	}
+	if strings.TrimSpace(selector.Pattern) == "" {
+		return fmt.Errorf("pipeline selector pattern is required for type %q", selector.Type)
+	}
+	return nil
 }
 
 // GetPipeline fetches pipeline details.

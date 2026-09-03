@@ -225,6 +225,48 @@ func TestValidateWaitFlags(t *testing.T) {
 	}
 }
 
+func TestValidateRunSelectorFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{"no selector", nil, ""},
+		{"custom selector", []string{"--selector-type", "custom", "--selector-pattern", "deploy-to-production"}, ""},
+		{"pull request selector", []string{"--selector-type", "pull-requests", "--selector-pattern", "**"}, ""},
+		{"default selector", []string{"--selector-type", "default"}, ""},
+		{"pattern without type", []string{"--selector-pattern", "deploy-to-production"}, "--selector-pattern requires --selector-type"},
+		{"empty type", []string{"--selector-type="}, "--selector-type cannot be empty"},
+		{"type without pattern", []string{"--selector-type", "custom"}, "--selector-pattern is required with --selector-type custom"},
+		{"empty pattern", []string{"--selector-type", "custom", "--selector-pattern="}, "--selector-pattern cannot be empty"},
+		{"blank pattern", []string{"--selector-type", "custom", "--selector-pattern", "  "}, "--selector-pattern cannot be empty"},
+		{"default with pattern", []string{"--selector-type", "default", "--selector-pattern", "main"}, "--selector-pattern cannot be used with --selector-type default"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "run"}
+			opts := &runOptions{}
+			cmd.Flags().StringVar(&opts.SelectorType, "selector-type", "", "")
+			cmd.Flags().StringVar(&opts.SelectorPattern, "selector-pattern", "", "")
+			if err := cmd.ParseFlags(tt.args); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+
+			err := validateRunSelectorFlags(cmd, opts)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("validateRunSelectorFlags: %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("validateRunSelectorFlags = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // Regression test for the steps-fetch context wiring: cancelling the command
 // context while the steps request is in flight must abort it immediately
 // (a detached context would hang until the 10s fetch deadline instead).
@@ -423,6 +465,75 @@ func TestPipelineRunWaitStructuredOutputPurity(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "Triggered") {
 		t.Errorf("trigger progress text leaked into structured stdout: %q", out.String())
+	}
+}
+
+func TestPipelineRunSendsSelector(t *testing.T) {
+	var body struct {
+		Target struct {
+			Type     string            `json:"type"`
+			RefType  string            `json:"ref_type"`
+			RefName  string            `json:"ref_name"`
+			Selector map[string]string `json:"selector"`
+		} `json:"target"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/repositories/ws/repo/pipelines/" {
+			t.Errorf("path = %q, want pipeline endpoint", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(pipelineJSONBody("PENDING", "")))
+	}))
+	defer srv.Close()
+
+	f, _, _ := pipelineTestFactory(srv.URL)
+	cmd := newRunCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{
+		"--ref", "master",
+		"--selector-type", "custom",
+		"--selector-pattern", "deploy-to-production",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if body.Target.Type != "pipeline_ref_target" || body.Target.RefType != "branch" || body.Target.RefName != "master" {
+		t.Errorf("unexpected target: %+v", body.Target)
+	}
+	if got := body.Target.Selector["type"]; got != "custom" {
+		t.Errorf("selector type = %q, want custom", got)
+	}
+	if got := body.Target.Selector["pattern"]; got != "deploy-to-production" {
+		t.Errorf("selector pattern = %q, want deploy-to-production", got)
+	}
+}
+
+func TestPipelineRunRejectsArguments(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+	defer srv.Close()
+
+	f, _, _ := pipelineTestFactory(srv.URL)
+	cmd := newRunCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"deploy-to-production"})
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected positional argument to be rejected")
+	}
+	if called {
+		t.Fatal("request was sent for invalid positional argument")
 	}
 }
 

@@ -6,6 +6,8 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 ### Added
+- `bkt pipeline run` can select a pipeline definition with `--selector-type`
+  and `--selector-pattern`, including named custom pipelines on a branch.
 - Data Center `bkt repo list` and `bkt repo view` include the repository
   `archived` flag in structured output (always present, including `false`).
   Human `repo view` prints `Archived: true|false`; archived `repo list` rows
