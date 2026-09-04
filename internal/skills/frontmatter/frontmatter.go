@@ -34,7 +34,6 @@ var InstallMetadataKeys = []string{
 type Metadata struct {
 	Name        string         `yaml:"name"`
 	Description string         `yaml:"description"`
-	License     string         `yaml:"license,omitempty"`
 	Meta        map[string]any `yaml:"metadata,omitempty"`
 }
 

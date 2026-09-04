@@ -157,25 +157,13 @@ func (c *Client) GetTag(ctx context.Context, projectKey, repoSlug, name string) 
 }
 
 // GetBranch returns the head commit of a branch. Data Center has no lookup by
-// exact name, so the branch list is filtered and matched on displayId.
+// exact name, so the filtered branch list is matched on displayId.
 func (c *Client) GetBranch(ctx context.Context, projectKey, repoSlug, name string) (string, error) {
-	if projectKey == "" || repoSlug == "" {
-		return "", fmt.Errorf("project key and repository slug are required")
-	}
-	apiPath := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/branches?filterText=%s&limit=100",
-		url.PathEscape(projectKey),
-		url.PathEscape(repoSlug),
-		url.QueryEscape(name),
-	)
-	req, err := c.http.NewRequest(ctx, "GET", apiPath, nil)
+	branches, err := c.ListBranches(ctx, projectKey, repoSlug, BranchListOptions{Filter: name, Limit: 100})
 	if err != nil {
-		return "", err
-	}
-	var page paged[Branch]
-	if err := c.http.Do(req, &page); err != nil {
 		return "", translateNotFound(err)
 	}
-	for _, branch := range page.Values {
+	for _, branch := range branches {
 		if branch.DisplayID == name || branch.ID == "refs/heads/"+name {
 			if branch.LatestCommit == "" {
 				return "", fmt.Errorf("branch %q has no commit", name)

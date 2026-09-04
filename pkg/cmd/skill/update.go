@@ -38,6 +38,16 @@ type installedSkill struct {
 	metadataErr error
 }
 
+// availableUpdate is one row of the pending-update report and its --json shape.
+type availableUpdate struct {
+	Name          string `json:"name"`
+	Repository    string `json:"repository"`
+	Ref           string `json:"ref"`
+	CurrentCommit string `json:"currentCommit"`
+	LatestCommit  string `json:"latestCommit"`
+	Reinstall     bool   `json:"reinstall"`
+}
+
 // pendingUpdate is a skill whose remote commit differs from the local one.
 type pendingUpdate struct {
 	local     installedSkill
@@ -284,13 +294,30 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 		return nil
 	}
 
-	fmt.Fprintf(ios.ErrOut, "\n%d update(s) available:\n", len(updates))
+	rows := make([]availableUpdate, 0, len(updates))
 	for _, u := range updates {
-		if u.local.commit == u.newCommit {
-			fmt.Fprintf(ios.Out, "  • %s (%s) %s (reinstall) [%s]\n", u.local.name, u.repo.FullName(), shortSHA(u.newCommit), source.ShortRef(u.resolved.Ref))
-		} else {
-			fmt.Fprintf(ios.Out, "  • %s (%s) %s > %s [%s]\n", u.local.name, u.repo.FullName(), shortSHA(u.local.commit), shortSHA(u.newCommit), source.ShortRef(u.resolved.Ref))
+		rows = append(rows, availableUpdate{
+			Name:          u.local.name,
+			Repository:    u.repo.FullName(),
+			Ref:           source.ShortRef(u.resolved.Ref),
+			CurrentCommit: u.local.commit,
+			LatestCommit:  u.newCommit,
+			Reinstall:     u.local.commit == u.newCommit,
+		})
+	}
+
+	fmt.Fprintf(ios.ErrOut, "\n%d update(s) available:\n", len(updates))
+	if err := cmdutil.WriteOutput(cmd, ios.Out, rows, func() error {
+		for _, u := range updates {
+			if u.local.commit == u.newCommit {
+				fmt.Fprintf(ios.Out, "  • %s (%s) %s (reinstall) [%s]\n", sanitizeForTerminal(u.local.name), u.repo.FullName(), shortSHA(u.newCommit), source.ShortRef(u.resolved.Ref))
+			} else {
+				fmt.Fprintf(ios.Out, "  • %s (%s) %s > %s [%s]\n", sanitizeForTerminal(u.local.name), u.repo.FullName(), shortSHA(u.local.commit), shortSHA(u.newCommit), source.ShortRef(u.resolved.Ref))
+			}
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	fmt.Fprintln(ios.ErrOut)
 
@@ -314,7 +341,11 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 
 	var failed bool
 	for _, u := range updates {
-		if err := updateSkillInPlace(ctx, u, gitRoot, homeDir); err != nil {
+		warnings, err := updateSkillInPlace(ctx, u, homeDir)
+		for _, w := range warnings {
+			fmt.Fprintf(ios.ErrOut, "! %s\n", w)
+		}
+		if err != nil {
 			fmt.Fprintf(ios.ErrOut, "✗ Failed to update %s: %v\n", u.local.name, err)
 			failed = true
 			continue
@@ -331,40 +362,40 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 // existing skill and swaps the contents in with same-filesystem renames, so
 // the skill directory itself is preserved, stale files are removed, and any
 // failure leaves the existing skill untouched.
-func updateSkillInPlace(ctx context.Context, u pendingUpdate, gitRoot, homeDir string) error {
+func updateSkillInPlace(ctx context.Context, u pendingUpdate, homeDir string) ([]string, error) {
 	if u.local.dir == "" {
-		return fmt.Errorf("cannot update %s: no install location recorded", u.local.name)
+		return nil, fmt.Errorf("cannot update %s: no install location recorded", u.local.name)
 	}
 	parent := filepath.Dir(u.local.dir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return fmt.Errorf("could not ensure parent directory %s: %w", parent, err)
+		return nil, fmt.Errorf("could not ensure parent directory %s: %w", parent, err)
 	}
 
 	staging, err := os.MkdirTemp(parent, "."+u.skill.Name+".bkt-skill-update-")
 	if err != nil {
-		return fmt.Errorf("could not create staging directory: %w", err)
+		return nil, fmt.Errorf("could not create staging directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(staging) }()
 
-	if _, err := installer.Install(ctx, &installer.Options{
+	result, err := installer.Install(ctx, &installer.Options{
 		Repo:    u.repo,
 		Ref:     u.resolved,
 		Skills:  []discovery.Skill{u.skill},
 		Dir:     staging,
-		GitRoot: gitRoot,
 		HomeDir: homeDir,
-	}); err != nil {
-		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	staged := filepath.Join(staging, u.skill.Name)
 	if _, err := os.Stat(staged); err != nil {
-		return fmt.Errorf("installer did not produce %s: %w", staged, err)
+		return nil, fmt.Errorf("installer did not produce %s: %w", staged, err)
 	}
 	if err := os.MkdirAll(u.local.dir, 0o755); err != nil {
-		return fmt.Errorf("could not ensure skill directory %s: %w", u.local.dir, err)
+		return nil, fmt.Errorf("could not ensure skill directory %s: %w", u.local.dir, err)
 	}
-	return swapDirectoryContents(u.local.dir, staged)
+	return result.Warnings, swapDirectoryContents(u.local.dir, staged)
 }
 
 // swapDirectoryContents replaces the entries inside dest with the entries

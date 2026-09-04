@@ -711,3 +711,44 @@ func TestSanitizeForTerminalRemovesEscapes(t *testing.T) {
 		t.Fatalf("printable text was lost: %q", got)
 	}
 }
+
+func TestPreviewSanitizesRepositoryControlledPaths(t *testing.T) {
+	// A repository can name a file to inject terminal escapes; the tree and the
+	// per-file headings must neutralise them like file contents already are.
+	esc := "\x1b]0;pwned\x07"
+	repo := sourcetest.New("myteam/agent-skills", map[string]string{
+		"skills/alpha/SKILL.md":           "---\nname: alpha\n---\n# Alpha\n",
+		"skills/alpha/evil" + esc + ".md": "content" + esc + "\n",
+	})
+	stubRepository(t, repo)
+
+	f, stdout, stderr := newTestFactory(t)
+	if err := runSkill(t, f, stdout, stderr, "preview", "myteam/agent-skills", "alpha"); err != nil {
+		t.Fatalf("preview: %v (stderr=%s)", err, stderr)
+	}
+	out := stdout.String()
+	if strings.ContainsRune(out, 0x1b) || strings.ContainsRune(out, 0x07) {
+		t.Fatalf("terminal escapes reached stdout:\n%q", out)
+	}
+	if !strings.Contains(out, "evil") {
+		t.Errorf("the file should still be listed by its printable name:\n%s", out)
+	}
+}
+
+func TestInstalledTreeSanitizesNames(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "alpha")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Control characters are not legal in Windows filenames, so the escape is
+	// applied to the skill name the caller passes in.
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	printInstalledTree(&buf, dir, []string{"alpha\x1b]0;pwned\x07"})
+	if strings.ContainsRune(buf.String(), 0x1b) || strings.ContainsRune(buf.String(), 0x07) {
+		t.Fatalf("terminal escapes reached the tree output:\n%q", buf.String())
+	}
+}

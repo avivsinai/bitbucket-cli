@@ -86,7 +86,7 @@ func printInstalledTree(w io.Writer, dir string, skillNames []string) {
 		if idx := strings.LastIndex(name, "/"); idx >= 0 {
 			base = name[idx+1:]
 		}
-		fmt.Fprintf(w, "  %s/\n", name)
+		fmt.Fprintf(w, "  %s/\n", sanitizeForTerminal(name))
 		printTreeDir(w, filepath.Join(dir, base), "  ")
 	}
 }
@@ -102,11 +102,12 @@ func printTreeDir(w io.Writer, dir, indent string) {
 		if i == len(entries)-1 {
 			connector, childIndent = "└── ", "    "
 		}
+		// Names come from a repository, so they are neutralised before printing.
 		if entry.IsDir() {
-			fmt.Fprintf(w, "%s%s%s/\n", indent, connector, entry.Name())
+			fmt.Fprintf(w, "%s%s%s/\n", indent, connector, sanitizeForTerminal(entry.Name()))
 			printTreeDir(w, filepath.Join(dir, entry.Name()), indent+childIndent)
 		} else {
-			fmt.Fprintf(w, "%s%s%s\n", indent, connector, entry.Name())
+			fmt.Fprintf(w, "%s%s%s\n", indent, connector, sanitizeForTerminal(entry.Name()))
 		}
 	}
 }
@@ -163,11 +164,12 @@ func printTreeNodes(w io.Writer, nodes []*treeNode, indent string) {
 		if i == len(nodes)-1 {
 			connector, childIndent = "└── ", "    "
 		}
+		// Names come from a repository, so they are neutralised before printing.
 		if node.isDir {
-			fmt.Fprintf(w, "%s%s%s/\n", indent, connector, node.name)
+			fmt.Fprintf(w, "%s%s%s/\n", indent, connector, sanitizeForTerminal(node.name))
 			printTreeNodes(w, node.children, indent+childIndent)
 		} else {
-			fmt.Fprintf(w, "%s%s%s\n", indent, connector, node.name)
+			fmt.Fprintf(w, "%s%s%s\n", indent, connector, sanitizeForTerminal(node.name))
 		}
 	}
 }

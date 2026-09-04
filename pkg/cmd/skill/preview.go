@@ -122,7 +122,7 @@ func runPreview(cmd *cobra.Command, f *cmdutil.Factory, opts *previewOptions) er
 			return err
 		}
 		if opts.SkillName == "" {
-			return listAvailableSkills(ios, skills, skillSelector{
+			return listAvailableSkills(cmd, ios, skills, skillSelector{
 				sourceHint: repo.FullName(),
 				fetchDescriptions: func() {
 					stop := startProgress(f, ios, "Fetching skill info")
@@ -182,7 +182,7 @@ func selectPreviewSkill(skills []discovery.Skill, name, sourceHint string) (disc
 // renderPreview writes the file tree, SKILL.md, and the remaining files.
 func renderPreview(ctx context.Context, out io.Writer, repo source.Repository, sha string, skill discovery.Skill, files []source.File, skillMD []byte) {
 	if len(files) > 0 {
-		fmt.Fprintf(out, "%s/\n", skill.DisplayName())
+		fmt.Fprintf(out, "%s/\n", sanitizeForTerminal(skill.DisplayName()))
 		printFileTree(out, files)
 		fmt.Fprintln(out)
 	}
@@ -204,13 +204,16 @@ func renderPreview(ctx context.Context, out io.Writer, repo source.Repository, s
 			break
 		}
 		content, err := repo.ReadFile(ctx, sha, skill.Path+"/"+f.Path)
+		// File paths come from the repository, so they are sanitized like any
+		// other untrusted string before reaching the terminal.
+		heading := sanitizeForTerminal(f.Path)
 		if err != nil {
-			fmt.Fprintf(out, "\n── %s ──\n\n(could not fetch file)\n", f.Path)
+			fmt.Fprintf(out, "\n── %s ──\n\n(could not fetch file)\n", heading)
 			continue
 		}
 		fetched++
 		totalBytes += len(content)
-		fmt.Fprintf(out, "\n── %s ──\n\n", f.Path)
+		fmt.Fprintf(out, "\n── %s ──\n\n", heading)
 		writeSanitized(out, content)
 	}
 }

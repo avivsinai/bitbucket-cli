@@ -119,7 +119,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		ctx = context.Background()
 	}
 
-	targets, err := buildScanTargets(ctx, opts)
+	targets, err := buildScanTargets(opts, installer.ResolveGitRoot(ctx), installer.ResolveHomeDir())
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,9 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 	})
 }
 
-func buildScanTargets(ctx context.Context, opts *listOptions) ([]scanTarget, error) {
+// buildScanTargets lists the directories to scan, one entry per distinct
+// directory, so agents that share a directory are reported together.
+func buildScanTargets(opts *listOptions, gitRoot, homeDir string) ([]scanTarget, error) {
 	if opts.Dir != "" {
 		dir, err := filepath.Abs(opts.Dir)
 		if err != nil {
@@ -170,9 +172,6 @@ func buildScanTargets(ctx context.Context, opts *listOptions) ([]scanTarget, err
 		}
 		return []scanTarget{{dir: dir, scope: scopeCustom}}, nil
 	}
-
-	gitRoot := installer.ResolveGitRoot(ctx)
-	homeDir := installer.ResolveHomeDir()
 
 	agentHosts, err := selectedAgentHosts(opts.Agent)
 	if err != nil {

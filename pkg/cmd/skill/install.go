@@ -218,7 +218,7 @@ func installFromRepository(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 		if err != nil {
 			return err
 		}
-		selected, err = selectSkills(ctx, ios, opts, skills, skillSelector{
+		selected, err = selectSkills(cmd, ios, opts, skills, skillSelector{
 			sourceHint: repo.FullName(),
 			match: func(name string) ([]discovery.Skill, error) {
 				return matchSkillByName(skills, name, repo.FullName())
@@ -284,7 +284,6 @@ func installFromRepository(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 			PinnedRef: opts.Pin,
 			Skills:    plan.skills,
 			Dir:       plan.dir,
-			GitRoot:   gitRoot,
 			HomeDir:   homeDir,
 			OnProgress: func(done, total int) {
 				if done == 0 {
@@ -348,7 +347,7 @@ func runLocalInstall(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOSt
 		fmt.Fprintf(ios.ErrOut, "Found %s\n", pluralize(len(skills), "skill"))
 	}
 
-	selected, err := selectSkills(ctx, ios, opts, skills, skillSelector{
+	selected, err := selectSkills(cmd, ios, opts, skills, skillSelector{
 		sourceHint: absSource,
 		match:      func(name string) ([]discovery.Skill, error) { return matchLocalSkillByName(skills, name) },
 	})
@@ -382,8 +381,6 @@ func runLocalInstall(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOSt
 			SourceDir: absSource,
 			Skills:    plan.skills,
 			Dir:       plan.dir,
-			GitRoot:   gitRoot,
-			HomeDir:   homeDir,
 		})
 		if err != nil {
 			return err
@@ -499,7 +496,7 @@ type skillSelector struct {
 // installed because no skill was named.
 var errSkillsListed = errors.New("skills listed")
 
-func selectSkills(_ context.Context, ios *iostreams.IOStreams, opts *installOptions, skills []discovery.Skill, sel skillSelector) ([]discovery.Skill, error) {
+func selectSkills(cmd *cobra.Command, ios *iostreams.IOStreams, opts *installOptions, skills []discovery.Skill, sel skillSelector) ([]discovery.Skill, error) {
 	checkCollisions := func(ss []discovery.Skill) error {
 		if err := collisionError(ss); err != nil {
 			fmt.Fprintf(ios.ErrOut, "Hint: install individually using the full name: bkt skill install %s namespace/skill-name\n", sel.sourceHint)
@@ -517,7 +514,7 @@ func selectSkills(_ context.Context, ios *iostreams.IOStreams, opts *installOpti
 	if opts.SkillName != "" {
 		return sel.match(opts.SkillName)
 	}
-	if err := listAvailableSkills(ios, skills, sel); err != nil {
+	if err := listAvailableSkills(cmd, ios, skills, sel); err != nil {
 		return nil, err
 	}
 	return nil, errSkillsListed
@@ -525,7 +522,15 @@ func selectSkills(_ context.Context, ios *iostreams.IOStreams, opts *installOpti
 
 // listAvailableSkills prints the discovered skills so they can be browsed or
 // piped into grep before re-running with a skill name.
-func listAvailableSkills(ios *iostreams.IOStreams, skills []discovery.Skill, sel skillSelector) error {
+// availableSkill is one row of the skill catalogue and its --json shape.
+type availableSkill struct {
+	Name        string `json:"name"`
+	Namespace   string `json:"namespace,omitempty"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+}
+
+func listAvailableSkills(cmd *cobra.Command, ios *iostreams.IOStreams, skills []discovery.Skill, sel skillSelector) error {
 	if len(skills) == 0 {
 		return fmt.Errorf("no skills found in %s", sel.sourceHint)
 	}
@@ -533,22 +538,33 @@ func listAvailableSkills(ios *iostreams.IOStreams, skills []discovery.Skill, sel
 		sel.fetchDescriptions()
 	}
 
-	if ios.IsStdoutTTY() {
-		fmt.Fprintf(ios.ErrOut, "Showing %s from %s. Re-run with a skill name to install.\n\n", pluralize(len(skills), "skill"), sel.sourceHint)
-		tw := tabwriter.NewWriter(ios.Out, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "SKILL\tDESCRIPTION")
-		for _, s := range skills {
-			fmt.Fprintf(tw, "%s\t%s\n", sanitizeForTerminal(s.DisplayName()), truncate(sanitizeForTerminal(s.Description), 60))
-		}
-		return tw.Flush()
+	rows := make([]availableSkill, 0, len(skills))
+	for _, s := range skills {
+		rows = append(rows, availableSkill{
+			Name:        s.DisplayName(),
+			Namespace:   s.Namespace,
+			Path:        s.Path,
+			Description: s.Description,
+		})
 	}
 
-	for _, s := range skills {
-		if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", sanitizeForTerminal(s.DisplayName()), sanitizeForTerminal(s.Description)); err != nil {
-			return err
+	return cmdutil.WriteOutput(cmd, ios.Out, rows, func() error {
+		if ios.IsStdoutTTY() {
+			fmt.Fprintf(ios.ErrOut, "Showing %s from %s. Re-run with a skill name to install.\n\n", pluralize(len(skills), "skill"), sel.sourceHint)
+			tw := tabwriter.NewWriter(ios.Out, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(tw, "SKILL\tDESCRIPTION")
+			for _, s := range skills {
+				fmt.Fprintf(tw, "%s\t%s\n", sanitizeForTerminal(s.DisplayName()), truncate(sanitizeForTerminal(s.Description), 60))
+			}
+			return tw.Flush()
 		}
-	}
-	return nil
+		for _, s := range skills {
+			if _, err := fmt.Fprintf(ios.Out, "%s\t%s\n", sanitizeForTerminal(s.DisplayName()), sanitizeForTerminal(s.Description)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func truncate(s string, width int) string {
@@ -626,7 +642,7 @@ func checkUpstreamProvenance(ctx context.Context, f *cmdutil.Factory, ios *iostr
 	if err != nil {
 		return "", nil //nolint:nilerr // an unparsable URL means we cannot redirect; install normally
 	}
-	upstreamLabel := upstream.Owner + "/" + upstream.Slug
+	upstreamLabel := sanitizeForTerminal(upstream.Owner + "/" + upstream.Slug)
 
 	fmt.Fprintf(ios.ErrOut, "! This skill was originally published in %s\n", upstreamLabel)
 	if opts.Upstream {
@@ -771,9 +787,9 @@ func existingSkillPrompt(targetDir string, incoming discovery.Skill) string {
 	if err != nil {
 		return fallback
 	}
-	sourceName := ref.Owner + "/" + ref.Slug
+	sourceName := sanitizeForTerminal(ref.Owner + "/" + ref.Slug)
 	if installedRef, _ := result.Metadata.Meta[frontmatter.KeyRef].(string); installedRef != "" {
-		sourceName += "@" + installedRef
+		sourceName += "@" + sanitizeForTerminal(installedRef)
 	}
 	return fmt.Sprintf("Skill %q already installed from %s. Overwrite?", incoming.DisplayName(), sourceName)
 }

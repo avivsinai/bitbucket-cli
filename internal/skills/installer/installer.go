@@ -4,6 +4,7 @@ package installer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,7 +14,6 @@ import (
 	"github.com/avivsinai/bitbucket-cli/internal/skills/discovery"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/frontmatter"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/lockfile"
-	"github.com/avivsinai/bitbucket-cli/internal/skills/registry"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/source"
 )
 
@@ -23,11 +23,8 @@ type Options struct {
 	Ref        source.Ref // resolved ref and commit
 	PinnedRef  string     // user-supplied --pin value (empty if unpinned)
 	Skills     []discovery.Skill
-	AgentHost  *registry.AgentHost
-	Scope      registry.Scope
-	Dir        string // explicit target directory (overrides AgentHost+Scope)
-	GitRoot    string // git repository root (for project scope)
-	HomeDir    string // user home directory (for user scope and the lock file)
+	Dir        string // destination directory, resolved by the caller
+	HomeDir    string // user home directory, for the skill lock file
 	OnProgress func(done, total int)
 }
 
@@ -42,9 +39,9 @@ type Result struct {
 // installed one after another: Bitbucket's request budget is per hour, so a
 // worker pool would only trade throughput for rate-limit errors.
 func Install(ctx context.Context, opts *Options) (*Result, error) {
-	targetDir, err := resolveTargetDir(opts.Dir, opts.AgentHost, opts.Scope, opts.GitRoot, opts.HomeDir)
-	if err != nil {
-		return nil, err
+	targetDir := opts.Dir
+	if targetDir == "" {
+		return nil, errors.New("destination directory is required")
 	}
 
 	total := len(opts.Skills)
@@ -124,19 +121,15 @@ func installSkill(ctx context.Context, opts *Options, skill discovery.Skill, bas
 type LocalOptions struct {
 	SourceDir string
 	Skills    []discovery.Skill
-	AgentHost *registry.AgentHost
-	Scope     registry.Scope
-	Dir       string
-	GitRoot   string
-	HomeDir   string
+	Dir       string // destination directory, resolved by the caller
 }
 
 // InstallLocal copies skills from a local directory to the target location.
 // Files are copied, never symlinked, and no lock file entry is written.
 func InstallLocal(opts *LocalOptions) (*Result, error) {
-	targetDir, err := resolveTargetDir(opts.Dir, opts.AgentHost, opts.Scope, opts.GitRoot, opts.HomeDir)
-	if err != nil {
-		return nil, err
+	targetDir := opts.Dir
+	if targetDir == "" {
+		return nil, errors.New("destination directory is required")
 	}
 
 	result := &Result{Dir: targetDir}
@@ -226,16 +219,6 @@ func safeJoin(base, relPath string) (string, error) {
 		return "", fmt.Errorf("blocked path traversal in %q", relPath)
 	}
 	return dest, nil
-}
-
-func resolveTargetDir(dir string, host *registry.AgentHost, scope registry.Scope, gitRoot, homeDir string) (string, error) {
-	if dir != "" {
-		return dir, nil
-	}
-	if host == nil {
-		return "", fmt.Errorf("either Dir or AgentHost must be specified")
-	}
-	return host.InstallDir(scope, gitRoot, homeDir)
 }
 
 // ResolveGitRoot returns the top-level directory of the current git

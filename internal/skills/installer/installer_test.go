@@ -11,7 +11,6 @@ import (
 	"github.com/avivsinai/bitbucket-cli/internal/skills/discovery"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/frontmatter"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/lockfile"
-	"github.com/avivsinai/bitbucket-cli/internal/skills/registry"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/source"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/sourcetest"
 )
@@ -105,40 +104,40 @@ func TestInstallWritesFilesMetadataAndLockfile(t *testing.T) {
 	}
 }
 
-func TestInstallResolvesAgentHostDirectory(t *testing.T) {
+func TestInstallUnpinnedRecordsBranchRef(t *testing.T) {
 	repo := newRepo()
-	gitRoot := t.TempDir()
-	host, _ := registry.FindByID("claude-code")
+	target := t.TempDir()
 
 	result, err := Install(context.Background(), &Options{
-		Repo:      repo,
-		Ref:       source.Ref{Ref: "refs/heads/main", SHA: "sha-main"},
-		Skills:    []discovery.Skill{{Name: "alpha", Path: "skills/alpha"}},
-		AgentHost: host,
-		Scope:     registry.ScopeProject,
-		GitRoot:   gitRoot,
-		HomeDir:   t.TempDir(),
+		Repo:    repo,
+		Ref:     source.Ref{Ref: "refs/heads/main", SHA: "sha-main"},
+		Skills:  []discovery.Skill{{Name: "alpha", Path: "skills/alpha"}},
+		Dir:     target,
+		HomeDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	want := filepath.Join(gitRoot, ".claude", "skills")
-	if result.Dir != want {
-		t.Fatalf("Dir = %q, want %q", result.Dir, want)
+	if result.Dir != target {
+		t.Fatalf("Dir = %q, want %q", result.Dir, target)
 	}
-	if !strings.Contains(readFile(t, filepath.Join(want, "alpha", "SKILL.md")), "bitbucket-ref: refs/heads/main") {
-		t.Fatal("unpinned install should record the branch ref")
+	skillMD := readFile(t, filepath.Join(target, "alpha", "SKILL.md"))
+	if !strings.Contains(skillMD, "bitbucket-ref: refs/heads/main") {
+		t.Error("unpinned install should record the branch ref")
 	}
-	if strings.Contains(readFile(t, filepath.Join(want, "alpha", "SKILL.md")), "bitbucket-pinned") {
-		t.Fatal("unpinned install must not write bitbucket-pinned")
+	if strings.Contains(skillMD, "bitbucket-pinned") {
+		t.Error("unpinned install must not write bitbucket-pinned")
 	}
 }
 
 func TestInstallErrors(t *testing.T) {
-	t.Run("neither dir nor agent host", func(t *testing.T) {
+	t.Run("missing destination directory", func(t *testing.T) {
 		_, err := Install(context.Background(), &Options{Repo: newRepo()})
-		if err == nil || err.Error() != "either Dir or AgentHost must be specified" {
+		if err == nil || err.Error() != "destination directory is required" {
 			t.Fatalf("error = %v", err)
+		}
+		if _, err := InstallLocal(&LocalOptions{SourceDir: t.TempDir()}); err == nil || err.Error() != "destination directory is required" {
+			t.Fatalf("InstallLocal error = %v", err)
 		}
 	})
 
@@ -247,6 +246,10 @@ func TestSafeJoin(t *testing.T) {
 		{"a/../../evil", true},
 		{"/abs", true},
 		{"", true},
+		// A backslash is a path separator on Windows, so these must be blocked
+		// even though they are a single slash-separated segment.
+		{`..\..\evil.txt`, true},
+		{`a\..\..\evil`, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.rel, func(t *testing.T) {

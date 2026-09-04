@@ -23,12 +23,9 @@ func openRepository(cmd *cobra.Command, f *cmdutil.Factory, arg string) (source.
 	}
 
 	override := cmdutil.FlagValue(cmd, "context")
-	var host *config.Host
-	if ref.Host != "" {
-		_, host, err = cmdutil.ResolveHost(f, override, ref.Host)
-	} else {
-		_, _, host, err = cmdutil.ResolveContext(f, cmd, override)
-	}
+	_, _, contextHost, contextErr := cmdutil.ResolveContext(f, cmd, override)
+
+	host, err := resolveArgHost(f, override, arg, ref, contextHost, contextErr)
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +49,32 @@ func openRepository(cmd *cobra.Command, f *cmdutil.Factory, arg string) (source.
 	default:
 		return nil, fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
+}
+
+// resolveArgHost picks the host to talk to. A repository given as a URL is
+// served by the host it names when that host is configured; otherwise the
+// active context's host is used, and the error explains the mismatch.
+func resolveArgHost(f *cmdutil.Factory, override, arg string, ref source.RepoRef, contextHost *config.Host, contextErr error) (*config.Host, error) {
+	if ref.Host == "" {
+		if contextErr != nil {
+			return nil, contextErr
+		}
+		return contextHost, nil
+	}
+
+	if _, urlHost, err := cmdutil.ResolveHost(f, override, ref.Host); err == nil {
+		return urlHost, nil
+	} else if contextErr != nil {
+		return nil, err
+	}
+
+	// The host in the URL is not configured. The usual cause is pasting a URL
+	// from the other Bitbucket platform, so say that rather than "not found".
+	if ref.Kind != "" && ref.Kind != contextHost.Kind {
+		return nil, fmt.Errorf("repository %q is a Bitbucket %s URL, but %s is not configured and the active context uses %s (Bitbucket %s)",
+			arg, kindLabel(ref.Kind), ref.Host, contextHost.BaseURL, kindLabel(contextHost.Kind))
+	}
+	return nil, fmt.Errorf("repository %q names host %s, which is not configured; run `bkt auth login https://%s` or use --context", arg, ref.Host, ref.Host)
 }
 
 func kindLabel(kind string) string {
