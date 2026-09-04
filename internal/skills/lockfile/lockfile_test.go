@@ -7,13 +7,18 @@ import (
 	"testing"
 )
 
-func readLock(t *testing.T, home string) file {
+type decodedFile struct {
+	Version int              `json:"version"`
+	Skills  map[string]Entry `json:"skills"`
+}
+
+func readLock(t *testing.T, home string) decodedFile {
 	t.Helper()
 	data, err := os.ReadFile(Path(home))
 	if err != nil {
 		t.Fatalf("read lock file: %v", err)
 	}
-	var lf file
+	var lf decodedFile
 	if err := json.Unmarshal(data, &lf); err != nil {
 		t.Fatalf("parse lock file: %v", err)
 	}
@@ -67,7 +72,54 @@ func TestRecordInstallCreatesAndUpdatesEntries(t *testing.T) {
 	}
 }
 
-func TestRecordInstallRecoversFromCorruptOrIncompatibleFile(t *testing.T) {
+func TestRecordInstallPreservesUnknownFields(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(Path(home)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := `{
+  "version": 3,
+  "skills": {
+    "alpha": {"source":"old/source","installedAt":"2024-01-01T00:00:00Z","futureEntry":{"enabled":true}},
+    "other": {"source":"other/source","sourceType":"github","pinnedRef":null,"futureOther":[1,2,3]}
+  },
+  "dismissed": {"notice": true},
+  "futureTop": {"owner":"another-tool"}
+}`
+	if err := os.WriteFile(Path(home), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordInstall(home, "alpha", Entry{Source: "new/source", SkillFolderHash: "new-hash"}); err != nil {
+		t.Fatalf("RecordInstall: %v", err)
+	}
+
+	data, err := os.ReadFile(Path(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("parse updated lock file: %v", err)
+	}
+	if got["futureTop"].(map[string]any)["owner"] != "another-tool" {
+		t.Fatalf("top-level extension lost: %s", data)
+	}
+	skills := got["skills"].(map[string]any)
+	alpha := skills["alpha"].(map[string]any)
+	if alpha["futureEntry"].(map[string]any)["enabled"] != true || alpha["source"] != "new/source" {
+		t.Fatalf("updated entry fields = %+v", alpha)
+	}
+	other := skills["other"].(map[string]any)
+	if other["futureOther"].([]any)[2] != float64(3) || other["source"] != "other/source" || other["pinnedRef"] != nil {
+		t.Fatalf("unrelated entry changed: %+v", other)
+	}
+	if _, ok := other["skillFolderHash"]; ok {
+		t.Fatalf("omitted known field was added to unrelated entry: %+v", other)
+	}
+}
+
+func TestRecordInstallRejectsCorruptOrIncompatibleFile(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
@@ -86,12 +138,15 @@ func TestRecordInstallRecoversFromCorruptOrIncompatibleFile(t *testing.T) {
 			if err := os.WriteFile(Path(home), []byte(tt.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if err := RecordInstall(home, "alpha", Entry{Source: "a/b"}); err != nil {
-				t.Fatalf("RecordInstall: %v", err)
+			if err := RecordInstall(home, "alpha", Entry{Source: "a/b"}); err == nil {
+				t.Fatal("RecordInstall succeeded for invalid existing file")
 			}
-			lf := readLock(t, home)
-			if lf.Version != 3 || len(lf.Skills) != 1 {
-				t.Fatalf("lock file = %+v, want fresh v3 with one entry", lf)
+			data, err := os.ReadFile(Path(home))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != tt.content {
+				t.Fatalf("invalid lock file was overwritten: got %q, want %q", data, tt.content)
 			}
 		})
 	}

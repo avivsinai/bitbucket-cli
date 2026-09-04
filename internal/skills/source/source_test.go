@@ -61,9 +61,9 @@ func TestResolveRef(t *testing.T) {
 			wantErr: "could not fetch latest tag: boom",
 		},
 		{
-			name:    "short name prefers branch over tag",
+			name:    "short name prefers tag over branch",
 			version: "v1",
-			want:    source.Ref{Ref: "refs/heads/v1", SHA: "sha-branch-v1"},
+			want:    source.Ref{Ref: "refs/tags/v1", SHA: "sha-tag-v1"},
 		},
 		{
 			name:    "short name resolves tag when no branch",

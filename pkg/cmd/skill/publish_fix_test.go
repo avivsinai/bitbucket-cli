@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -192,11 +193,70 @@ func TestPublishTagOnDataCenterRemote(t *testing.T) {
 		t.Fatalf("publish --tag: %v (stderr=%s)", err, stderr)
 	}
 	// A Data Center remote yields PROJECT/REPO, not workspace/repo.
-	if len(*args) != 1 || (*args)[0] != "PROJ/agent-skills" {
-		t.Fatalf("repository arguments = %v, want PROJ/agent-skills", *args)
+	if len(*args) != 1 || (*args)[0] != "https://bitbucket.example.com/scm/PROJ/agent-skills.git" {
+		t.Fatalf("repository arguments = %v, want the detected host and repository", *args)
 	}
 	if repo.CreatedTags["v1.0.0"] != head {
 		t.Fatalf("created tags = %v", repo.CreatedTags)
+	}
+}
+
+func TestPublishTagOnDataCenterSSHRemoteWithPort(t *testing.T) {
+	root, head := setupTagRepoWithRemote(t, "ssh://git@bitbucket.example.com:7999/proj/agent-skills.git")
+	repo := sourcetest.New("PROJ/agent-skills", nil)
+	repo.Branches = map[string]string{"main": head}
+	args := stubRepository(t, repo)
+
+	f, stdout, stderr := newTestFactory(t)
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--tag", "v1.0.0"); err != nil {
+		t.Fatalf("publish --tag: %v (stderr=%s)", err, stderr)
+	}
+	if len(*args) != 1 || (*args)[0] != "https://bitbucket.example.com/scm/PROJ/agent-skills.git" {
+		t.Fatalf("repository arguments = %v, want a Data Center URL without the SSH port", *args)
+	}
+}
+
+func TestPublishTagRejectsIgnoredUntrackedSkill(t *testing.T) {
+	root, _ := setupTagRepo(t)
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("skills/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "rm", "-r", "--cached", "skills")
+	runGit(t, root, "add", ".gitignore")
+	runGit(t, root, "commit", "-m", "ignore skills")
+	head := runGit(t, root, "rev-parse", "HEAD")
+
+	repo := sourcetest.New("myteam/agent-skills", nil)
+	repo.Branches = map[string]string{"main": head}
+	stubRepository(t, repo)
+
+	f, stdout, stderr := newTestFactory(t)
+	err := runSkill(t, f, stdout, stderr, "publish", root, "--tag", "v1.0.0")
+	if err == nil || !strings.Contains(err.Error(), "because it is not committed") {
+		t.Fatalf("error = %v, want ignored untracked skill to block the tag", err)
+	}
+	if len(repo.CreatedTags) != 0 {
+		t.Fatalf("created tags = %v, want none", repo.CreatedTags)
+	}
+}
+
+func TestPublishTagAllowsChangesOutsideSelectedDirectory(t *testing.T) {
+	root, head := setupTagRepo(t)
+	selected := filepath.Join(root, "skills")
+	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("not part of this publish\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := sourcetest.New("myteam/agent-skills", nil)
+	repo.Branches = map[string]string{"main": head}
+	stubRepository(t, repo)
+
+	f, stdout, stderr := newTestFactory(t)
+	if err := runSkill(t, f, stdout, stderr, "publish", selected, "--tag", "v1.0.0"); err != nil {
+		t.Fatalf("publish selected directory: %v (stderr=%s)", err, stderr)
+	}
+	if repo.CreatedTags["v1.0.0"] != head {
+		t.Fatalf("created tags = %v, want selected committed files to publish", repo.CreatedTags)
 	}
 }
 

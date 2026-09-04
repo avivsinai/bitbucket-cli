@@ -390,7 +390,7 @@ func TestPublishCreatesTag(t *testing.T) {
 	}
 
 	// The repository to publish to is derived from the git remote.
-	if len(*args) != 1 || (*args)[0] != "myteam/agent-skills" {
+	if len(*args) != 1 || (*args)[0] != "https://bitbucket.org/myteam/agent-skills.git" {
 		t.Fatalf("repository arguments = %v", *args)
 	}
 	if repo.CreatedTags["v1.0.0"] != head {
@@ -439,6 +439,28 @@ func TestPublishTagErrors(t *testing.T) {
 		}
 		if len(repo.CreatedTags) != 0 {
 			t.Errorf("no tag should have been created, got %v", repo.CreatedTags)
+		}
+	})
+
+	t.Run("uncommitted repair does not validate a different commit", func(t *testing.T) {
+		root, _ := setupTagRepo(t)
+		writeSkill(t, root, "skills/code-review", "---\nname: wrong\ndescription: d\nlicense: MIT\n---\n")
+		runGit(t, root, "add", "-A")
+		runGit(t, root, "commit", "-m", "invalid skill")
+		head := runGit(t, root, "rev-parse", "HEAD")
+		writeSkill(t, root, "skills/code-review", validSkill("code-review"))
+
+		repo := sourcetest.New("myteam/agent-skills", nil)
+		repo.Branches = map[string]string{"main": head}
+		stubRepository(t, repo)
+
+		f, stdout, stderr := newTestFactory(t)
+		err := runSkill(t, f, stdout, stderr, "publish", root, "--tag", "v1.0.0")
+		if err == nil || !strings.Contains(err.Error(), "cannot publish with uncommitted changes") {
+			t.Fatalf("error = %v, want uncommitted changes to block the tag", err)
+		}
+		if len(repo.CreatedTags) != 0 {
+			t.Fatalf("created tags = %v, want none", repo.CreatedTags)
 		}
 	})
 

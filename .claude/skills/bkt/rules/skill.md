@@ -41,6 +41,7 @@ bkt skill <command> [flags]
 | [list](#bkt-skill-list) | List installed skills | `--agent`, `--dir`, `--scope` |
 | [preview](#bkt-skill-preview) | Preview a skill from a Bitbucket repository | `--allow-hidden-dirs` |
 | [publish](#bkt-skill-publish) | Validate skills and tag a release | `--dry-run`, `--fix`, `--message`, `--tag` |
+| [search](#bkt-skill-search) | Search for skills in Bitbucket Cloud code | `--limit`, `--workspace` |
 | [update](#bkt-skill-update) | Update installed skills to their latest versions | `--all`, `--dir`, `--dry-run`, `--force` |
 
 ## bkt skill install
@@ -127,7 +128,7 @@ repositories.
 When a skill name is given without a version, the newest tag is used,
 falling back to the default branch when the repository has no tags. To pin
 a version, append @VERSION to the skill name or use --pin; the version is
-resolved as a branch, tag, or commit SHA.
+resolved as a tag, branch, or commit SHA.
 
 Installed skills carry source metadata (metadata.bitbucket-*) in their
 SKILL.md frontmatter so "bkt skill update" can detect changes.
@@ -154,7 +155,7 @@ bkt skill install <repository> [<skill[@version]>] [flags]
 | `--dir` |  | Install to a custom directory (overrides --agent and --scope) |
 | `--force` | `-f` | Overwrite existing skills without prompting |
 | `--from-local` |  | Treat the argument as a local directory path instead of a repository |
-| `--pin` |  | Pin to a specific branch, tag, or commit SHA |
+| `--pin` |  | Pin to a specific tag, branch, or commit SHA |
 | `--scope` |  | Installation scope: project or user |
 | `--upstream` |  | Install from the upstream source when a re-published skill is detected |
 
@@ -391,6 +392,52 @@ bkt skill publish [<directory>] [flags]
   bkt skill publish ./agent-skills --dry-run
 ```
 
+## bkt skill search
+
+Search for skill files across repositories in a Bitbucket Cloud workspace.
+
+The query uses Bitbucket Cloud code-search syntax. Scope it further with terms
+such as repo:agent-skills or path:skills. The workspace comes from --workspace
+or the active context. Results are restricted to SKILL.md files. Bitbucket Data
+Center is not supported because it has no public workspace code-search API.
+
+Note: Atlassian has announced that the Cloud code-search REST endpoint will be
+deprecated on November 1, 2026.
+
+### Usage
+
+```
+bkt skill search <query> [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--limit` | `-L` | Maximum matches to return |
+| `--workspace` |  | Bitbucket Cloud workspace (defaults to context workspace) |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+# Search the active context's workspace
+  bkt skill search "code review"
+
+  # Search one repository and emit structured output
+  bkt skill search "review repo:agent-skills" --workspace myteam --json
+```
+
 ## bkt skill update
 
 Check installed skills for updates by comparing the commit recorded in each
@@ -411,8 +458,8 @@ non-interactive mode they are skipped with a notice. Skills installed by
 gh are listed with a reminder to update them with gh.
 
 With --force, skills are re-downloaded even when already up to date. This
-overwrites locally modified files with their original content but does not
-remove extra files added locally.
+overwrites locally modified files with their original content and removes
+extra files added locally.
 
 In interactive mode, the available updates are shown and confirmed before
 proceeding. With --all, updates are applied without prompting. With

@@ -104,9 +104,9 @@ func ResolveRef(ctx context.Context, repo Repository, version string) (Ref, erro
 
 // resolveExplicitRef resolves a user-supplied version string. It supports:
 //   - fully qualified refs: "refs/tags/v1.0" or "refs/heads/main"
-//   - short names: tried as branch first, then tag, then commit SHA
+//   - short names: tried as tag first, then branch, then commit SHA
 //
-// When a short name matches both a branch and a tag, the branch wins.
+// When a short name matches both a tag and a branch, the tag wins.
 func resolveExplicitRef(ctx context.Context, repo Repository, ref string) (Ref, error) {
 	if after, ok := strings.CutPrefix(ref, "refs/tags/"); ok {
 		return resolveTagRef(ctx, repo, after)
@@ -115,12 +115,12 @@ func resolveExplicitRef(ctx context.Context, repo Repository, ref string) (Ref, 
 		return resolveBranchRef(ctx, repo, after)
 	}
 
-	if resolved, err := resolveBranchRef(ctx, repo, ref); err == nil {
+	if resolved, err := resolveTagRef(ctx, repo, ref); err == nil {
 		return resolved, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return Ref{}, err
 	}
-	if resolved, err := resolveTagRef(ctx, repo, ref); err == nil {
+	if resolved, err := resolveBranchRef(ctx, repo, ref); err == nil {
 		return resolved, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return Ref{}, err

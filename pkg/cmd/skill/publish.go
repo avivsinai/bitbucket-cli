@@ -59,6 +59,15 @@ type publishOptions struct {
 	Message   string
 }
 
+type publishResult struct {
+	Diagnostics    []diagnostic `json:"diagnostics" yaml:"diagnostics"`
+	Tag            string       `json:"tag" yaml:"tag"`
+	Commit         string       `json:"commit" yaml:"commit"`
+	Repository     string       `json:"repository" yaml:"repository"`
+	InstallCommand string       `json:"installCommand" yaml:"installCommand"`
+	PinCommand     string       `json:"pinCommand" yaml:"pinCommand"`
+}
+
 func newPublishCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &publishOptions{}
 	cmd := &cobra.Command{
@@ -136,6 +145,10 @@ func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) er
 	if err != nil {
 		return err
 	}
+	settings, err := cmdutil.ResolveOutputSettings(cmd)
+	if err != nil {
+		return err
+	}
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
@@ -175,8 +188,11 @@ func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) er
 	errCount := countSeverity(diagnostics, severityError)
 	warnCount := countSeverity(diagnostics, severityWarning)
 
-	if err := renderDiagnostics(cmd, ios, diagnostics, len(skills), errCount, warnCount); err != nil {
-		return err
+	structuredTag := opts.Tag != "" && (settings.Format != "" || settings.JQ != "" || settings.Template != "")
+	if !structuredTag || errCount > 0 {
+		if err := renderDiagnostics(cmd, ios, diagnostics, len(skills), errCount, warnCount); err != nil {
+			return err
+		}
 	}
 	if errCount > 0 {
 		return fmt.Errorf("validation failed with %d error(s)", errCount)
@@ -199,7 +215,7 @@ func runPublish(cmd *cobra.Command, f *cmdutil.Factory, opts *publishOptions) er
 		return nil
 	}
 
-	return publishTag(cmd, f, ios, absDir, opts)
+	return publishTag(cmd, f, ios, absDir, skills, diagnostics, opts)
 }
 
 // fixableMessage marks the one error --fix can resolve, so the fix pass can
@@ -488,7 +504,7 @@ func writeDiagnostics(w io.Writer, tty bool, diagnostics []diagnostic, skillCoun
 }
 
 // publishTag creates the requested tag on the current commit.
-func publishTag(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, root string, opts *publishOptions) error {
+func publishTag(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, root string, skills []discovery.Skill, diagnostics []diagnostic, opts *publishOptions) error {
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
@@ -498,11 +514,14 @@ func publishTag(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams
 	if err != nil {
 		return fmt.Errorf("could not determine the Bitbucket repository to publish to: %w", err)
 	}
+	if err := ensurePublishedFilesCommitted(ctx, root, skills); err != nil {
+		return err
+	}
 	owner := locator.Workspace
 	if owner == "" {
 		owner = locator.ProjectKey
 	}
-	repoArg := owner + "/" + locator.RepoSlug
+	repoArg := publishRepositoryURL(locator, owner)
 
 	repo, err := openRepositoryFunc(cmd, f, repoArg)
 	if err != nil {
@@ -538,13 +557,53 @@ func publishTag(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams
 		return fmt.Errorf("could not create tag %s in %s: %w", opts.Tag, repo.FullName(), err)
 	}
 
-	fmt.Fprintf(ios.Out, "✓ Published %s (%s) in %s\n", opts.Tag, shortSHA(commit), repo.FullName())
-	fmt.Fprintf(ios.Out, "  Install with: bkt skill install %s\n", repo.FullName())
-	fmt.Fprintf(ios.Out, "  Pin with:     bkt skill install %s <skill> --pin %s\n", repo.FullName(), opts.Tag)
+	result := publishResult{
+		Diagnostics:    diagnostics,
+		Tag:            opts.Tag,
+		Commit:         commit,
+		Repository:     repo.FullName(),
+		InstallCommand: fmt.Sprintf("bkt skill install %s", repo.FullName()),
+		PinCommand:     fmt.Sprintf("bkt skill install %s <skill> --pin %s", repo.FullName(), opts.Tag),
+	}
+	if err := cmdutil.WriteOutput(cmd, ios.Out, result, func() error {
+		fmt.Fprintf(ios.Out, "✓ Published %s (%s) in %s\n", opts.Tag, shortSHA(commit), repo.FullName())
+		fmt.Fprintf(ios.Out, "  Install with: %s\n", result.InstallCommand)
+		fmt.Fprintf(ios.Out, "  Pin with:     %s\n", result.PinCommand)
+		return nil
+	}); err != nil {
+		return err
+	}
 	if next := suggestNextTag(opts.Tag); next != "" {
 		fmt.Fprintf(ios.ErrOut, "\nNext version would be %s.\n", next)
 	}
 	return nil
+}
+
+// ensurePublishedFilesCommitted makes validation and tagging refer to the same
+// bytes. The directory can be a repository root or a selected subtree, so only
+// changes inside that directory block publishing.
+func ensurePublishedFilesCommitted(ctx context.Context, root string, skills []discovery.Skill) error {
+	status, err := gitOutput(ctx, root, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	if err != nil {
+		return fmt.Errorf("could not verify that the published files are committed: %w", err)
+	}
+	if status != "" {
+		return fmt.Errorf("cannot publish with uncommitted changes in %s; commit or discard them, then retry", root)
+	}
+	for _, skill := range skills {
+		skillFile := filepath.Join(filepath.FromSlash(skill.Path), "SKILL.md")
+		if _, err := gitOutput(ctx, root, "ls-files", "--error-unmatch", "--", skillFile); err != nil {
+			return fmt.Errorf("cannot publish %s because it is not committed; add and commit it, then retry", filepath.Join(root, skillFile))
+		}
+	}
+	return nil
+}
+
+func publishRepositoryURL(locator remote.Locator, owner string) string {
+	if locator.Kind == "dc" {
+		return fmt.Sprintf("https://%s/scm/%s/%s.git", locator.Host, owner, locator.RepoSlug)
+	}
+	return fmt.Sprintf("https://%s/%s/%s.git", locator.Host, owner, locator.RepoSlug)
 }
 
 // ensurePushed refuses to tag a commit the remote does not have yet.

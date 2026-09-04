@@ -12,6 +12,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/internal/skills/discovery"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/frontmatter"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/installer"
+	"github.com/avivsinai/bitbucket-cli/internal/skills/lockfile"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/registry"
 	"github.com/avivsinai/bitbucket-cli/internal/skills/source"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
@@ -80,8 +81,8 @@ non-interactive mode they are skipped with a notice. Skills installed by
 gh are listed with a reminder to update them with gh.
 
 With --force, skills are re-downloaded even when already up to date. This
-overwrites locally modified files with their original content but does not
-remove extra files added locally.
+overwrites locally modified files with their original content and removes
+extra files added locally.
 
 In interactive mode, the available updates are shown and confirmed before
 proceeding. With --all, updates are applied without prompting. With
@@ -128,6 +129,12 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 		ctx = context.Background()
 	}
 	canPrompt := ios.CanPrompt()
+	outputSettings, err := cmdutil.ResolveOutputSettings(cmd)
+	if err != nil {
+		return err
+	}
+	structuredOutput := outputSettings.Format != "" || outputSettings.JQ != "" || outputSettings.Template != ""
+	emptyRows := []availableUpdate{}
 
 	gitRoot := installer.ResolveGitRoot(ctx)
 	homeDir := installer.ResolveHomeDir()
@@ -142,8 +149,10 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 		installed = scanAllAgentsForUpdate(gitRoot, homeDir)
 	}
 	if len(installed) == 0 {
-		fmt.Fprintln(ios.ErrOut, "No installed skills found.")
-		return nil
+		return cmdutil.WriteOutput(cmd, ios.Out, emptyRows, func() error {
+			fmt.Fprintln(ios.ErrOut, "No installed skills found.")
+			return nil
+		})
 	}
 
 	if len(opts.Skills) > 0 {
@@ -174,8 +183,10 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 	}
 	installed = valid
 	if len(installed) == 0 {
-		fmt.Fprintln(ios.ErrOut, "No updatable skills found.")
-		return nil
+		return cmdutil.WriteOutput(cmd, ios.Out, emptyRows, func() error {
+			fmt.Fprintln(ios.ErrOut, "No updatable skills found.")
+			return nil
+		})
 	}
 
 	var noMeta, byGH []string
@@ -212,6 +223,7 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 	stop := startProgress(f, ios, fmt.Sprintf("Checking %d installed skill(s) for updates", len(installed)))
 	var updates []pendingUpdate
 	var pinned []installedSkill
+	var checkFailed bool
 
 	type repoState struct {
 		repo     source.Repository
@@ -237,12 +249,15 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 			repo, openErr := openRepositoryFunc(cmd, f, s.repoURL)
 			if openErr != nil {
 				state.failed = true
+				checkFailed = true
 				fmt.Fprintf(ios.ErrOut, "! Skipping %s: could not open %s: %v\n", s.name, s.repoURL, openErr)
 			} else if resolved, resolveErr := source.ResolveRef(ctx, repo, ""); resolveErr != nil {
 				state.failed = true
+				checkFailed = true
 				fmt.Fprintf(ios.ErrOut, "! Skipping %s: could not resolve %s: %v\n", s.name, repo.FullName(), resolveErr)
 			} else if skills, discoverErr := discovery.DiscoverAllSkills(ctx, repo, resolved.SHA); discoverErr != nil {
 				state.failed = true
+				checkFailed = true
 				fmt.Fprintf(ios.ErrOut, "! Skipping %s: %v\n", s.name, discoverErr)
 			} else {
 				state.repo, state.resolved, state.skills = repo, resolved, skills
@@ -264,6 +279,7 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 			}
 			newCommit, commitErr := state.repo.LatestCommit(ctx, state.resolved.SHA, remote.Path)
 			if commitErr != nil {
+				checkFailed = true
 				fmt.Fprintf(ios.ErrOut, "! Skipping %s: could not determine latest commit: %v\n", s.name, commitErr)
 				break
 			}
@@ -286,10 +302,21 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 	}
 
 	if len(updates) == 0 {
-		if opts.Force && opts.DryRun {
-			fmt.Fprintln(ios.ErrOut, "All skills are up to date. Use --force without --dry-run to re-download anyway.")
-		} else {
-			fmt.Fprintln(ios.ErrOut, "All skills are up to date.")
+		if err := cmdutil.WriteOutput(cmd, ios.Out, emptyRows, func() error {
+			if checkFailed {
+				return nil
+			}
+			if opts.Force && opts.DryRun {
+				fmt.Fprintln(ios.ErrOut, "All skills are up to date. Use --force without --dry-run to re-download anyway.")
+			} else {
+				fmt.Fprintln(ios.ErrOut, "All skills are up to date.")
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if checkFailed {
+			return fmt.Errorf("could not check all skills for updates")
 		}
 		return nil
 	}
@@ -322,6 +349,9 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 	fmt.Fprintln(ios.ErrOut)
 
 	if opts.DryRun {
+		if checkFailed {
+			return fmt.Errorf("could not check all skills for updates")
+		}
 		return nil
 	}
 
@@ -350,10 +380,15 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 			failed = true
 			continue
 		}
-		fmt.Fprintf(ios.Out, "✓ Updated %s\n", u.local.name)
+		if !structuredOutput {
+			fmt.Fprintf(ios.Out, "✓ Updated %s\n", u.local.name)
+		}
 	}
 	if failed {
 		return fmt.Errorf("some skills failed to update")
+	}
+	if checkFailed {
+		return fmt.Errorf("could not check all skills for updates")
 	}
 	return nil
 }
@@ -382,7 +417,7 @@ func updateSkillInPlace(ctx context.Context, u pendingUpdate, homeDir string) ([
 		Ref:     u.resolved,
 		Skills:  []discovery.Skill{u.skill},
 		Dir:     staging,
-		HomeDir: homeDir,
+		HomeDir: filepath.Join(staging, ".lock-home"),
 	})
 	if err != nil {
 		return nil, err
@@ -395,7 +430,21 @@ func updateSkillInPlace(ctx context.Context, u pendingUpdate, homeDir string) ([
 	if err := os.MkdirAll(u.local.dir, 0o755); err != nil {
 		return nil, fmt.Errorf("could not ensure skill directory %s: %w", u.local.dir, err)
 	}
-	return result.Warnings, swapDirectoryContents(u.local.dir, staged)
+	if err := swapDirectoryContents(u.local.dir, staged); err != nil {
+		return result.Warnings, err
+	}
+
+	warnings := result.Warnings
+	entry := lockfile.Entry{
+		Source:          u.repo.FullName(),
+		SourceURL:       u.repo.CloneURL(),
+		SkillPath:       u.skill.Path + "/SKILL.md",
+		SkillFolderHash: u.newCommit,
+	}
+	if err := lockfile.RecordInstall(homeDir, u.skill.InstallName(), entry); err != nil {
+		warnings = append(warnings, fmt.Sprintf("could not record install for %s: %v", u.skill.InstallName(), err))
+	}
+	return warnings, nil
 }
 
 // swapDirectoryContents replaces the entries inside dest with the entries
@@ -415,7 +464,9 @@ func swapDirectoryContents(dest, src string) error {
 	var movedOut []string
 	for _, entry := range existing {
 		if err := os.Rename(filepath.Join(dest, entry.Name()), filepath.Join(backup, entry.Name())); err != nil {
-			restoreBackup(dest, backup, movedOut, nil)
+			if restoreErr := restoreBackup(dest, backup, movedOut, nil); restoreErr != nil {
+				return fmt.Errorf("could not move %s aside: %w (also %v)", entry.Name(), err, restoreErr)
+			}
 			return fmt.Errorf("could not move %s aside: %w", entry.Name(), err)
 		}
 		movedOut = append(movedOut, entry.Name())
@@ -423,13 +474,17 @@ func swapDirectoryContents(dest, src string) error {
 
 	staged, err := os.ReadDir(src)
 	if err != nil {
-		restoreBackup(dest, backup, movedOut, nil)
+		if restoreErr := restoreBackup(dest, backup, movedOut, nil); restoreErr != nil {
+			return fmt.Errorf("could not read staged skill directory %s: %w (also %v)", src, err, restoreErr)
+		}
 		return fmt.Errorf("could not read staged skill directory %s: %w", src, err)
 	}
 	var movedIn []string
 	for _, entry := range staged {
 		if err := os.Rename(filepath.Join(src, entry.Name()), filepath.Join(dest, entry.Name())); err != nil {
-			restoreBackup(dest, backup, movedOut, movedIn)
+			if restoreErr := restoreBackup(dest, backup, movedOut, movedIn); restoreErr != nil {
+				return fmt.Errorf("could not move %s into place: %w (also %v)", entry.Name(), err, restoreErr)
+			}
 			return fmt.Errorf("could not move %s into place: %w", entry.Name(), err)
 		}
 		movedIn = append(movedIn, entry.Name())
@@ -439,14 +494,23 @@ func swapDirectoryContents(dest, src string) error {
 	return nil
 }
 
-func restoreBackup(dest, backup string, movedOut, movedIn []string) {
+func restoreBackup(dest, backup string, movedOut, movedIn []string) error {
+	var restoreErrors []string
 	for _, name := range movedIn {
-		_ = os.RemoveAll(filepath.Join(dest, name))
+		if err := os.RemoveAll(filepath.Join(dest, name)); err != nil {
+			restoreErrors = append(restoreErrors, fmt.Sprintf("remove new %s: %v", name, err))
+		}
 	}
 	for _, name := range movedOut {
-		_ = os.Rename(filepath.Join(backup, name), filepath.Join(dest, name))
+		if err := os.Rename(filepath.Join(backup, name), filepath.Join(dest, name)); err != nil {
+			restoreErrors = append(restoreErrors, fmt.Sprintf("restore %s: %v", name, err))
+		}
+	}
+	if len(restoreErrors) > 0 {
+		return fmt.Errorf("could not restore previous skill (%s); recovery remains at %s", strings.Join(restoreErrors, "; "), backup)
 	}
 	_ = os.RemoveAll(backup)
+	return nil
 }
 
 // scanAllAgentsForUpdate collects installed skills from every registered

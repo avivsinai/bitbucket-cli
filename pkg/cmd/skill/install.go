@@ -37,6 +37,17 @@ type installOptions struct {
 	version string // parsed from SkillName@version or --pin
 }
 
+type installOutputItem struct {
+	SkillName string `json:"skillName" yaml:"skillName"`
+	SourceURL string `json:"sourceURL" yaml:"sourceURL"`
+	Version   string `json:"version,omitempty" yaml:"version,omitempty"`
+	Path      string `json:"path" yaml:"path"`
+}
+
+type installOutput struct {
+	Installed []installOutputItem `json:"installed" yaml:"installed"`
+}
+
 func newInstallCmd(f *cmdutil.Factory) *cobra.Command {
 	opts := &installOptions{}
 	cmd := &cobra.Command{
@@ -78,7 +89,7 @@ repositories.
 When a skill name is given without a version, the newest tag is used,
 falling back to the default branch when the repository has no tags. To pin
 a version, append @VERSION to the skill name or use --pin; the version is
-resolved as a branch, tag, or commit SHA.
+resolved as a tag, branch, or commit SHA.
 
 Installed skills carry source metadata (metadata.bitbucket-*) in their
 SKILL.md frontmatter so "bkt skill update" can detect changes.
@@ -149,7 +160,7 @@ or grep them before re-running with a specific skill.`,
 
 	cmd.Flags().StringVar(&opts.Agent, "agent", "", "Target agent (see supported values above)")
 	cmd.Flags().StringVar(&opts.Scope, "scope", string(registry.ScopeProject), "Installation scope: project or user")
-	cmd.Flags().StringVar(&opts.Pin, "pin", "", "Pin to a specific branch, tag, or commit SHA")
+	cmd.Flags().StringVar(&opts.Pin, "pin", "", "Pin to a specific tag, branch, or commit SHA")
 	cmd.Flags().StringVar(&opts.Dir, "dir", "", "Install to a custom directory (overrides --agent and --scope)")
 	cmd.Flags().BoolVar(&opts.All, "all", false, "Install all skills in the repository")
 	cmd.Flags().BoolVarP(&opts.Force, "force", "f", false, "Overwrite existing skills without prompting")
@@ -163,6 +174,9 @@ or grep them before re-running with a specific skill.`,
 func runInstall(cmd *cobra.Command, f *cmdutil.Factory, opts *installOptions) error {
 	ios, err := f.Streams()
 	if err != nil {
+		return err
+	}
+	if _, err := cmdutil.ResolveOutputSettings(cmd); err != nil {
 		return err
 	}
 
@@ -272,6 +286,7 @@ func installFromRepository(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 		return err
 	}
 
+	output := installOutput{Installed: make([]installOutputItem, 0)}
 	for _, plan := range plans {
 		if len(plans) > 1 {
 			fmt.Fprintf(ios.ErrOut, "\nInstalling to %s for %s...\n", friendlyDir(plan.dir), formatPlanHosts(plan.hosts))
@@ -300,7 +315,7 @@ func installFromRepository(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 				fmt.Fprintf(ios.ErrOut, "! %s\n", w)
 			}
 			for _, name := range result.Installed {
-				fmt.Fprintf(ios.Out, "✓ Installed %s (from %s@%s) in %s\n", name, repo.FullName(), source.ShortRef(resolved.Ref), friendlyDir(result.Dir))
+				output.Installed = append(output.Installed, installOutputItem{SkillName: name, SourceURL: repo.FullName(), Version: source.ShortRef(resolved.Ref), Path: result.Dir})
 			}
 			printInstalledTree(ios.ErrOut, result.Dir, result.Installed)
 			printReviewHint(ios.ErrOut, repo.FullName(), resolved.SHA, result.Installed, opts.AllowHiddenDirs)
@@ -311,7 +326,12 @@ func installFromRepository(cmd *cobra.Command, f *cmdutil.Factory, ios *iostream
 		}
 	}
 
-	return nil
+	return cmdutil.WriteOutput(cmd, ios.Out, output, func() error {
+		for _, item := range output.Installed {
+			fmt.Fprintf(ios.Out, "✓ Installed %s (from %s@%s) in %s\n", item.SkillName, item.SourceURL, item.Version, friendlyDir(item.Path))
+		}
+		return nil
+	})
 }
 
 func runLocalInstall(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOStreams, opts *installOptions) error {
@@ -373,6 +393,7 @@ func runLocalInstall(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOSt
 		return err
 	}
 
+	output := installOutput{Installed: make([]installOutputItem, 0)}
 	for _, plan := range plans {
 		if len(plans) > 1 {
 			fmt.Fprintf(ios.ErrOut, "\nInstalling to %s for %s...\n", friendlyDir(plan.dir), formatPlanHosts(plan.hosts))
@@ -386,14 +407,19 @@ func runLocalInstall(cmd *cobra.Command, f *cmdutil.Factory, ios *iostreams.IOSt
 			return err
 		}
 		for _, name := range result.Installed {
-			fmt.Fprintf(ios.Out, "Installed %s (from %s) in %s\n", name, opts.SkillSource, friendlyDir(result.Dir))
+			output.Installed = append(output.Installed, installOutputItem{SkillName: name, SourceURL: opts.SkillSource, Path: result.Dir})
 		}
 		printInstalledTree(ios.ErrOut, result.Dir, result.Installed)
 		printReviewHint(ios.ErrOut, "", "", result.Installed, false)
 		printHostHints(ios.ErrOut, plan.hosts, result.Installed, result.Dir, gitRoot)
 	}
 
-	return nil
+	return cmdutil.WriteOutput(cmd, ios.Out, output, func() error {
+		for _, item := range output.Installed {
+			fmt.Fprintf(ios.Out, "Installed %s (from %s) in %s\n", item.SkillName, item.SourceURL, friendlyDir(item.Path))
+		}
+		return nil
+	})
 }
 
 // parseSkillVersion splits "name@version" and applies --pin. Both forms pin

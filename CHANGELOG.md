@@ -25,10 +25,32 @@ All notable changes to this project will be documented here. The format follows
   released version. Bitbucket has no releases, so publishing a version means
   creating a tag, which is what `bkt skill install` resolves to when no
   version is requested. (#310)
+- `bkt pipeline run` can select a pipeline definition with `--selector-type`
+  and `--selector-pattern`, including named custom pipelines on a branch.
 - Data Center `bkt repo list` and `bkt repo view` include the repository
   `archived` flag in structured output (always present, including `false`).
   Human `repo view` prints `Archived: true|false`; archived `repo list` rows
   get an `(archived)` suffix. Bitbucket Cloud is unchanged.
+- `bkt skill search` searches `SKILL.md` files across a Bitbucket Cloud
+  workspace, with human and structured output. Data Center reports that the
+  command is unsupported because it has no public workspace code-search API.
+  Atlassian will deprecate the Cloud endpoint on November 1, 2026. (#310)
+
+### Changed
+- Short skill versions now resolve tags before branches, so a tag wins when
+  a branch shares its name.
+
+### Fixed
+- `bkt skill install` stages files in a temporary sibling of the skill
+  directory within the install root, then replaces the destination only on
+  success, so failed installs no longer leave partial skill directories.
+- `bkt skill publish` refuses to tag while the published files have
+  uncommitted changes, and addresses the repository by its full host URL.
+- `bkt skill update` emits one structured document without human success text,
+  and returns an error when any remote update check fails instead of reporting
+  every skill as up to date.
+- Skill lock updates preserve unrelated entries and unknown JSON fields, and
+  refuse to overwrite an existing malformed or incompatible lock file.
 
 ## [0.31.1] - 2026-08-21
 ### Added

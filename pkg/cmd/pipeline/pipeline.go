@@ -52,8 +52,10 @@ type waitOptions struct {
 type runOptions struct {
 	baseOptions
 	waitOptions
-	Ref       string
-	Variables []string
+	Ref             string
+	SelectorType    string
+	SelectorPattern string
+	Variables       []string
 }
 
 type listOptions struct {
@@ -80,18 +82,24 @@ func newRunCmd(f *cmdutil.Factory) *cobra.Command {
 		Short: "Trigger a new pipeline run (Cloud only)",
 		Long: `Trigger a new pipeline run on Bitbucket Cloud for the current repository.
 
-The pipeline runs against the specified Git ref (branch, tag, or commit). You can
-pass custom pipeline variables using the --var flag, which accepts KEY=VALUE pairs
-and can be repeated. This command is available for Bitbucket Cloud contexts only.
+The pipeline runs against the specified branch. Set --selector-type to choose a
+pipeline definition for that branch target. For selector types other than default,
+also set --selector-pattern. Selector values are passed directly to Bitbucket. You
+can pass custom pipeline variables using the --var flag, which accepts KEY=VALUE
+pairs and can be repeated. This command is available for Bitbucket Cloud contexts
+only.
 
 Use --wait to poll the triggered pipeline until it completes, with exponential
 backoff and jitter. Exit codes in --wait mode: 0 = pipeline succeeded,
 1 = pipeline completed unsuccessfully, 8 = timed out while still running.`,
-		Example: `  # Run the pipeline on the default branch
+		Example: `  # Run the pipeline on the main branch
   bkt pipeline run
 
   # Run the pipeline on a specific branch
   bkt pipeline run --ref feature/my-branch
+
+  # Run a named custom pipeline
+  bkt pipeline run --ref master --selector-type custom --selector-pattern deploy-to-production
 
   # Run with custom pipeline variables
   bkt pipeline run --ref main --var ENV=staging --var DEBUG=true
@@ -101,7 +109,11 @@ backoff and jitter. Exit codes in --wait mode: 0 = pipeline succeeded,
 
   # Trigger and wait for the result
   bkt pipeline run --ref main --wait`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateRunSelectorFlags(cmd, opts); err != nil {
+				return err
+			}
 			if err := validateWaitFlags(cmd, &opts.waitOptions); err != nil {
 				return err
 			}
@@ -111,11 +123,40 @@ backoff and jitter. Exit codes in --wait mode: 0 = pipeline succeeded,
 
 	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Bitbucket Cloud workspace override")
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
-	cmd.Flags().StringVar(&opts.Ref, "ref", "main", "Git ref to run the pipeline on")
+	cmd.Flags().StringVar(&opts.Ref, "ref", "main", "Branch to run the pipeline on")
+	cmd.Flags().StringVar(&opts.SelectorType, "selector-type", "", "Pipeline selector type (for example custom or pull-requests)")
+	cmd.Flags().StringVar(&opts.SelectorPattern, "selector-pattern", "", "Pipeline definition name or pattern; omit for default")
 	cmd.Flags().StringSliceVar(&opts.Variables, "var", nil, "Pipeline variable in KEY=VALUE form (repeatable)")
 	addWaitFlags(cmd, &opts.waitOptions, "Wait for the triggered pipeline to complete")
 
 	return cmd
+}
+
+func validateRunSelectorFlags(cmd *cobra.Command, opts *runOptions) error {
+	typeSet := cmd.Flags().Changed("selector-type")
+	patternSet := cmd.Flags().Changed("selector-pattern")
+	if !typeSet && !patternSet {
+		return nil
+	}
+	if !typeSet {
+		return fmt.Errorf("--selector-pattern requires --selector-type")
+	}
+	if strings.TrimSpace(opts.SelectorType) == "" {
+		return fmt.Errorf("--selector-type cannot be empty")
+	}
+	if opts.SelectorType == "default" {
+		if patternSet {
+			return fmt.Errorf("--selector-pattern cannot be used with --selector-type default")
+		}
+		return nil
+	}
+	if !patternSet {
+		return fmt.Errorf("--selector-pattern is required with --selector-type %s", opts.SelectorType)
+	}
+	if strings.TrimSpace(opts.SelectorPattern) == "" {
+		return fmt.Errorf("--selector-pattern cannot be empty")
+	}
+	return nil
 }
 
 func newListCmd(f *cmdutil.Factory) *cobra.Command {
@@ -255,8 +296,17 @@ func runPipelineRun(cmd *cobra.Command, f *cmdutil.Factory, opts *runOptions) er
 	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 	defer cancel()
 
+	var selector *bbcloud.PipelineSelector
+	if opts.SelectorType != "" {
+		selector = &bbcloud.PipelineSelector{
+			Type:    opts.SelectorType,
+			Pattern: opts.SelectorPattern,
+		}
+	}
+
 	pipeline, err := client.TriggerPipeline(ctx, workspace, repo, bbcloud.TriggerPipelineInput{
 		Ref:       opts.Ref,
+		Selector:  selector,
 		Variables: vars,
 	})
 	if err != nil {

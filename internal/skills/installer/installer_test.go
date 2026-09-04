@@ -234,6 +234,152 @@ func TestInstallLocalCopiesAndInjectsLocalPath(t *testing.T) {
 	}
 }
 
+func TestInstallReplacesDestinationWithoutFollowingSymlinks(t *testing.T) {
+	install := func(t *testing.T, target string) {
+		t.Helper()
+		_, err := Install(context.Background(), &Options{
+			Repo:    newRepo(),
+			Ref:     source.Ref{Ref: "refs/heads/main", SHA: "sha"},
+			Skills:  []discovery.Skill{{Name: "alpha", Path: "skills/alpha"}},
+			Dir:     target,
+			HomeDir: t.TempDir(),
+		})
+		if err != nil {
+			t.Fatalf("Install: %v", err)
+		}
+	}
+
+	t.Run("skill directory symlink", func(t *testing.T) {
+		target, outside := t.TempDir(), t.TempDir()
+		if err := os.Symlink(outside, filepath.Join(target, "alpha")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+
+		install(t, target)
+
+		if _, err := os.Stat(filepath.Join(outside, "SKILL.md")); !os.IsNotExist(err) {
+			t.Fatalf("outside destination was modified: %v", err)
+		}
+		if info, err := os.Lstat(filepath.Join(target, "alpha")); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("installed skill is not a real directory: info=%v err=%v", info, err)
+		}
+	})
+
+	t.Run("nested symlink and stale file", func(t *testing.T) {
+		target, outside := t.TempDir(), t.TempDir()
+		skillDir := filepath.Join(target, "alpha")
+		if err := os.Mkdir(skillDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(skillDir, "scripts")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "stale.txt"), []byte("stale"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		install(t, target)
+
+		if _, err := os.Stat(filepath.Join(outside, "run.sh")); !os.IsNotExist(err) {
+			t.Fatalf("outside destination was modified: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(skillDir, "stale.txt")); !os.IsNotExist(err) {
+			t.Fatalf("stale file remains: %v", err)
+		}
+		if got := readFile(t, filepath.Join(skillDir, "scripts", "run.sh")); got != "#!/bin/sh\necho hi\n" {
+			t.Fatalf("nested file = %q", got)
+		}
+	})
+}
+
+func TestInstallFailureLeavesExistingDestinationIntact(t *testing.T) {
+	target := t.TempDir()
+	skillDir := filepath.Join(target, "alpha")
+	if err := os.Mkdir(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("previous"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := newRepo()
+	repo.Files["skills/alpha/SKILL.md"] = "---\n: invalid [[\n---\n"
+	_, err := Install(context.Background(), &Options{
+		Repo:    repo,
+		Ref:     source.Ref{Ref: "refs/heads/main", SHA: "sha"},
+		Skills:  []discovery.Skill{{Name: "alpha", Path: "skills/alpha"}},
+		Dir:     target,
+		HomeDir: t.TempDir(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "could not inject metadata") {
+		t.Fatalf("error = %v, want metadata failure", err)
+	}
+	if got := readFile(t, filepath.Join(skillDir, "SKILL.md")); got != "previous" {
+		t.Fatalf("existing destination changed to %q", got)
+	}
+}
+
+func TestInstallLocalReplacesDestinationWithoutFollowingSymlinks(t *testing.T) {
+	sourceRoot := t.TempDir()
+	skillSource := filepath.Join(sourceRoot, "skills", "alpha")
+	if err := os.MkdirAll(filepath.Join(skillSource, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillSource, "SKILL.md"), []byte("---\nname: alpha\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillSource, "scripts", "run.sh"), []byte("echo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	install := func(t *testing.T, target string) {
+		t.Helper()
+		if _, err := InstallLocal(&LocalOptions{
+			SourceDir: sourceRoot,
+			Skills:    []discovery.Skill{{Name: "alpha", Path: "skills/alpha"}},
+			Dir:       target,
+		}); err != nil {
+			t.Fatalf("InstallLocal: %v", err)
+		}
+	}
+
+	t.Run("skill directory symlink", func(t *testing.T) {
+		target, outside := t.TempDir(), t.TempDir()
+		if err := os.Symlink(outside, filepath.Join(target, "alpha")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+
+		install(t, target)
+
+		if _, err := os.Stat(filepath.Join(outside, "SKILL.md")); !os.IsNotExist(err) {
+			t.Fatalf("outside destination was modified: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(target, "alpha", "SKILL.md")); err != nil {
+			t.Fatalf("local skill not installed: %v", err)
+		}
+	})
+
+	t.Run("nested symlink", func(t *testing.T) {
+		target, outside := t.TempDir(), t.TempDir()
+		skillDir := filepath.Join(target, "alpha")
+		if err := os.Mkdir(skillDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(skillDir, "scripts")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+
+		install(t, target)
+
+		if _, err := os.Stat(filepath.Join(outside, "run.sh")); !os.IsNotExist(err) {
+			t.Fatalf("outside destination was modified: %v", err)
+		}
+		if got := readFile(t, filepath.Join(skillDir, "scripts", "run.sh")); got != "echo" {
+			t.Fatalf("nested file = %q", got)
+		}
+	})
+}
+
 func TestSafeJoin(t *testing.T) {
 	base := filepath.Join("base", "skill")
 	tests := []struct {

@@ -83,6 +83,7 @@ Some commands are **Data Center only** or **Cloud only** — check the command r
 | Webhooks | yes | yes |
 | Auto-merge, tasks, reactions | yes | — |
 | Variables | — | yes |
+| Skill search | — | yes |
 
 When a user's context is DC, do not suggest Cloud-only commands (and vice versa). If the platform is unknown, ask or check with `bkt auth status`.
 
@@ -125,6 +126,19 @@ For endpoints without a dedicated command:
 ```bash
 bkt api /rest/api/1.0/projects --param limit=100 --json
 ```
+
+### Search for Agent Skills in Bitbucket Cloud
+
+```bash
+bkt skill search "code review"
+bkt skill search "review repo:agent-skills" --workspace myteam --json
+```
+
+Search is workspace-scoped and returns only `SKILL.md` files. It is not
+available for Bitbucket Data Center because Data Center has no public workspace
+code-search API. Atlassian has announced that the [Cloud code-search REST
+endpoint](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-other-operations/#api-workspaces-workspace-search-code-get)
+will be deprecated on November 1, 2026.
 
 ## Global Flags
 
