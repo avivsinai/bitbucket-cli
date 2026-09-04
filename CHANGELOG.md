@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.32.0] - 2026-09-04
 ### Added
 - `bkt skill` installs and manages [Agent Skills](https://agentskills.io/specification)
   hosted in Bitbucket repositories, mirroring GitHub CLI's `gh skill`
@@ -51,6 +53,7 @@ All notable changes to this project will be documented here. The format follows
   every skill as up to date.
 - Skill lock updates preserve unrelated entries and unknown JSON fields, and
   refuse to overwrite an existing malformed or incompatible lock file.
+
 
 ## [0.31.1] - 2026-08-21
 ### Added
@@ -731,7 +734,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.1...v0.31.0
 [0.30.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.0...v0.30.1
