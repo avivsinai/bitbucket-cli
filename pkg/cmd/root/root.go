@@ -17,6 +17,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/pr"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/project"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/repo"
+	"github.com/avivsinai/bitbucket-cli/pkg/cmd/skill"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/status"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/variable"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmd/webhook"
@@ -75,6 +76,7 @@ Common flows:
 		variable.NewCommand(f),
 		api.NewCmdAPI(f),
 		extension.NewCmdExtension(f),
+		skill.NewCmdSkill(f),
 		mcpcmd.NewCmdMCP(f),
 	)
 
