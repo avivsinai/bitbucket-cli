@@ -6,6 +6,17 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Carried forward from the unpublished `v0.32.0` tag: `bkt skill` now supports
+  installing, listing, previewing, updating, and publishing Agent Skills hosted
+  in Bitbucket Cloud or Data Center, plus Cloud workspace skill search.
+- `bkt pipeline run` can select branch and custom pipeline definitions with
+  `--selector-type` and `--selector-pattern`.
+
+### Fixed
+- Local skill discovery ignores Git metadata, so concurrent Git maintenance no
+  longer causes `bkt skill publish` to fail while walking `.git`.
+
 ## [0.32.0] - 2026-09-04
 ### Added
 - `bkt skill` installs and manages [Agent Skills](https://agentskills.io/specification)
