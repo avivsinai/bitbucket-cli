@@ -412,6 +412,26 @@ func TestDiscoverAllLocalSkills(t *testing.T) {
 		}
 	})
 
+	t.Run("git metadata is pruned without excluding other hidden directories", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "skills", "real", "SKILL.md"), "---\nname: real\n---\n")
+		writeFile(t, filepath.Join(dir, ".claude", "skills", "hidden", "SKILL.md"), "---\nname: hidden\n---\n")
+		writeFile(t, filepath.Join(dir, ".git", "skills", "fake", "SKILL.md"), "---\nname: fake\n---\n")
+
+		skills, err := DiscoverAllLocalSkills(dir)
+		if err != nil {
+			t.Fatalf("DiscoverAllLocalSkills: %v", err)
+		}
+		var names []string
+		for _, skill := range skills {
+			names = append(names, skill.DisplayName())
+		}
+		sort.Strings(names)
+		if !reflect.DeepEqual(names, []string{"[hidden-dir] hidden", "real"}) {
+			t.Fatalf("skills = %v, want authored and supported hidden skills only", names)
+		}
+	})
+
 	t.Run("single skill directory uses frontmatter name", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: renamed\ndescription: One\n---\n")

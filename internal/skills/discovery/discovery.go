@@ -443,6 +443,11 @@ func DiscoverAllLocalSkills(dir string) ([]Skill, error) {
 		if walkErr != nil {
 			return walkErr
 		}
+		// Git metadata is not skill content; pruning it also avoids races with
+		// concurrent maintenance. Other hidden directories remain eligible.
+		if info.IsDir() && info.Name() == ".git" {
+			return filepath.SkipDir
+		}
 		// Skip symlinks to avoid following links outside the source tree.
 		if info.Mode()&os.ModeSymlink != 0 {
 			return nil
