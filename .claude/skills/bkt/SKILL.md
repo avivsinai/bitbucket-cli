@@ -157,6 +157,7 @@ Every command accepts these inherited flags:
 - [pr](rules/pr.md) — Manage pull requests
 - [project](rules/project.md) — Work with Bitbucket projects *(DC)*
 - [repo](rules/repo.md) — Work with Bitbucket repositories
+- [skill](rules/skill.md) — Install and manage agent skills
 - [status](rules/status.md) — Inspect commit and pull request statuses
 - [variable](rules/variable.md) — Manage pipeline variables *(Cloud)*
 - [webhook](rules/webhook.md) — Manage Bitbucket webhooks

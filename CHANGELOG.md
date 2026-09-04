@@ -6,6 +6,17 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 ### Added
+- `bkt skill` installs and manages [Agent Skills](https://agentskills.io/specification)
+  hosted in Bitbucket repositories, mirroring GitHub CLI's `gh skill`
+  (`install`, `list`, `preview`, `update`). Repositories are addressed as
+  `WORKSPACE/REPO` (Cloud), `PROJECT/REPO` (Data Center), or a Bitbucket URL,
+  and are read with the active context's credentials. Skill discovery,
+  the agent host table, the flat on-disk layout, and the
+  `~/.agents/.skill-lock.json` entry match `gh skill`; installed skills record
+  their origin under `metadata.bitbucket-*`. Bitbucket has no per-directory
+  tree hash, so update detection uses the latest commit that touched the skill
+  directory, and "latest" resolves to the newest tag, falling back to the
+  default branch. (#310)
 - Data Center `bkt repo list` and `bkt repo view` include the repository
   `archived` flag in structured output (always present, including `false`).
   Human `repo view` prints `Archived: true|false`; archived `repo list` rows

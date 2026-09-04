@@ -380,6 +380,26 @@ Branch utilities use Bitbucket's Branch Utils REST API for listing, creation, de
 
 Extensions are cloned into `$XDG_CONFIG_HOME/bkt/extensions` (or the directory configured via `BKT_CONFIG_DIR`) and executed in-place. Binaries should follow the `bkt-<name>` naming convention so the CLI can discover them automatically.
 
+### 7. Agent skills
+
+`bkt skill` installs [Agent Skills](https://agentskills.io/specification) from Bitbucket repositories, mirroring [`gh skill`](https://github.com/cli/cli#agent-skills) so the same workflow works for skills hosted on Bitbucket Cloud and Data Center.
+
+```bash
+bkt skill install myteam/agent-skills                  # List the skills a repository publishes
+bkt skill install myteam/agent-skills code-review      # Install one skill
+bkt skill install PROJ/agent-skills code-review        # Data Center, addressed by project key
+bkt skill install myteam/agent-skills code-review@v1.2.0 --agent claude-code --scope user
+bkt skill list                                         # Show what is installed, and from where
+bkt skill preview myteam/agent-skills code-review      # Inspect before installing
+bkt skill update --all                                 # Refresh everything that changed
+```
+
+Skills are discovered with the specification's conventions (`skills/*/SKILL.md`, `skills/{author}/*/SKILL.md`, `plugins/*/skills/*/SKILL.md`, root-level `*/SKILL.md`, and a `skills/` directory nested under a prefix). Use `--allow-hidden-dirs` to include copies kept in `.claude/skills/` or `.agents/skills/`.
+
+Placement follows the target agent: `--agent` selects one of the supported hosts (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, and many more; run `bkt skill install --help` for the full list) and `--scope project|user` chooses between the current repository and your home directory. The default agent, `universal`, writes to the shared `.agents/skills` directory that most agents read. `--dir` overrides both.
+
+Installed skills record their origin in `SKILL.md` frontmatter under `metadata.bitbucket-*`, which is what `bkt skill update` compares against the source repository. Because Bitbucket exposes no per-directory tree hash, the recorded version is the latest commit that touched the skill directory. Installing with `@version` or `--pin` pins the skill, and `bkt skill update` then skips it until you pass `--unpin`.
+
 ### Structured output & raw API access
 
 Every command supports the global `--json` and `--yaml` flags for automation-ready output.
