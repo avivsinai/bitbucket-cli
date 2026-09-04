@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -307,6 +308,128 @@ func TestLatestCommitForPath(t *testing.T) {
 			}
 			if tt.path == "" && strings.Contains((*requested)[0], "path=") {
 				t.Errorf("empty path must not add a path filter: %q", (*requested)[0])
+			}
+		})
+	}
+}
+
+func TestCreateTag(t *testing.T) {
+	type request struct {
+		method string
+		path   string
+		body   map[string]any
+	}
+
+	tests := []struct {
+		name      string
+		input     bbdc.CreateTagInput
+		status    int
+		wantBody  map[string]any
+		wantErr   string
+		wantNotFn bool
+	}{
+		{
+			name:  "annotated tag sends the message",
+			input: bbdc.CreateTagInput{Name: "v1.0.0", Commit: "abc123", Message: "First release"},
+			wantBody: map[string]any{
+				"name":       "v1.0.0",
+				"startPoint": "abc123",
+				"message":    "First release",
+			},
+		},
+		{
+			name:  "no message omits the field",
+			input: bbdc.CreateTagInput{Name: "v1.0.0", Commit: "abc123"},
+			wantBody: map[string]any{
+				"name":       "v1.0.0",
+				"startPoint": "abc123",
+			},
+		},
+		{
+			name:      "404 becomes ErrNotFound",
+			input:     bbdc.CreateTagInput{Name: "v1.0.0", Commit: "abc123"},
+			status:    http.StatusNotFound,
+			wantNotFn: true,
+		},
+		{
+			name:    "409 is surfaced as-is",
+			input:   bbdc.CreateTagInput{Name: "v1.0.0", Commit: "abc123"},
+			status:  http.StatusConflict,
+			wantErr: "409",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got request
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got.method = r.Method
+				got.path = r.URL.Path
+				_ = json.NewDecoder(r.Body).Decode(&got.body)
+				if tt.status != 0 {
+					w.WriteHeader(tt.status)
+					return
+				}
+				writeJSON(t, w, map[string]any{"name": tt.input.Name})
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := bbdc.New(bbdc.Options{BaseURL: server.URL, Username: "u", Token: "t"})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			err = client.CreateTag(context.Background(), "PROJ", "agent-skills", tt.input)
+			switch {
+			case tt.wantNotFn:
+				if !errors.Is(err, bbdc.ErrNotFound) {
+					t.Fatalf("error = %v, want ErrNotFound", err)
+				}
+				return
+			case tt.wantErr != "":
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want it to contain %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CreateTag: %v", err)
+			}
+			if got.method != http.MethodPost {
+				t.Errorf("method = %s, want POST", got.method)
+			}
+			if got.path != "/rest/api/1.0/projects/PROJ/repos/agent-skills/tags" {
+				t.Errorf("path = %s", got.path)
+			}
+			if !reflect.DeepEqual(got.body, tt.wantBody) {
+				t.Fatalf("body = %#v, want %#v", got.body, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestCreateTagValidatesArguments(t *testing.T) {
+	client, _ := newSourceServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("no request should be made for invalid arguments")
+	})
+
+	tests := []struct {
+		name    string
+		project string
+		repo    string
+		input   bbdc.CreateTagInput
+		wantErr string
+	}{
+		{name: "no project key", repo: "r", input: bbdc.CreateTagInput{Name: "v1", Commit: "c"}, wantErr: "project key and repository slug are required"},
+		{name: "no repository", project: "P", input: bbdc.CreateTagInput{Name: "v1", Commit: "c"}, wantErr: "project key and repository slug are required"},
+		{name: "no tag name", project: "P", repo: "r", input: bbdc.CreateTagInput{Commit: "c"}, wantErr: "tag name is required"},
+		{name: "no commit", project: "P", repo: "r", input: bbdc.CreateTagInput{Name: "v1"}, wantErr: "target commit is required"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := client.CreateTag(context.Background(), tt.project, tt.repo, tt.input)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
 			}
 		})
 	}

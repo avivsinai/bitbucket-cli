@@ -4,6 +4,8 @@ package frontmatter
 import (
 	"bytes"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -115,6 +117,120 @@ func InjectLocalMetadata(content, sourcePath string) (string, error) {
 	result.RawYAML["metadata"] = meta
 
 	return Serialize(result.RawYAML, result.Body)
+}
+
+// FindInstallMetadata returns the install-tracking keys present in a parsed
+// SKILL.md, sorted. A skill being published should carry none of them: they
+// describe where a copy was installed from, not what the repository authored.
+func FindInstallMetadata(result *ParseResult) []string {
+	meta, _ := result.RawYAML["metadata"].(map[string]any)
+	if meta == nil {
+		return nil
+	}
+	var found []string
+	for _, key := range InstallMetadataKeys {
+		if _, ok := meta[key]; ok {
+			found = append(found, key)
+		}
+	}
+	sort.Strings(found)
+	return found
+}
+
+// metadataKeyLine matches a block-style "metadata:" key at the top level of the
+// frontmatter, allowing a trailing comment.
+var metadataKeyLine = regexp.MustCompile(`^metadata:[ \t]*(#.*)?$`)
+
+// entryKeyLine captures the indentation and key of a mapping entry.
+var entryKeyLine = regexp.MustCompile(`^([ \t]+)([^\s:#][^:]*):`)
+
+// StripInstallMetadata removes the install-tracking keys from a SKILL.md by
+// editing the frontmatter line by line. Everything else the author wrote,
+// including comments, quoting, key order and indentation, is preserved byte
+// for byte: this rewrites a file the author owns, unlike the frontmatter of an
+// installed copy, which bkt is free to re-serialise.
+//
+// A "metadata" value written in flow style ({a: b}) is reported rather than
+// edited, since removing one key from it cannot be done safely line by line.
+func StripInstallMetadata(content string) (string, error) {
+	// Validate first so an unparseable file is reported rather than edited.
+	if _, err := Parse(content); err != nil {
+		return "", err
+	}
+
+	start, end, ok := frontmatterBounds(content)
+	if !ok {
+		return content, nil
+	}
+	lines := strings.Split(content[start:end], "\n")
+
+	metaIdx := -1
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "metadata:") {
+			continue
+		}
+		if !metadataKeyLine.MatchString(strings.TrimRight(line, "\r")) {
+			return "", fmt.Errorf("metadata is not written as a block mapping; remove the install keys by hand: %s", strings.TrimSpace(line))
+		}
+		metaIdx = i
+		break
+	}
+	if metaIdx == -1 {
+		return content, nil
+	}
+
+	install := make(map[string]bool, len(InstallMetadataKeys))
+	for _, key := range InstallMetadataKeys {
+		install[key] = true
+	}
+
+	kept := append([]string(nil), lines[:metaIdx+1]...)
+	remaining := 0
+	drop := false
+	for _, line := range lines[metaIdx+1:] {
+		trimmed := strings.TrimRight(line, "\r")
+		m := entryKeyLine.FindStringSubmatch(trimmed)
+		switch {
+		case m != nil:
+			// A new entry decides whether it and its continuation lines stay.
+			key := strings.TrimSpace(strings.Trim(m[2], `"'`))
+			drop = install[key]
+			if !drop {
+				remaining++
+			}
+		case strings.TrimSpace(trimmed) == "":
+			drop = false
+		case !strings.HasPrefix(trimmed, " ") && !strings.HasPrefix(trimmed, "\t"):
+			// Dedented back to the top level: the metadata block has ended.
+			drop = false
+		}
+		if !drop {
+			kept = append(kept, line)
+		}
+	}
+
+	if remaining == 0 {
+		kept = append(kept[:metaIdx], kept[metaIdx+1:]...)
+	}
+
+	return content[:start] + strings.Join(kept, "\n") + content[end:], nil
+}
+
+// frontmatterBounds returns the byte range of the YAML between the delimiters.
+func frontmatterBounds(content string) (start, end int, ok bool) {
+	lead := len(content) - len(strings.TrimLeft(content, "\r\n"))
+	rest := content[lead:]
+	if !strings.HasPrefix(rest, delimiter) {
+		return 0, 0, false
+	}
+	afterOpen := lead + len(delimiter)
+	afterOpen += len(rest[len(delimiter):]) - len(strings.TrimLeft(rest[len(delimiter):], "\r\n"))
+
+	closeIdx := strings.Index(content[afterOpen:], "\n"+delimiter)
+	if closeIdx < 0 {
+		return 0, 0, false
+	}
+	return afterOpen, afterOpen + closeIdx, true
 }
 
 func metadataMap(result *ParseResult) map[string]any {

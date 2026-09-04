@@ -109,3 +109,13 @@ func translateDCErr(err error) error {
 	}
 	return err
 }
+
+// CreateTag creates a tag pointing at a commit.
+func (r *dcRepository) CreateTag(ctx context.Context, name, commit, message string) error {
+	err := r.client.CreateTag(ctx, r.projectKey, r.slug, bbdc.CreateTagInput{
+		Name:    name,
+		Commit:  commit,
+		Message: message,
+	})
+	return translateDCErr(err)
+}

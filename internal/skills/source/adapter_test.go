@@ -383,3 +383,60 @@ func TestResolveRefOverAdapters(t *testing.T) {
 		}
 	})
 }
+
+// Both adapters must satisfy TagCreator; publish depends on it.
+var (
+	_ source.TagCreator = source.NewCloudRepository(nil, "w", "r").(source.TagCreator)
+	_ source.TagCreator = source.NewDCRepository(nil, "https://h", "P", "r").(source.TagCreator)
+)
+
+func TestAdapterCreateTag(t *testing.T) {
+	tests := []struct {
+		name     string
+		newRepo  func(*testing.T, http.HandlerFunc) (source.Repository, *[]string)
+		wantPath string
+	}{
+		{name: "cloud", newRepo: newCloudRepo, wantPath: "/repositories/myteam/agent-skills/refs/tags"},
+		{name: "data center", newRepo: newDCRepo, wantPath: "/rest/api/1.0/projects/PROJ/repos/agent-skills/tags"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotPath string
+			repo, _ := tt.newRepo(t, func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				writeJSON(t, w, map[string]any{})
+			})
+			tagger, ok := repo.(source.TagCreator)
+			if !ok {
+				t.Fatal("adapter does not implement source.TagCreator")
+			}
+			if err := tagger.CreateTag(context.Background(), "v1.0.0", "abc123", "First release"); err != nil {
+				t.Fatalf("CreateTag: %v", err)
+			}
+			if gotPath != tt.wantPath {
+				t.Fatalf("path = %q, want %q", gotPath, tt.wantPath)
+			}
+		})
+	}
+}
+
+func TestAdapterCreateTagNotFound(t *testing.T) {
+	// A 404 must reach callers as source.ErrNotFound, not the client's sentinel.
+	tests := []struct {
+		name    string
+		newRepo func(*testing.T, http.HandlerFunc) (source.Repository, *[]string)
+	}{
+		{name: "cloud", newRepo: newCloudRepo},
+		{name: "data center", newRepo: newDCRepo},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, _ := tt.newRepo(t, notFound)
+			err := repo.(source.TagCreator).CreateTag(context.Background(), "v1.0.0", "abc123", "")
+			if !errors.Is(err, source.ErrNotFound) {
+				t.Fatalf("error = %v, want source.ErrNotFound", err)
+			}
+		})
+	}
+}

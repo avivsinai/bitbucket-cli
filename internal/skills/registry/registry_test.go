@@ -148,3 +148,29 @@ func TestSharedProjectDirGroupsAgents(t *testing.T) {
 		t.Errorf(".claude/skills should belong to claude-code alone, got %v", got)
 	}
 }
+
+func TestUniqueProjectDirs(t *testing.T) {
+	dirs := UniqueProjectDirs()
+
+	seen := map[string]int{}
+	for _, d := range dirs {
+		seen[d]++
+	}
+	for d, n := range seen {
+		if n > 1 {
+			t.Errorf("project dir %q appears %d times; the list must be deduplicated", d, n)
+		}
+	}
+	// The shared directory comes first because it is first in the Agents table.
+	if len(dirs) == 0 || dirs[0] != ".agents/skills" {
+		t.Fatalf("dirs[0] = %q, want the shared .agents/skills", dirs[0])
+	}
+	for _, want := range []string{".agents/skills", ".claude/skills", "skills"} {
+		if seen[want] != 1 {
+			t.Errorf("expected %q exactly once, got %d", want, seen[want])
+		}
+	}
+	if len(dirs) >= len(Agents) {
+		t.Errorf("deduplication did nothing: %d dirs for %d agents", len(dirs), len(Agents))
+	}
+}

@@ -156,3 +156,18 @@ func (h *AgentHost) InstallDir(scope Scope, gitRoot, homeDir string) (string, er
 		return "", fmt.Errorf("invalid scope %q", scope)
 	}
 }
+
+// UniqueProjectDirs returns the deduplicated set of project-scope skill
+// directories, in Agents order. Used to warn about installed skills that would
+// be published alongside a repository's own.
+func UniqueProjectDirs() []string {
+	seen := map[string]bool{}
+	var dirs []string
+	for _, h := range Agents {
+		if !seen[h.ProjectDir] {
+			seen[h.ProjectDir] = true
+			dirs = append(dirs, h.ProjectDir)
+		}
+	}
+	return dirs
+}

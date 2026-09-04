@@ -276,3 +276,45 @@ func translateNotFound(err error) error {
 	}
 	return err
 }
+
+// CreateTagInput describes a tag to create.
+type CreateTagInput struct {
+	Name    string
+	Commit  string
+	Message string
+}
+
+// CreateTag creates a tag pointing at a commit. Bitbucket Cloud creates an
+// annotated tag when a message is supplied and a lightweight one otherwise.
+func (c *Client) CreateTag(ctx context.Context, workspace, repoSlug string, in CreateTagInput) error {
+	if workspace == "" || repoSlug == "" {
+		return fmt.Errorf("workspace and repository slug are required")
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		return fmt.Errorf("tag name is required")
+	}
+	if strings.TrimSpace(in.Commit) == "" {
+		return fmt.Errorf("target commit is required")
+	}
+
+	body := map[string]any{
+		"name":   in.Name,
+		"target": map[string]any{"hash": in.Commit},
+	}
+	if in.Message != "" {
+		body["message"] = in.Message
+	}
+
+	apiPath := fmt.Sprintf("/repositories/%s/%s/refs/tags",
+		url.PathEscape(workspace),
+		url.PathEscape(repoSlug),
+	)
+	req, err := c.http.NewRequest(ctx, "POST", apiPath, body)
+	if err != nil {
+		return err
+	}
+	if err := c.http.Do(req, nil); err != nil {
+		return translateNotFound(err)
+	}
+	return nil
+}

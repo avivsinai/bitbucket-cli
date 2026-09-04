@@ -25,6 +25,14 @@ type Repo struct {
 	Commits  map[string]string // dir -> latest commit touching it (default: "commit-" + dir)
 	Err      error             // when set, every call returns this error
 	readFile atomic.Int32      // ReadFile is called concurrently by FetchDescriptions
+
+	CreatedTags        map[string]string // tag name -> commit, recorded by CreateTag
+	CreatedTagMessages []string
+
+	// Per-call failures, for exercising error paths that are not "not found".
+	TagErr       error
+	CommitErr    error
+	CreateTagErr error
 }
 
 // ReadFileCalls reports how many times ReadFile has been called.
@@ -64,6 +72,9 @@ func (r *Repo) Tag(_ context.Context, name string) (string, error) {
 	if r.Err != nil {
 		return "", r.Err
 	}
+	if r.TagErr != nil {
+		return "", r.TagErr
+	}
 	if sha, ok := r.Tags[name]; ok {
 		return sha, nil
 	}
@@ -73,6 +84,9 @@ func (r *Repo) Tag(_ context.Context, name string) (string, error) {
 func (r *Repo) Commit(_ context.Context, ref string) (string, error) {
 	if r.Err != nil {
 		return "", r.Err
+	}
+	if r.CommitErr != nil {
+		return "", r.CommitErr
 	}
 	for _, sha := range r.Branches {
 		if sha == ref {
@@ -146,4 +160,24 @@ func (r *Repo) LatestCommit(_ context.Context, _ string, dir string) (string, er
 		return sha, nil
 	}
 	return "commit-" + strings.ReplaceAll(strings.Trim(dir, "/"), "/", "-"), nil
+}
+
+// CreateTag records a created tag so tests can assert on it.
+func (r *Repo) CreateTag(_ context.Context, name, commit, message string) error {
+	if r.Err != nil {
+		return r.Err
+	}
+	if r.CreateTagErr != nil {
+		return r.CreateTagErr
+	}
+	if r.CreatedTags == nil {
+		r.CreatedTags = map[string]string{}
+	}
+	r.CreatedTags[name] = commit
+	r.CreatedTagMessages = append(r.CreatedTagMessages, message)
+	if r.Tags == nil {
+		r.Tags = map[string]string{}
+	}
+	r.Tags[name] = commit
+	return nil
 }

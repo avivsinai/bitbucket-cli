@@ -42,6 +42,7 @@ See https://agentskills.io/specification for the skill format.`,
 		newListCmd(f),
 		newPreviewCmd(f),
 		newUpdateCmd(f),
+		newPublishCmd(f),
 	)
 
 	return cmd

@@ -557,3 +557,23 @@ func IsSpecCompliant(name string) bool {
 	}
 	return specNamePattern.MatchString(name)
 }
+
+// DiscoverLocalSkills finds skills in a local directory, excluding those in
+// hidden directories, which are installed copies rather than the repository's
+// own work.
+func DiscoverLocalSkills(dir string) ([]Skill, error) {
+	all, err := DiscoverAllLocalSkills(dir)
+	if err != nil {
+		return nil, err
+	}
+	skills := PartitionHiddenDirSkills(all).Standard
+	if len(skills) == 0 {
+		return nil, fmt.Errorf(
+			"no skills found in %s\n"+
+				"  Expected SKILL.md in the directory, or skills in skills/*/SKILL.md,\n"+
+				"  skills/{scope}/*/SKILL.md, */SKILL.md, or plugins/*/skills/*/SKILL.md",
+			dir,
+		)
+	}
+	return skills, nil
+}

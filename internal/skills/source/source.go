@@ -55,6 +55,12 @@ type Repository interface {
 	LatestCommit(ctx context.Context, sha, dir string) (string, error)
 }
 
+// TagCreator creates a tag in a repository. Both platform adapters implement
+// it alongside Repository; it is kept separate so Repository stays read-only.
+type TagCreator interface {
+	CreateTag(ctx context.Context, name, commit, message string) error
+}
+
 // ShortRef strips the "refs/heads/" or "refs/tags/" prefix from a fully
 // qualified ref. A ref that is not fully qualified is returned as-is.
 func ShortRef(ref string) string {

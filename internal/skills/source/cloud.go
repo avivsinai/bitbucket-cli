@@ -97,3 +97,13 @@ func translateCloudErr(err error) error {
 	}
 	return err
 }
+
+// CreateTag creates a tag pointing at a commit.
+func (r *cloudRepository) CreateTag(ctx context.Context, name, commit, message string) error {
+	err := r.client.CreateTag(ctx, r.workspace, r.slug, bbcloud.CreateTagInput{
+		Name:    name,
+		Commit:  commit,
+		Message: message,
+	})
+	return translateCloudErr(err)
+}

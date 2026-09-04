@@ -443,3 +443,49 @@ func TestDiscoverAllLocalSkills(t *testing.T) {
 		}
 	})
 }
+
+func TestDiscoverLocalSkillsExcludesHiddenCopies(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "skills", "beta", "SKILL.md"), "---\nname: beta\ndescription: Beta skill\n---\n")
+	writeFile(t, filepath.Join(dir, "skills", "acme", "alpha", "SKILL.md"), "---\ndescription: Namespaced\n---\n")
+	// Installed copies live in hidden directories and are not the repository's own.
+	writeFile(t, filepath.Join(dir, ".claude", "skills", "hidden", "SKILL.md"), "")
+	writeFile(t, filepath.Join(dir, ".agents", "skills", "also-hidden", "SKILL.md"), "")
+
+	skills, err := DiscoverLocalSkills(dir)
+	if err != nil {
+		t.Fatalf("DiscoverLocalSkills: %v", err)
+	}
+	var names []string
+	for _, s := range skills {
+		names = append(names, s.DisplayName())
+	}
+	sort.Strings(names)
+	if !reflect.DeepEqual(names, []string{"acme/alpha", "beta"}) {
+		t.Fatalf("skills = %v, want only the repository's own", names)
+	}
+	if HasHiddenDirSkills(skills) {
+		t.Fatal("hidden-dir skills must be excluded")
+	}
+}
+
+func TestDiscoverLocalSkillsErrors(t *testing.T) {
+	t.Run("only hidden skills", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, ".claude", "skills", "hidden", "SKILL.md"), "---\nname: hidden\n---\n")
+		_, err := DiscoverLocalSkills(dir)
+		if err == nil || !strings.Contains(err.Error(), "no skills found in") {
+			t.Fatalf("error = %v, want a no-skills error", err)
+		}
+	})
+	t.Run("empty directory", func(t *testing.T) {
+		if _, err := DiscoverLocalSkills(t.TempDir()); err == nil || !strings.Contains(err.Error(), "no skills found in") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("missing directory", func(t *testing.T) {
+		if _, err := DiscoverLocalSkills(filepath.Join(t.TempDir(), "nope")); err == nil || !strings.Contains(err.Error(), "could not access") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+}

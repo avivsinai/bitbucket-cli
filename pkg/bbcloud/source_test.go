@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -323,6 +324,128 @@ func TestLatestCommitForPath(t *testing.T) {
 			}
 			if tt.path == "" && strings.Contains((*requested)[0], "path=") {
 				t.Fatalf("empty path must not add a path filter: %q", (*requested)[0])
+			}
+		})
+	}
+}
+
+func TestCreateTag(t *testing.T) {
+	type request struct {
+		method string
+		path   string
+		body   map[string]any
+	}
+
+	tests := []struct {
+		name      string
+		input     bbcloud.CreateTagInput
+		status    int
+		wantBody  map[string]any
+		wantErr   string
+		wantNotFn bool
+	}{
+		{
+			name:  "annotated tag sends the message",
+			input: bbcloud.CreateTagInput{Name: "v1.0.0", Commit: "abc123", Message: "First release"},
+			wantBody: map[string]any{
+				"name":    "v1.0.0",
+				"target":  map[string]any{"hash": "abc123"},
+				"message": "First release",
+			},
+		},
+		{
+			name:  "no message omits the field",
+			input: bbcloud.CreateTagInput{Name: "v1.0.0", Commit: "abc123"},
+			wantBody: map[string]any{
+				"name":   "v1.0.0",
+				"target": map[string]any{"hash": "abc123"},
+			},
+		},
+		{
+			name:      "404 becomes ErrNotFound",
+			input:     bbcloud.CreateTagInput{Name: "v1.0.0", Commit: "abc123"},
+			status:    http.StatusNotFound,
+			wantNotFn: true,
+		},
+		{
+			name:    "409 is surfaced as-is",
+			input:   bbcloud.CreateTagInput{Name: "v1.0.0", Commit: "abc123"},
+			status:  http.StatusConflict,
+			wantErr: "409",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got request
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got.method = r.Method
+				got.path = r.URL.Path
+				_ = json.NewDecoder(r.Body).Decode(&got.body)
+				if tt.status != 0 {
+					w.WriteHeader(tt.status)
+					return
+				}
+				writeJSON(t, w, map[string]any{"name": tt.input.Name})
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := bbcloud.New(bbcloud.Options{BaseURL: server.URL, Username: "u", Token: "t"})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			err = client.CreateTag(context.Background(), "myteam", "agent-skills", tt.input)
+			switch {
+			case tt.wantNotFn:
+				if !errors.Is(err, bbcloud.ErrNotFound) {
+					t.Fatalf("error = %v, want ErrNotFound", err)
+				}
+				return
+			case tt.wantErr != "":
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want it to contain %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CreateTag: %v", err)
+			}
+			if got.method != http.MethodPost {
+				t.Errorf("method = %s, want POST", got.method)
+			}
+			if got.path != "/repositories/myteam/agent-skills/refs/tags" {
+				t.Errorf("path = %s", got.path)
+			}
+			if !reflect.DeepEqual(got.body, tt.wantBody) {
+				t.Fatalf("body = %#v, want %#v", got.body, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestCreateTagValidatesArguments(t *testing.T) {
+	client, _ := newSourceServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("no request should be made for invalid arguments")
+	})
+
+	tests := []struct {
+		name      string
+		workspace string
+		repo      string
+		input     bbcloud.CreateTagInput
+		wantErr   string
+	}{
+		{name: "no workspace", repo: "r", input: bbcloud.CreateTagInput{Name: "v1", Commit: "c"}, wantErr: "workspace and repository slug are required"},
+		{name: "no repository", workspace: "w", input: bbcloud.CreateTagInput{Name: "v1", Commit: "c"}, wantErr: "workspace and repository slug are required"},
+		{name: "no tag name", workspace: "w", repo: "r", input: bbcloud.CreateTagInput{Commit: "c"}, wantErr: "tag name is required"},
+		{name: "no commit", workspace: "w", repo: "r", input: bbcloud.CreateTagInput{Name: "v1"}, wantErr: "target commit is required"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := client.CreateTag(context.Background(), tt.workspace, tt.repo, tt.input)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
 			}
 		})
 	}

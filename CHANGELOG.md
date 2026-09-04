@@ -17,6 +17,14 @@ All notable changes to this project will be documented here. The format follows
   tree hash, so update detection uses the latest commit that touched the skill
   directory, and "latest" resolves to the newest tag, falling back to the
   default branch. (#310)
+- `bkt skill publish` validates a repository's skills against the Agent Skills
+  specification (naming rules, required frontmatter, `allowed-tools` as a
+  string, no committed install metadata) and reports the spec's
+  recommendations as warnings. `--fix` strips committed install metadata,
+  `--dry-run` validates only, and `--tag` marks the current commit as a
+  released version. Bitbucket has no releases, so publishing a version means
+  creating a tag, which is what `bkt skill install` resolves to when no
+  version is requested. (#310)
 - Data Center `bkt repo list` and `bkt repo view` include the repository
   `archived` flag in structured output (always present, including `false`).
   Human `repo view` prints `Archived: true|false`; archived `repo list` rows

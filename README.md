@@ -394,6 +394,14 @@ bkt skill preview myteam/agent-skills code-review      # Inspect before installi
 bkt skill update --all                                 # Refresh everything that changed
 ```
 
+If your repository publishes skills, `bkt skill publish` validates them and tags a version:
+
+```bash
+bkt skill publish --dry-run                            # Validate without tagging
+bkt skill publish --fix                                # Strip committed install metadata
+bkt skill publish --tag v1.2.0                         # Tag the current commit as a version
+```
+
 Skills are discovered with the specification's conventions (`skills/*/SKILL.md`, `skills/{author}/*/SKILL.md`, `plugins/*/skills/*/SKILL.md`, root-level `*/SKILL.md`, and a `skills/` directory nested under a prefix). Use `--allow-hidden-dirs` to include copies kept in `.claude/skills/` or `.agents/skills/`.
 
 Placement follows the target agent: `--agent` selects one of the supported hosts (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, and many more; run `bkt skill install --help` for the full list) and `--scope project|user` chooses between the current repository and your home directory. The default agent, `universal`, writes to the shared `.agents/skills` directory that most agents read. `--dir` overrides both.

@@ -223,3 +223,149 @@ func TestRoundTripPreservesBody(t *testing.T) {
 		t.Fatalf("metadata not readable back: %+v", parsed.Metadata.Meta)
 	}
 }
+
+func TestFindInstallMetadata(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{name: "no frontmatter", content: "# body\n"},
+		{name: "no metadata map", content: "---\nname: x\n---\n"},
+		{name: "only the author's own keys", content: "---\nname: x\nmetadata:\n    author: monalisa\n---\n"},
+		{
+			name:    "bkt and gh keys are both reported, sorted",
+			content: "---\nname: x\nmetadata:\n    local-path: /p\n    bitbucket-repo: r\n    github-ref: g\n    author: monalisa\n---\n",
+			want:    []string{"bitbucket-repo", "github-ref", "local-path"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Parse(tt.content)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			got := FindInstallMetadata(result)
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Fatalf("FindInstallMetadata = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripInstallMetadataPreservesAuthoredContent(t *testing.T) {
+	// A published SKILL.md belongs to its author, so stripping must not
+	// reformat it: comments, quoting, key order and indentation all survive.
+	content := "---\n" +
+		"# Owned by the platform team - keep name first\n" +
+		"name: code-review\n" +
+		"description: \"Reviews code carefully.\"\n" +
+		"license: MIT\n" +
+		"allowed-tools: Read Grep Bash\n" +
+		"metadata:\n" +
+		"  author: monalisa\n" +
+		"  bitbucket-repo: https://bitbucket.org/other/skills\n" +
+		"  bitbucket-commit: abc123\n" +
+		"---\n" +
+		"# Body\n"
+
+	got, err := StripInstallMetadata(content)
+	if err != nil {
+		t.Fatalf("StripInstallMetadata: %v", err)
+	}
+
+	want := "---\n" +
+		"# Owned by the platform team - keep name first\n" +
+		"name: code-review\n" +
+		"description: \"Reviews code carefully.\"\n" +
+		"license: MIT\n" +
+		"allowed-tools: Read Grep Bash\n" +
+		"metadata:\n" +
+		"  author: monalisa\n" +
+		"---\n" +
+		"# Body\n"
+	if got != want {
+		t.Fatalf("StripInstallMetadata rewrote authored content.\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestStripInstallMetadata(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+		wantErr string
+	}{
+		{
+			name:    "no frontmatter is untouched",
+			content: "# body only\n",
+			want:    "# body only\n",
+		},
+		{
+			name:    "no metadata map is untouched",
+			content: "---\nname: x\n---\n# body\n",
+			want:    "---\nname: x\n---\n# body\n",
+		},
+		{
+			name:    "no install keys is untouched",
+			content: "---\nname: x\nmetadata:\n    author: monalisa\n---\n",
+			want:    "---\nname: x\nmetadata:\n    author: monalisa\n---\n",
+		},
+		{
+			name:    "an emptied metadata map is removed entirely",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\n    local-path: /p\n---\n# body\n",
+			want:    "---\nname: x\n---\n# body\n",
+		},
+		{
+			name:    "gh keys are stripped too",
+			content: "---\nname: x\nmetadata:\n    github-repo: r\n    github-tree-sha: t\n    author: a\n---\n",
+			want:    "---\nname: x\nmetadata:\n    author: a\n---\n",
+		},
+		{
+			name:    "keys after the metadata block are kept",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\nlicense: MIT\n---\n",
+			want:    "---\nname: x\nlicense: MIT\n---\n",
+		},
+		{
+			name:    "windows line endings survive",
+			content: "---\r\nname: x\r\nmetadata:\r\n    bitbucket-repo: r\r\n    author: a\r\n---\r\n# body\r\n",
+			want:    "---\r\nname: x\r\nmetadata:\r\n    author: a\r\n---\r\n# body\r\n",
+		},
+		{
+			name:    "flow-style metadata is reported, not mangled",
+			content: "---\nname: x\nmetadata: {bitbucket-repo: r, author: a}\n---\n",
+			wantErr: "metadata is not written as a block mapping",
+		},
+		{
+			name:    "invalid frontmatter is reported",
+			content: "---\n: bad [[\n---\n",
+			wantErr: "invalid frontmatter YAML",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := StripInstallMetadata(tt.content)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want it to contain %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("StripInstallMetadata: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got  %q\nwant %q", got, tt.want)
+			}
+			// The result must still parse and carry no install keys.
+			result, parseErr := Parse(got)
+			if parseErr != nil {
+				t.Fatalf("stripped content no longer parses: %v", parseErr)
+			}
+			if keys := FindInstallMetadata(result); len(keys) != 0 {
+				t.Fatalf("install keys survived: %v", keys)
+			}
+		})
+	}
+}

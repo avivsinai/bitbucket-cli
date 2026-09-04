@@ -40,6 +40,7 @@ bkt skill <command> [flags]
 | [install](#bkt-skill-install) | Install agent skills from a Bitbucket repository | `--agent`, `--all`, `--allow-hidden-dirs`, `--dir` |
 | [list](#bkt-skill-list) | List installed skills | `--agent`, `--dir`, `--scope` |
 | [preview](#bkt-skill-preview) | Preview a skill from a Bitbucket repository | `--allow-hidden-dirs` |
+| [publish](#bkt-skill-publish) | Validate skills and tag a release | `--dry-run`, `--fix`, `--message`, `--tag` |
 | [update](#bkt-skill-update) | Update installed skills to their latest versions | `--all`, `--dir`, `--dry-run`, `--force` |
 
 ## bkt skill install
@@ -316,6 +317,78 @@ bkt skill preview <repository> [<skill[@version]>] [flags]
 
   # List the skills available in a repository
   bkt skill preview myteam/agent-skills
+```
+
+## bkt skill publish
+
+Validate a repository's skills against the Agent Skills specification and,
+with --tag, mark the current commit as a released version.
+
+Skills are discovered with the same conventions as install: skills/*/SKILL.md,
+skills/{author}/*/SKILL.md, plugins/*/skills/*/SKILL.md, root-level
+*/SKILL.md, and a skills/ directory nested under a prefix. Skills in hidden
+directories are ignored: those are copies installed by an agent, not the
+repository's own work.
+
+Validation checks:
+
+  - the skill name follows the agentskills.io naming rules
+  - the skill name matches its directory name
+  - the required frontmatter fields (name, description) are present
+  - allowed-tools is a space-delimited string, not a list
+  - no install metadata (metadata.bitbucket-*, metadata.github-*, local-path)
+    is committed, since that records where a copy came from
+
+Recommendations are reported as warnings: a license field, a description
+under 1024 characters, and a body under 500 lines.
+
+Use --dry-run to validate without tagging, and --fix to strip install
+metadata from the committed files so you can review and commit the result.
+
+Bitbucket has no releases, so publishing a version means creating a tag on the
+current commit. "bkt skill install" resolves an unversioned request to the
+newest tag, so tagging is what makes a version installable.
+
+### Usage
+
+```
+bkt skill publish [<directory>] [flags]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--dry-run` |  | Validate without tagging |
+| `--fix` |  | Strip committed install metadata without tagging |
+| `--message` |  | Annotation for the tag (defaults to the tag name) |
+| `--tag` |  | Tag the current commit with this version (e.g. v1.2.0) |
+
+### Inherited Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--context` | `-c` | Active Bitbucket context name |
+| `--format` |  | Output format: json or yaml (alias for --json/--yaml) |
+| `--jq` |  | Apply a jq expression to JSON output (requires --json or --format json) |
+| `--json` |  | Output in JSON format when supported |
+| `--template` |  | Render output using Go templates |
+| `--yaml` |  | Output in YAML format when supported |
+
+### Examples
+
+```bash
+# Validate the skills in the current repository
+  bkt skill publish --dry-run
+
+  # Strip committed install metadata, then review the changes
+  bkt skill publish --fix
+
+  # Validate and tag the current commit as v1.2.0
+  bkt skill publish --tag v1.2.0
+
+  # Validate a repository checked out elsewhere
+  bkt skill publish ./agent-skills --dry-run
 ```
 
 ## bkt skill update
