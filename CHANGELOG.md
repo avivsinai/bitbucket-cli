@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-09-04
 ### Added
 - Carried forward from the unpublished `v0.32.0` tag: `bkt skill` now supports
   installing, listing, previewing, updating, and publishing Agent Skills hosted
@@ -16,6 +17,7 @@ All notable changes to this project will be documented here. The format follows
 ### Fixed
 - Local skill discovery ignores Git metadata, so concurrent Git maintenance no
   longer causes `bkt skill publish` to fail while walking `.git`.
+
 
 ## [0.32.0] - 2026-09-04
 ### Added
@@ -745,7 +747,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.1...HEAD
+[0.32.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.30.1...v0.31.0
