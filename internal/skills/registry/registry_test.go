@@ -2,6 +2,7 @@ package registry
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -127,16 +128,23 @@ func TestInstallDir(t *testing.T) {
 	}
 }
 
-func TestUniqueProjectDirs(t *testing.T) {
-	dirs := UniqueProjectDirs()
-	seen := map[string]int{}
-	for _, d := range dirs {
-		seen[d]++
+func TestSharedProjectDirGroupsAgents(t *testing.T) {
+	// Agents that share a project directory install one copy between them, so
+	// the shared directory must be reused rather than duplicated per agent.
+	byDir := map[string][]string{}
+	for _, h := range Agents {
+		byDir[h.ProjectDir] = append(byDir[h.ProjectDir], h.ID)
 	}
-	if seen[".agents/skills"] != 1 || seen[".claude/skills"] != 1 {
-		t.Fatalf("expected .agents/skills and .claude/skills exactly once, got %v", seen)
+	shared := byDir[".agents/skills"]
+	if len(shared) < 10 {
+		t.Fatalf("expected the shared .agents/skills dir to be used by many agents, got %v", shared)
 	}
-	if dirs[0] != ".agents/skills" {
-		t.Fatalf("expected shared dir first, got %q", dirs[0])
+	for _, id := range []string{"github-copilot", "codex", "cursor", "universal"} {
+		if !slices.Contains(shared, id) {
+			t.Errorf("agent %q should install into the shared .agents/skills directory", id)
+		}
+	}
+	if got := byDir[".claude/skills"]; len(got) != 1 || got[0] != "claude-code" {
+		t.Errorf(".claude/skills should belong to claude-code alone, got %v", got)
 	}
 }

@@ -30,23 +30,6 @@ func TestShortRef(t *testing.T) {
 	}
 }
 
-func TestIsFullyQualifiedRef(t *testing.T) {
-	tests := []struct {
-		ref  string
-		want bool
-	}{
-		{"refs/heads/main", true},
-		{"refs/tags/v1", true},
-		{"main", false},
-		{"refs/remotes/origin/main", false},
-	}
-	for _, tt := range tests {
-		if got := source.IsFullyQualifiedRef(tt.ref); got != tt.want {
-			t.Errorf("IsFullyQualifiedRef(%q) = %v, want %v", tt.ref, got, tt.want)
-		}
-	}
-}
-
 func TestResolveRef(t *testing.T) {
 	newRepo := func() *sourcetest.Repo {
 		r := sourcetest.New("myteam/skills", nil)

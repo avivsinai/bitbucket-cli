@@ -55,11 +55,6 @@ type Repository interface {
 	LatestCommit(ctx context.Context, sha, dir string) (string, error)
 }
 
-// IsFullyQualifiedRef returns true if ref uses the "refs/heads/" or "refs/tags/" prefix.
-func IsFullyQualifiedRef(ref string) bool {
-	return strings.HasPrefix(ref, "refs/heads/") || strings.HasPrefix(ref, "refs/tags/")
-}
-
 // ShortRef strips the "refs/heads/" or "refs/tags/" prefix from a fully
 // qualified ref. A ref that is not fully qualified is returned as-is.
 func ShortRef(ref string) string {

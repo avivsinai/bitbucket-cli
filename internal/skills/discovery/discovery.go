@@ -114,17 +114,6 @@ type skillMatch struct {
 	convention string
 }
 
-// MatchSkillPath checks if a repository-relative file path matches any known
-// skill convention and returns the skill name and namespace. Both are empty
-// when the path does not match.
-func MatchSkillPath(filePath string) (name, namespace string) {
-	m := matchSkillConventions(filePath)
-	if m == nil {
-		return "", ""
-	}
-	return m.name, m.namespace
-}
-
 // IsSkillPath reports whether a skill selector looks like a repo-relative path
 // rather than a simple skill name.
 func IsSkillPath(name string) bool {
@@ -241,31 +230,6 @@ func matchHiddenDirConventions(p string) *skillMatch {
 	}
 
 	return nil
-}
-
-// DiscoverSkills finds all non-hidden-dir skills in a repository at the given
-// commit. Use DiscoverAllSkills to include skills in hidden directories.
-func DiscoverSkills(ctx context.Context, repo source.Repository, sha string) ([]Skill, error) {
-	all, err := DiscoverAllSkills(ctx, repo, sha)
-	if err != nil {
-		return nil, err
-	}
-	var skills []Skill
-	for _, s := range all {
-		if !s.IsHiddenDirConvention() {
-			skills = append(skills, s)
-		}
-	}
-	if len(skills) == 0 {
-		return nil, fmt.Errorf(
-			"no skills found in %s\n"+
-				"  Expected skills in skills/*/SKILL.md, skills/{scope}/*/SKILL.md,\n"+
-				"  */SKILL.md, or plugins/*/skills/*/SKILL.md\n"+
-				"  This repository may be a curated list rather than a skills publisher",
-			repo.FullName(),
-		)
-	}
-	return skills, nil
 }
 
 // DiscoverAllSkills finds every skill in a repository at the given commit,
@@ -444,31 +408,6 @@ func SkillFiles(ctx context.Context, repo source.Repository, sha, skillPath stri
 	}
 	sort.Slice(relative, func(i, j int) bool { return relative[i].Path < relative[j].Path })
 	return relative, nil
-}
-
-// DiscoverLocalSkills finds non-hidden-dir skills in a local directory using
-// the same conventions as remote discovery. Use DiscoverAllLocalSkills to
-// include skills in hidden directories.
-func DiscoverLocalSkills(dir string) ([]Skill, error) {
-	all, err := DiscoverAllLocalSkills(dir)
-	if err != nil {
-		return nil, err
-	}
-	var skills []Skill
-	for _, s := range all {
-		if !s.IsHiddenDirConvention() {
-			skills = append(skills, s)
-		}
-	}
-	if len(skills) == 0 {
-		return nil, fmt.Errorf(
-			"no skills found in %s\n"+
-				"  Expected SKILL.md in the directory, or skills in skills/*/SKILL.md,\n"+
-				"  skills/{scope}/*/SKILL.md, */SKILL.md, or plugins/*/skills/*/SKILL.md",
-			dir,
-		)
-	}
-	return skills, nil
 }
 
 // DiscoverAllLocalSkills finds every skill in a local directory, including

@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/avivsinai/bitbucket-cli/internal/skills/sourcetest"
@@ -186,68 +188,64 @@ func newFakeRepo() *sourcetest.Repo {
 	})
 }
 
-func TestDiscoverSkillsExcludesHiddenAndSorts(t *testing.T) {
-	repo := newFakeRepo()
-	skills, err := DiscoverSkills(context.Background(), repo, "sha")
-	if err != nil {
-		t.Fatalf("DiscoverSkills: %v", err)
-	}
-	var names []string
-	for _, s := range skills {
-		names = append(names, s.DisplayName())
-	}
-	want := []string{"[plugins] hubot/pr-summary", "alpha", "broken", "deep", "hashicorp/style-guide", "monalisa/triage", "no-frontmatter", "zeta"}
-	if !reflect.DeepEqual(names, want) {
-		t.Fatalf("display names = %v, want %v", names, want)
-	}
-	if HasHiddenDirSkills(skills) {
-		t.Fatal("hidden-dir skills should be excluded")
-	}
-	for _, s := range skills {
-		if s.Description != "" {
-			t.Fatalf("descriptions must not be fetched during discovery, got %q for %s", s.Description, s.Name)
-		}
-	}
-}
-
-func TestDiscoverAllSkillsIncludesHidden(t *testing.T) {
+func TestDiscoverAllSkillsSortsAndIncludesHidden(t *testing.T) {
 	repo := newFakeRepo()
 	skills, err := DiscoverAllSkills(context.Background(), repo, "sha")
 	if err != nil {
 		t.Fatalf("DiscoverAllSkills: %v", err)
 	}
+
+	var names []string
+	for _, s := range skills {
+		names = append(names, s.DisplayName())
+	}
+	want := []string{
+		"[hidden-dir] hidden-one", "[plugins] hubot/pr-summary", "alpha", "broken",
+		"deep", "hashicorp/style-guide", "monalisa/triage", "no-frontmatter", "zeta",
+	}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("display names = %v, want %v (sorted by display name)", names, want)
+	}
+
+	// Callers decide whether to keep hidden-dir skills; discovery reports both.
 	part := PartitionHiddenDirSkills(skills)
 	if part.HiddenCount != 1 || len(part.Standard) != 8 {
 		t.Fatalf("partition = hidden %d standard %d, want 1/8", part.HiddenCount, len(part.Standard))
 	}
-	if skills[0].DisplayName() != "[hidden-dir] hidden-one" {
-		t.Fatalf("expected hidden skill sorted first by display name, got %q", skills[0].DisplayName())
+
+	// Descriptions cost one request per skill, so discovery must not fetch them.
+	for _, s := range skills {
+		if s.Description != "" {
+			t.Fatalf("descriptions must not be fetched during discovery, got %q for %s", s.Description, s.Name)
+		}
+	}
+	if repo.ReadFileCalls() != 0 {
+		t.Fatalf("discovery made %d file reads, want 0", repo.ReadFileCalls())
 	}
 }
 
-func TestDiscoverSkillsErrors(t *testing.T) {
-	t.Run("no skills", func(t *testing.T) {
+func TestDiscoverAllSkillsErrors(t *testing.T) {
+	t.Run("no skills lists the expected conventions", func(t *testing.T) {
 		repo := sourcetest.New("myteam/empty", map[string]string{"README.md": "x"})
-		_, err := DiscoverSkills(context.Background(), repo, "sha")
+		_, err := DiscoverAllSkills(context.Background(), repo, "sha")
 		if err == nil || !strings.Contains(err.Error(), "no skills found in myteam/empty") {
 			t.Fatalf("error = %v, want no-skills error", err)
 		}
-	})
-	t.Run("only hidden skills", func(t *testing.T) {
-		repo := sourcetest.New("myteam/hidden", map[string]string{".claude/skills/x/SKILL.md": "---\nname: x\n---\n"})
-		_, err := DiscoverSkills(context.Background(), repo, "sha")
-		if err == nil || !strings.Contains(err.Error(), "no skills found") {
-			t.Fatalf("error = %v, want no-skills error", err)
+		if !strings.Contains(err.Error(), "skills/*/SKILL.md") {
+			t.Errorf("error should name the expected conventions:\n%v", err)
 		}
+	})
+	t.Run("hidden-only repository still reports its skills", func(t *testing.T) {
+		repo := sourcetest.New("myteam/hidden", map[string]string{".claude/skills/x/SKILL.md": "---\nname: x\n---\n"})
 		all, err := DiscoverAllSkills(context.Background(), repo, "sha")
-		if err != nil || len(all) != 1 {
+		if err != nil || len(all) != 1 || !HasHiddenDirSkills(all) {
 			t.Fatalf("DiscoverAllSkills = %v, %v; want one hidden skill", all, err)
 		}
 	})
 	t.Run("listing failure is wrapped", func(t *testing.T) {
 		repo := newFakeRepo()
 		repo.Err = errors.New("boom")
-		_, err := DiscoverSkills(context.Background(), repo, "sha")
+		_, err := DiscoverAllSkills(context.Background(), repo, "sha")
 		if err == nil || err.Error() != "could not list repository files: boom" {
 			t.Fatalf("error = %v", err)
 		}
@@ -256,17 +254,21 @@ func TestDiscoverSkillsErrors(t *testing.T) {
 
 func TestFetchDescriptions(t *testing.T) {
 	repo := newFakeRepo()
-	skills, err := DiscoverSkills(context.Background(), repo, "sha")
+	skills, err := DiscoverAllSkills(context.Background(), repo, "sha")
 	if err != nil {
 		t.Fatal(err)
 	}
+	repo.ResetReadFileCalls()
+	preset := skills[0].DisplayName()
 	skills[0].Description = "preset"
-	var progress []int
+
+	// onProgress is called from the fetch workers, so the counter must be atomic.
+	var progress atomic.Int32
 	FetchDescriptions(context.Background(), repo, "sha", skills, func(done, total int) {
 		if total != len(skills)-1 {
 			t.Errorf("total = %d, want %d", total, len(skills)-1)
 		}
-		progress = append(progress, done)
+		progress.Add(1)
 	})
 	byName := map[string]string{}
 	for _, s := range skills {
@@ -275,14 +277,17 @@ func TestFetchDescriptions(t *testing.T) {
 	if byName["alpha"] != "First skill" || byName["monalisa/triage"] != "Namespaced" {
 		t.Fatalf("descriptions = %v", byName)
 	}
-	if byName["[plugins] hubot/pr-summary"] != "preset" {
-		t.Fatalf("preset description must not be refetched, got %q", byName["[plugins] hubot/pr-summary"])
+	if byName[preset] != "preset" {
+		t.Fatalf("a description already present must not be refetched, got %q for %s", byName[preset], preset)
 	}
 	if byName["broken"] != "" || byName["no-frontmatter"] != "" {
 		t.Fatalf("unparseable SKILL.md should yield empty description: %v", byName)
 	}
-	if len(progress) != len(skills)-1 {
-		t.Fatalf("progress callbacks = %d, want %d", len(progress), len(skills)-1)
+	if int(progress.Load()) != len(skills)-1 {
+		t.Fatalf("progress callbacks = %d, want %d", progress.Load(), len(skills)-1)
+	}
+	if repo.ReadFileCalls() != len(skills)-1 {
+		t.Fatalf("ReadFile calls = %d, want one per skill missing a description (%d)", repo.ReadFileCalls(), len(skills)-1)
 	}
 }
 
@@ -308,7 +313,7 @@ func TestDiscoverSkillByPath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo.ReadFileCalls = 0
+			repo.ResetReadFileCalls()
 			got, err := DiscoverSkillByPath(context.Background(), repo, "sha", tt.path, tt.opts)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -322,8 +327,8 @@ func TestDiscoverSkillByPath(t *testing.T) {
 			if *got != tt.want {
 				t.Fatalf("skill = %+v, want %+v", *got, tt.want)
 			}
-			if repo.ReadFileCalls != tt.wantReads {
-				t.Fatalf("ReadFile calls = %d, want %d", repo.ReadFileCalls, tt.wantReads)
+			if repo.ReadFileCalls() != tt.wantReads {
+				t.Fatalf("ReadFile calls = %d, want %d", repo.ReadFileCalls(), tt.wantReads)
 			}
 		})
 	}
@@ -370,7 +375,7 @@ func writeFile(t *testing.T, p, content string) {
 	}
 }
 
-func TestDiscoverLocalSkills(t *testing.T) {
+func TestDiscoverAllLocalSkills(t *testing.T) {
 	t.Run("repository layout", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, filepath.Join(dir, "skills", "beta", "SKILL.md"), "---\nname: beta\ndescription: Beta skill\n---\n")
@@ -380,35 +385,37 @@ func TestDiscoverLocalSkills(t *testing.T) {
 		writeFile(t, filepath.Join(dir, "skills", "Bad Name!", "SKILL.md"), "")
 		writeFile(t, filepath.Join(dir, "README.md"), "x")
 
-		skills, err := DiscoverLocalSkills(dir)
+		skills, err := DiscoverAllLocalSkills(dir)
 		if err != nil {
-			t.Fatalf("DiscoverLocalSkills: %v", err)
+			t.Fatalf("DiscoverAllLocalSkills: %v", err)
 		}
 		var names []string
 		for _, s := range skills {
 			names = append(names, s.DisplayName()+"@"+s.Path)
 		}
-		want := []string{"[plugins] bot/gamma@plugins/bot/skills/gamma", "acme/alpha@skills/acme/alpha", "beta@skills/beta"}
+		// Local discovery walks the tree, so order follows filepath.Walk.
+		sort.Strings(names)
+		want := []string{
+			"[hidden-dir] hidden@.claude/skills/hidden",
+			"[plugins] bot/gamma@plugins/bot/skills/gamma",
+			"acme/alpha@skills/acme/alpha",
+			"beta@skills/beta",
+		}
 		if !reflect.DeepEqual(names, want) {
 			t.Fatalf("skills = %v, want %v", names, want)
 		}
-		if skills[2].Description != "Beta skill" {
-			t.Fatalf("local discovery should read descriptions, got %q", skills[2].Description)
-		}
-
-		all, err := DiscoverAllLocalSkills(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(all) != 4 || !HasHiddenDirSkills(all) {
-			t.Fatalf("DiscoverAllLocalSkills = %d skills (hidden=%v), want 4 incl. hidden", len(all), HasHiddenDirSkills(all))
+		// Unlike remote discovery, local reads are free, so descriptions are filled in.
+		for _, s := range skills {
+			if s.Name == "beta" && s.Description != "Beta skill" {
+				t.Fatalf("local discovery should read descriptions, got %q", s.Description)
+			}
 		}
 	})
 
 	t.Run("single skill directory uses frontmatter name", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: renamed\ndescription: One\n---\n")
-		skills, err := DiscoverLocalSkills(dir)
+		skills, err := DiscoverAllLocalSkills(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -419,30 +426,20 @@ func TestDiscoverLocalSkills(t *testing.T) {
 
 	t.Run("errors", func(t *testing.T) {
 		dir := t.TempDir()
-		if _, err := DiscoverLocalSkills(dir); err == nil || !strings.Contains(err.Error(), "no skills found in") {
+		if _, err := DiscoverAllLocalSkills(dir); err == nil || !strings.Contains(err.Error(), "no skills found in") {
 			t.Fatalf("empty dir error = %v", err)
 		}
-		if _, err := DiscoverLocalSkills(filepath.Join(dir, "missing")); err == nil || !strings.Contains(err.Error(), "could not access") {
+		if _, err := DiscoverAllLocalSkills(filepath.Join(dir, "missing")); err == nil || !strings.Contains(err.Error(), "could not access") {
 			t.Fatalf("missing dir error = %v", err)
 		}
 		file := filepath.Join(dir, "file.txt")
 		writeFile(t, file, "x")
-		if _, err := DiscoverLocalSkills(file); err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		if _, err := DiscoverAllLocalSkills(file); err == nil || !strings.Contains(err.Error(), "is not a directory") {
 			t.Fatalf("file error = %v", err)
 		}
 		writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: bad/name\n---\n")
-		if _, err := DiscoverLocalSkills(dir); err == nil || !strings.Contains(err.Error(), "invalid skill name") {
+		if _, err := DiscoverAllLocalSkills(dir); err == nil || !strings.Contains(err.Error(), "invalid skill name") {
 			t.Fatalf("invalid name error = %v", err)
 		}
 	})
-}
-
-func TestMatchSkillPath(t *testing.T) {
-	name, ns := MatchSkillPath("skills/monalisa/triage/SKILL.md")
-	if name != "triage" || ns != "monalisa" {
-		t.Fatalf("got %q/%q", ns, name)
-	}
-	if name, ns := MatchSkillPath("docs/README.md"); name != "" || ns != "" {
-		t.Fatalf("expected no match, got %q/%q", ns, name)
-	}
 }

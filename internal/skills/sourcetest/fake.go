@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/avivsinai/bitbucket-cli/internal/skills/source"
 )
@@ -13,18 +14,24 @@ import (
 // Repo is an in-memory source.Repository. Files are keyed by slash-separated
 // path; every lookup that misses returns source.ErrNotFound.
 type Repo struct {
-	Name          string            // FullName, e.g. "myteam/agent-skills"
-	Web           string            // WebURL
-	Clone         string            // CloneURL
-	Branches      map[string]string // branch name -> commit SHA
-	Tags          map[string]string // tag name -> commit SHA
-	TagOrder      []string          // tags newest first; first entry is LatestTag
-	Default       string            // default branch name
-	Files         map[string]string // path -> content
-	Commits       map[string]string // dir -> latest commit touching it (default: "commit-" + dir)
-	Err           error             // when set, every call returns this error
-	ReadFileCalls int
+	Name     string            // FullName, e.g. "myteam/agent-skills"
+	Web      string            // WebURL
+	Clone    string            // CloneURL
+	Branches map[string]string // branch name -> commit SHA
+	Tags     map[string]string // tag name -> commit SHA
+	TagOrder []string          // tags newest first; first entry is LatestTag
+	Default  string            // default branch name
+	Files    map[string]string // path -> content
+	Commits  map[string]string // dir -> latest commit touching it (default: "commit-" + dir)
+	Err      error             // when set, every call returns this error
+	readFile atomic.Int32      // ReadFile is called concurrently by FetchDescriptions
 }
+
+// ReadFileCalls reports how many times ReadFile has been called.
+func (r *Repo) ReadFileCalls() int { return int(r.readFile.Load()) }
+
+// ResetReadFileCalls zeroes the ReadFile counter.
+func (r *Repo) ResetReadFileCalls() { r.readFile.Store(0) }
 
 // New returns a Repo with sensible defaults for the given files.
 func New(name string, files map[string]string) *Repo {
@@ -120,7 +127,7 @@ func (r *Repo) ListFiles(_ context.Context, _ string, dir string) ([]source.File
 }
 
 func (r *Repo) ReadFile(_ context.Context, _ string, path string) ([]byte, error) {
-	r.ReadFileCalls++
+	r.readFile.Add(1)
 	if r.Err != nil {
 		return nil, r.Err
 	}

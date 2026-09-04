@@ -125,20 +125,6 @@ func AgentHelpList() string {
 	return strings.Join(lines, "\n")
 }
 
-// UniqueProjectDirs returns the deduplicated set of project-scope skill
-// directories, preserving Agents order.
-func UniqueProjectDirs() []string {
-	seen := map[string]bool{}
-	var dirs []string
-	for _, h := range Agents {
-		if !seen[h.ProjectDir] {
-			seen[h.ProjectDir] = true
-			dirs = append(dirs, h.ProjectDir)
-		}
-	}
-	return dirs
-}
-
 // InstallDir resolves the installation directory for an agent host and scope.
 // Project scope is anchored at gitRoot so skills land at the top level
 // regardless of the current subdirectory; user scope is anchored at homeDir.
