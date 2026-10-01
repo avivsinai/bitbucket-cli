@@ -6,6 +6,17 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `BKT_KEYRING_COLLECTION` environment variable overrides the Secret Service
+  collection used by the keyring backend on Linux. Users whose Secret Service
+  provider creates a separately encrypted wallet per collection (for example
+  KWallet) can set it to the provider's default collection name so `bkt`
+  reuses the session's already-unlocked wallet instead of prompting on every
+  invocation. When unset, behavior is unchanged: the collection falls back to
+  the `bkt` service name as before. The variable is ignored on macOS and
+  Windows. Packagers may bake the value in via the
+  `internal/secret.defaultKeyringCollection` ldflags variable; the env var wins when set (#327).
+
 ## [0.32.1] - 2026-09-04
 ### Added
 - Carried forward from the unpublished `v0.32.0` tag: `bkt skill` now supports
