@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Data Center pull request comments retain the activities endpoint's inline
+  anchor: `pr comments --details` shows file and line, and JSON includes anchor
+  metadata and orphaned status (#326).
+
 ## [0.32.1] - 2026-09-04
 ### Added
 - Carried forward from the unpublished `v0.32.0` tag: `bkt skill` now supports

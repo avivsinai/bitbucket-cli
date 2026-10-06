@@ -55,6 +55,7 @@ type PullRequestCommentAnchor struct {
 	Line     int    `json:"line"`
 	LineType string `json:"lineType"`
 	FileType string `json:"fileType"`
+	Orphaned bool   `json:"orphaned"`
 }
 
 func (a *PullRequestCommentAnchor) UnmarshalJSON(data []byte) error {
@@ -73,6 +74,9 @@ func (a *PullRequestCommentAnchor) UnmarshalJSON(data []byte) error {
 	}
 	if value, ok := raw["fileType"].(string); ok {
 		a.FileType = value
+	}
+	if value, ok := raw["orphaned"].(bool); ok {
+		a.Orphaned = value
 	}
 	return nil
 }
@@ -125,8 +129,9 @@ func (c *PullRequestComment) UnmarshalJSON(data []byte) error {
 
 // pullRequestActivity represents a single entry from the PR activities endpoint.
 type pullRequestActivity struct {
-	Action  string              `json:"action"`
-	Comment *PullRequestComment `json:"comment,omitempty"`
+	Action        string                    `json:"action"`
+	Comment       *PullRequestComment       `json:"comment,omitempty"`
+	CommentAnchor *PullRequestCommentAnchor `json:"commentAnchor,omitempty"`
 }
 
 // PullRequestCommentsPage is one page of comments extracted from the Data
@@ -174,6 +179,9 @@ func (c *Client) ListPullRequestCommentsPage(ctx context.Context, projectKey, re
 	comments := make([]PullRequestComment, 0, len(resp.Values))
 	for _, activity := range resp.Values {
 		if activity.Action == "COMMENTED" && activity.Comment != nil {
+			if activity.Comment.Anchor == nil {
+				activity.Comment.Anchor = activity.CommentAnchor
+			}
 			comments = append(comments, flattenComments(*activity.Comment, 0)...)
 		}
 	}
@@ -217,6 +225,9 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 
 		for _, a := range resp.Values {
 			if a.Action == "COMMENTED" && a.Comment != nil {
+				if a.Comment.Anchor == nil {
+					a.Comment.Anchor = a.CommentAnchor
+				}
 				all = append(all, flattenComments(*a.Comment, 0)...)
 			}
 		}
