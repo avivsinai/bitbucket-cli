@@ -33,6 +33,7 @@ Cloud hosts when the active context does not define defaults.`,
 	cmd.AddCommand(newCloneCmd(f))
 	cmd.AddCommand(newBrowseCmd(f))
 	cmd.AddCommand(newDefaultReviewersCmd(f))
+	cmd.AddCommand(newDownloadCmd(f))
 
 	return cmd
 }
