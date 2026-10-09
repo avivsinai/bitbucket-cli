@@ -168,7 +168,7 @@ and print their URLs.
 
 An existing download with the same file name is replaced, so give images
 unique names. All files are validated before any upload begins. Directories
-cannot be uploaded.
+and multiple files sharing a base name cannot be uploaded.
 
 Downloads are visible to everyone with access to the repository. Do not
 upload anything that should stay private to a subset of them.`,
@@ -197,8 +197,11 @@ func runDownloadUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *downloadOpt
 		return err
 	}
 
-	// Validate all files exist and are not directories before uploading anything
-	for _, filePath := range files {
+	// Validate all files before uploading anything. Downloads are keyed by file
+	// name, so two paths with the same base name would silently replace each other.
+	sizes := make([]int64, len(files))
+	seen := make(map[string]string, len(files))
+	for i, filePath := range files {
 		info, err := os.Stat(filePath)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -209,13 +212,19 @@ func runDownloadUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *downloadOpt
 		if info.IsDir() {
 			return fmt.Errorf("cannot upload directory: %s", filePath)
 		}
+		name := filepath.Base(filePath)
+		if prev, ok := seen[name]; ok {
+			return fmt.Errorf("duplicate file name %q: %s and %s would replace each other", name, prev, filePath)
+		}
+		seen[name] = filePath
+		sizes[i] = info.Size()
 	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
 	defer cancel()
 
 	uploaded := make([]downloadSummary, 0, len(files))
-	for _, filePath := range files {
+	for i, filePath := range files {
 		file, err := os.Open(filePath)
 		if err != nil {
 			return fmt.Errorf("failed to open %s: %w", filePath, err)
@@ -230,6 +239,7 @@ func runDownloadUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *downloadOpt
 
 		uploaded = append(uploaded, downloadSummary{
 			Name: filename,
+			Size: sizes[i],
 			URL:  bbcloud.DownloadURL(workspace, repoSlug, filename),
 		})
 	}

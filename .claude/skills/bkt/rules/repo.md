@@ -315,7 +315,7 @@ and print their URLs.
 
 An existing download with the same file name is replaced, so give images
 unique names. All files are validated before any upload begins. Directories
-cannot be uploaded.
+and multiple files sharing a base name cannot be uploaded.
 
 Downloads are visible to everyone with access to the repository. Do not
 upload anything that should stay private to a subset of them.
