@@ -199,11 +199,13 @@ func (a pullRequestActivity) diffContext(root PullRequestComment, radius int) []
 					tagged = len(lines)
 				}
 				if root.Anchor != nil && root.Anchor.Line > 0 && byLine < 0 {
-					n := l.Destination
+					// Data Center numbers both sides on every line; only
+					// match lines that exist on the anchored side.
+					n, otherSide := l.Destination, "REMOVED"
 					if root.Anchor.FileType == "FROM" {
-						n = l.Source
+						n, otherSide = l.Source, "ADDED"
 					}
-					if n == root.Anchor.Line {
+					if n == root.Anchor.Line && seg.Type != otherSide {
 						byLine = len(lines)
 					}
 				}
