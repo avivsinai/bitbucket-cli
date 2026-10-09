@@ -545,6 +545,42 @@ func TestListPullRequestCommentsPagePreservesActivityPagination(t *testing.T) {
 	}
 }
 
+// Regression for #326: Data Center sends the inline anchor as a sibling of
+// the comment on the activity, and it was dropped.
+func TestListPullRequestCommentsPageAttachesActivityAnchor(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{{
+				"action": "COMMENTED",
+				"comment": map[string]any{
+					"id": 10, "text": "root",
+					"comments": []map[string]any{{"id": 11, "text": "reply"}},
+				},
+				"commentAnchor": map[string]any{
+					"path": "src/main.go", "line": 25, "lineType": "ADDED", "fileType": "TO", "orphaned": true,
+				},
+			}},
+			"isLastPage": true,
+		})
+	}))
+
+	page, err := client.ListPullRequestCommentsPage(context.Background(), "PROJ", "repo", 42, 100, 0)
+	if err != nil {
+		t.Fatalf("ListPullRequestCommentsPage: %v", err)
+	}
+	if len(page.Values) != 2 {
+		t.Fatalf("comments = %+v", page.Values)
+	}
+	want := bbdc.PullRequestCommentAnchor{Path: "src/main.go", Line: 25, LineType: "ADDED", FileType: "TO", Orphaned: true}
+	if a := page.Values[0].Anchor; a == nil || *a != want {
+		t.Fatalf("root anchor = %+v, want %+v", a, want)
+	}
+	if page.Values[1].Anchor != nil {
+		t.Fatalf("reply anchor = %+v, want nil", page.Values[1].Anchor)
+	}
+}
+
 func TestSetPullRequestCommentThreadResolved(t *testing.T) {
 	var gotPutPath string
 	var gotBody map[string]any

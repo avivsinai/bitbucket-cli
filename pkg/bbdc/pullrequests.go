@@ -55,6 +55,7 @@ type PullRequestCommentAnchor struct {
 	Line     int    `json:"line"`
 	LineType string `json:"lineType"`
 	FileType string `json:"fileType"`
+	Orphaned bool   `json:"orphaned"`
 }
 
 func (a *PullRequestCommentAnchor) UnmarshalJSON(data []byte) error {
@@ -73,6 +74,9 @@ func (a *PullRequestCommentAnchor) UnmarshalJSON(data []byte) error {
 	}
 	if value, ok := raw["fileType"].(string); ok {
 		a.FileType = value
+	}
+	if value, ok := raw["orphaned"].(bool); ok {
+		a.Orphaned = value
 	}
 	return nil
 }
@@ -125,8 +129,23 @@ func (c *PullRequestComment) UnmarshalJSON(data []byte) error {
 
 // pullRequestActivity represents a single entry from the PR activities endpoint.
 type pullRequestActivity struct {
-	Action  string              `json:"action"`
-	Comment *PullRequestComment `json:"comment,omitempty"`
+	Action        string                    `json:"action"`
+	Comment       *PullRequestComment       `json:"comment,omitempty"`
+	CommentAnchor *PullRequestCommentAnchor `json:"commentAnchor,omitempty"`
+}
+
+// comments returns the activity's comment thread flattened in display order.
+// Data Center sends an inline comment's anchor as a sibling of the comment,
+// so it is attached to the root comment unless the comment carries its own.
+func (a pullRequestActivity) comments() []PullRequestComment {
+	if a.Action != "COMMENTED" || a.Comment == nil {
+		return nil
+	}
+	root := *a.Comment
+	if root.Anchor == nil {
+		root.Anchor = a.CommentAnchor
+	}
+	return flattenComments(root, 0)
 }
 
 // PullRequestCommentsPage is one page of comments extracted from the Data
@@ -173,9 +192,7 @@ func (c *Client) ListPullRequestCommentsPage(ctx context.Context, projectKey, re
 
 	comments := make([]PullRequestComment, 0, len(resp.Values))
 	for _, activity := range resp.Values {
-		if activity.Action == "COMMENTED" && activity.Comment != nil {
-			comments = append(comments, flattenComments(*activity.Comment, 0)...)
-		}
+		comments = append(comments, activity.comments()...)
 	}
 	return &PullRequestCommentsPage{
 		Values:    comments,
@@ -216,9 +233,7 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 		}
 
 		for _, a := range resp.Values {
-			if a.Action == "COMMENTED" && a.Comment != nil {
-				all = append(all, flattenComments(*a.Comment, 0)...)
-			}
+			all = append(all, a.comments()...)
 		}
 
 		if resp.IsLastPage || len(resp.Values) == 0 {

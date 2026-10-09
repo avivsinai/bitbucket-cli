@@ -287,7 +287,7 @@ its own encrypted wallet rather than using the session's default, already-unlock
 `BKT_KEYRING_COLLECTION` to your provider's default collection name (for example
 `BKT_KEYRING_COLLECTION=kdewallet` on KDE) makes `bkt` share that default wallet instead.
 Distributors can bake the name in via `-ldflags -X
-.../internal/secret.defaultKeyringCollection=<collection>` so it does not depend on an
+github.com/avivsinai/bitbucket-cli/internal/secret.defaultKeyringCollection=<collection>` so it does not depend on an
 environment variable reaching every shell and GUI-launched process; `BKT_KEYRING_COLLECTION`
 still takes precedence when set. Note that credentials stored before the change remain in the
 old collection and must be re-added.
@@ -346,7 +346,7 @@ bkt pr checks 42                              # Show build/CI status
 bkt pr checks 42 --wait                       # Wait for builds to complete
 bkt pr checks 42 --wait --timeout 5m          # Wait with timeout
 bkt pr checks 42 --wait --max-interval 1m     # Custom backoff cap
-bkt pr comments 42 --details                  # Review PR comments and thread IDs
+bkt pr comments 42 --details                  # Review PR comments, inline file/line anchors, and thread IDs
 bkt pr comments resolve 42 1001               # Resolve a top-level comment thread
 bkt pr comments reopen 42 1001                # Reopen a resolved comment thread
 bkt pr comments delete 42 1001                # Delete a PR comment

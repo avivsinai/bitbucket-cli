@@ -15,7 +15,14 @@ All notable changes to this project will be documented here. The format follows
   invocation. When unset, behavior is unchanged: the collection falls back to
   the `bkt` service name as before. The variable is ignored on macOS and
   Windows. Packagers may bake the value in via the
-  `internal/secret.defaultKeyringCollection` ldflags variable; the env var wins when set (#327).
+  `github.com/avivsinai/bitbucket-cli/internal/secret.defaultKeyringCollection`
+  ldflags variable; the env var wins when set (#327).
+
+### Fixed
+- Data Center pull request comments retain the activities endpoint's inline
+  anchor: `pr comments --details` shows file and line, JSON includes anchor
+  metadata and orphaned status, and the MCP `bkt_list_pull_request_comments`
+  tool returns path and line (#326).
 
 ## [0.32.1] - 2026-09-04
 ### Added
