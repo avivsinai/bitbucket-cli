@@ -111,6 +111,7 @@ All `bkt` behaviour can be configured via environment variables, which is especi
 | `BKT_CONFIG_DIR` | Override the config file directory (default: `$XDG_CONFIG_HOME/bkt`). |
 | `BKT_HTTP_DEBUG` | Set to `1` to log HTTP request URLs and response status codes. |
 | `BKT_ALLOW_INSECURE_STORE` | Set to `1` to use encrypted file fallback when no OS keychain is available. |
+| `BKT_KEYRING_COLLECTION` | Secret Service collection name override (Linux only). Defaults to the `bkt` collection; set it to your provider's default collection name to reuse an already-unlocked wallet. |
 
 **Minimal headless example (Data Center):**
 
@@ -278,6 +279,18 @@ without a native keychain.
 
 If your keyring requires an interactive unlock prompt, you can increase the keyring timeout via
 `BKT_KEYRING_TIMEOUT` (for example `BKT_KEYRING_TIMEOUT=2m`).
+
+On Linux, if your keyring prompts for a passphrase on *every* invocation, check whether your
+Secret Service provider creates a separate wallet per collection. `bkt` stores credentials in a
+collection named `bkt` by default, and some providers (for example KWallet) materialize that as
+its own encrypted wallet rather than using the session's default, already-unlocked one. Setting
+`BKT_KEYRING_COLLECTION` to your provider's default collection name (for example
+`BKT_KEYRING_COLLECTION=kdewallet` on KDE) makes `bkt` share that default wallet instead.
+Distributors can bake the name in via `-ldflags -X
+github.com/avivsinai/bitbucket-cli/internal/secret.defaultKeyringCollection=<collection>` so it does not depend on an
+environment variable reaching every shell and GUI-launched process; `BKT_KEYRING_COLLECTION`
+still takes precedence when set. Note that credentials stored before the change remain in the
+old collection and must be re-added.
 
 ##### macOS note: Keychain prompts after `brew upgrade`
 

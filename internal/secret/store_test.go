@@ -36,6 +36,63 @@ func TestBuildConfig_DarwinTrustFlags(t *testing.T) {
 	}
 }
 
+func TestBuildConfig_LibSecretCollectionName(t *testing.T) {
+	orig := defaultKeyringCollection
+	t.Cleanup(func() { defaultKeyringCollection = orig })
+
+	t.Run("unset leaves collection empty", func(t *testing.T) {
+		t.Setenv(envKeyringCollection, "")
+		defaultKeyringCollection = ""
+
+		cfg, err := buildConfig()
+		if err != nil {
+			t.Fatalf("buildConfig: %v", err)
+		}
+		if cfg.LibSecretCollectionName != "" {
+			t.Errorf("LibSecretCollectionName = %q, want empty", cfg.LibSecretCollectionName)
+		}
+	})
+
+	t.Run("set propagates verbatim", func(t *testing.T) {
+		t.Setenv(envKeyringCollection, "kdewallet")
+		defaultKeyringCollection = ""
+
+		cfg, err := buildConfig()
+		if err != nil {
+			t.Fatalf("buildConfig: %v", err)
+		}
+		if cfg.LibSecretCollectionName != "kdewallet" {
+			t.Errorf("LibSecretCollectionName = %q, want %q", cfg.LibSecretCollectionName, "kdewallet")
+		}
+	})
+
+	t.Run("build-time default applies when env unset", func(t *testing.T) {
+		t.Setenv(envKeyringCollection, "")
+		defaultKeyringCollection = "kdewallet"
+
+		cfg, err := buildConfig()
+		if err != nil {
+			t.Fatalf("buildConfig: %v", err)
+		}
+		if cfg.LibSecretCollectionName != "kdewallet" {
+			t.Errorf("LibSecretCollectionName = %q, want %q", cfg.LibSecretCollectionName, "kdewallet")
+		}
+	})
+
+	t.Run("env wins over build-time default", func(t *testing.T) {
+		t.Setenv(envKeyringCollection, "from-env")
+		defaultKeyringCollection = "from-ldflags"
+
+		cfg, err := buildConfig()
+		if err != nil {
+			t.Fatalf("buildConfig: %v", err)
+		}
+		if cfg.LibSecretCollectionName != "from-env" {
+			t.Errorf("LibSecretCollectionName = %q, want %q", cfg.LibSecretCollectionName, "from-env")
+		}
+	})
+}
+
 func TestParseTimeoutEnv(t *testing.T) {
 	t.Parallel()
 
