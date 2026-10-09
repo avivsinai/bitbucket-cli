@@ -134,6 +134,20 @@ type pullRequestActivity struct {
 	CommentAnchor *PullRequestCommentAnchor `json:"commentAnchor,omitempty"`
 }
 
+// comments returns the activity's comment thread flattened in display order.
+// Data Center sends an inline comment's anchor as a sibling of the comment,
+// so it is attached to the root comment unless the comment carries its own.
+func (a pullRequestActivity) comments() []PullRequestComment {
+	if a.Action != "COMMENTED" || a.Comment == nil {
+		return nil
+	}
+	root := *a.Comment
+	if root.Anchor == nil {
+		root.Anchor = a.CommentAnchor
+	}
+	return flattenComments(root, 0)
+}
+
 // PullRequestCommentsPage is one page of comments extracted from the Data
 // Center pull request activities endpoint. Pagination metadata refers to the
 // upstream activity page, which may also contain non-comment activities.
@@ -178,12 +192,7 @@ func (c *Client) ListPullRequestCommentsPage(ctx context.Context, projectKey, re
 
 	comments := make([]PullRequestComment, 0, len(resp.Values))
 	for _, activity := range resp.Values {
-		if activity.Action == "COMMENTED" && activity.Comment != nil {
-			if activity.Comment.Anchor == nil {
-				activity.Comment.Anchor = activity.CommentAnchor
-			}
-			comments = append(comments, flattenComments(*activity.Comment, 0)...)
-		}
+		comments = append(comments, activity.comments()...)
 	}
 	return &PullRequestCommentsPage{
 		Values:    comments,
@@ -224,12 +233,7 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 		}
 
 		for _, a := range resp.Values {
-			if a.Action == "COMMENTED" && a.Comment != nil {
-				if a.Comment.Anchor == nil {
-					a.Comment.Anchor = a.CommentAnchor
-				}
-				all = append(all, flattenComments(*a.Comment, 0)...)
-			}
+			all = append(all, a.comments()...)
 		}
 
 		if resp.IsLastPage || len(resp.Values) == 0 {

@@ -8,8 +8,9 @@ All notable changes to this project will be documented here. The format follows
 
 ### Fixed
 - Data Center pull request comments retain the activities endpoint's inline
-  anchor: `pr comments --details` shows file and line, and JSON includes anchor
-  metadata and orphaned status (#326).
+  anchor: `pr comments --details` shows file and line, JSON includes anchor
+  metadata and orphaned status, and the MCP `bkt_list_pull_request_comments`
+  tool returns path and line (#326).
 
 ## [0.32.1] - 2026-09-04
 ### Added
