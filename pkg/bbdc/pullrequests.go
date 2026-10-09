@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -132,12 +133,37 @@ type pullRequestActivity struct {
 	Action        string                    `json:"action"`
 	Comment       *PullRequestComment       `json:"comment,omitempty"`
 	CommentAnchor *PullRequestCommentAnchor `json:"commentAnchor,omitempty"`
+	Diff          *PullRequestCommentDiff   `json:"diff,omitempty"`
 }
 
-// comments returns the activity's comment thread flattened in display order.
-// Data Center sends an inline comment's anchor as a sibling of the comment,
-// so it is attached to the root comment unless the comment carries its own.
-func (a pullRequestActivity) comments() []PullRequestComment {
+// PullRequestCommentDiff is the diff Data Center attaches to an inline
+// comment activity. The anchored line lists the root comment in CommentIDs.
+type PullRequestCommentDiff struct {
+	Hunks []struct {
+		Segments []struct {
+			Type  string `json:"type"` // ADDED, REMOVED, or CONTEXT
+			Lines []struct {
+				Source      int    `json:"source"`
+				Destination int    `json:"destination"`
+				Line        string `json:"line"`
+				CommentIDs  []int  `json:"commentIds,omitempty"`
+			} `json:"lines"`
+		} `json:"segments"`
+	} `json:"hunks"`
+}
+
+// PullRequestDiffLine is one diff line shown around an inline comment.
+type PullRequestDiffLine struct {
+	Type        string `json:"type"`
+	Source      int    `json:"source,omitempty"`
+	Destination int    `json:"destination,omitempty"`
+	Line        string `json:"line"`
+	Anchored    bool   `json:"anchored,omitempty"`
+}
+
+// root returns the activity's root comment with Data Center's sibling
+// commentAnchor attached, unless the comment carries its own anchor.
+func (a pullRequestActivity) root() *PullRequestComment {
 	if a.Action != "COMMENTED" || a.Comment == nil {
 		return nil
 	}
@@ -145,7 +171,141 @@ func (a pullRequestActivity) comments() []PullRequestComment {
 	if root.Anchor == nil {
 		root.Anchor = a.CommentAnchor
 	}
-	return flattenComments(root, 0)
+	return &root
+}
+
+// comments returns the activity's comment thread flattened in display order.
+func (a pullRequestActivity) comments() []PullRequestComment {
+	root := a.root()
+	if root == nil {
+		return nil
+	}
+	return flattenComments(*root, 0)
+}
+
+// diffContext returns up to radius lines on each side of the line the root
+// comment is anchored to, within that line's hunk. It matches the line by the
+// commentIds tag and falls back to the anchor's line number.
+func (a pullRequestActivity) diffContext(root PullRequestComment, radius int) []PullRequestDiffLine {
+	if a.Diff == nil {
+		return nil
+	}
+	for _, hunk := range a.Diff.Hunks {
+		var lines []PullRequestDiffLine
+		tagged, byLine := -1, -1
+		for _, seg := range hunk.Segments {
+			for _, l := range seg.Lines {
+				if slices.Contains(l.CommentIDs, root.ID) && tagged < 0 {
+					tagged = len(lines)
+				}
+				if root.Anchor != nil && root.Anchor.Line > 0 && byLine < 0 {
+					// Data Center numbers both sides on every line; only
+					// match lines that exist on the anchored side.
+					n, otherSide := l.Destination, "REMOVED"
+					if root.Anchor.FileType == "FROM" {
+						n, otherSide = l.Source, "ADDED"
+					}
+					if n == root.Anchor.Line && seg.Type != otherSide {
+						byLine = len(lines)
+					}
+				}
+				lines = append(lines, PullRequestDiffLine{Type: seg.Type, Source: l.Source, Destination: l.Destination, Line: l.Line})
+			}
+		}
+		at := tagged
+		if at < 0 {
+			at = byLine
+		}
+		if at < 0 {
+			continue
+		}
+		lines[at].Anchored = true
+		return lines[max(0, at-radius):min(len(lines), at+radius+1)]
+	}
+	return nil
+}
+
+// PullRequestCommentThread is the comment thread that contains a comment.
+// Root keeps its replies nested in Comments; Root.Anchor is the thread's
+// inline anchor, and DiffContext holds the lines around it when Data Center
+// returns them.
+type PullRequestCommentThread struct {
+	Root        PullRequestComment
+	DiffContext []PullRequestDiffLine
+}
+
+// Comments returns the thread flattened in display order with reply depths.
+func (t PullRequestCommentThread) Comments() []PullRequestComment {
+	return flattenComments(t.Root, 0)
+}
+
+func containsComment(c PullRequestComment, commentID int) bool {
+	if c.ID == commentID {
+		return true
+	}
+	for _, child := range c.Comments {
+		if containsComment(child, commentID) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetPullRequestCommentThread finds the thread that contains commentID, which
+// may be the root comment or any reply, via the activities endpoint.
+func (c *Client) GetPullRequestCommentThread(ctx context.Context, projectKey, repoSlug string, prID, commentID int) (*PullRequestCommentThread, error) {
+	if projectKey == "" || repoSlug == "" {
+		return nil, fmt.Errorf("project key and repository slug are required")
+	}
+	if prID <= 0 {
+		return nil, fmt.Errorf("pull request id must be positive")
+	}
+	if commentID <= 0 {
+		return nil, fmt.Errorf("comment id must be positive")
+	}
+
+	const contextRadius = 3
+	start := 0
+	for {
+		resp, err := c.pullRequestActivitiesPage(ctx, projectKey, repoSlug, prID, 100, start)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range resp.Values {
+			root := a.root()
+			if root == nil || !containsComment(*root, commentID) {
+				continue
+			}
+			return &PullRequestCommentThread{
+				Root:        *root,
+				DiffContext: a.diffContext(*root, contextRadius),
+			}, nil
+		}
+		if resp.IsLastPage || len(resp.Values) == 0 {
+			break
+		}
+		start = resp.NextPageStart
+	}
+	return nil, fmt.Errorf("comment %d not found on pull request #%d", commentID, prID)
+}
+
+func (c *Client) pullRequestActivitiesPage(ctx context.Context, projectKey, repoSlug string, prID, limit, start int) (*paged[pullRequestActivity], error) {
+	u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/activities?limit=%d&start=%d",
+		url.PathEscape(projectKey),
+		url.PathEscape(repoSlug),
+		prID,
+		limit,
+		start,
+	)
+	req, err := c.http.NewRequest(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp paged[pullRequestActivity]
+	if err := c.http.Do(req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // PullRequestCommentsPage is one page of comments extracted from the Data
@@ -173,20 +333,8 @@ func (c *Client) ListPullRequestCommentsPage(ctx context.Context, projectKey, re
 		return nil, fmt.Errorf("page start must not be negative")
 	}
 
-	u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/activities?limit=%d&start=%d",
-		url.PathEscape(projectKey),
-		url.PathEscape(repoSlug),
-		prID,
-		limit,
-		start,
-	)
-	req, err := c.http.NewRequest(ctx, "GET", u, nil)
+	resp, err := c.pullRequestActivitiesPage(ctx, projectKey, repoSlug, prID, limit, start)
 	if err != nil {
-		return nil, err
-	}
-
-	var resp paged[pullRequestActivity]
-	if err := c.http.Do(req, &resp); err != nil {
 		return nil, err
 	}
 
@@ -215,20 +363,8 @@ func (c *Client) ListPullRequestComments(ctx context.Context, projectKey, repoSl
 	)
 
 	for {
-		u := fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/activities?limit=%d&start=%d",
-			url.PathEscape(projectKey),
-			url.PathEscape(repoSlug),
-			prID,
-			defaultPageSize,
-			start,
-		)
-		req, err := c.http.NewRequest(ctx, "GET", u, nil)
+		resp, err := c.pullRequestActivitiesPage(ctx, projectKey, repoSlug, prID, defaultPageSize, start)
 		if err != nil {
-			return nil, err
-		}
-
-		var resp paged[pullRequestActivity]
-		if err := c.http.Do(req, &resp); err != nil {
 			return nil, err
 		}
 

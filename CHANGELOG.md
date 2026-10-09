@@ -7,6 +7,10 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `bkt pr comments view <id> <comment-id>` shows the thread that contains a
+  comment or reply: root comment, replies, and inline anchor on Data Center
+  and Cloud, plus a few lines of diff around the anchored line on Data Center
+  (#326).
 - `BKT_KEYRING_COLLECTION` environment variable overrides the Secret Service
   collection used by the keyring backend on Linux. Users whose Secret Service
   provider creates a separately encrypted wallet per collection (for example
@@ -20,9 +24,9 @@ All notable changes to this project will be documented here. The format follows
 
 ### Fixed
 - Data Center pull request comments retain the activities endpoint's inline
-  anchor: `pr comments --details` shows file and line, JSON includes anchor
-  metadata and orphaned status, and the MCP `bkt_list_pull_request_comments`
-  tool returns path and line (#326).
+  anchor: `pr comments --details` shows file, line, and orphaned status, JSON
+  includes anchor metadata, and the MCP `bkt_list_pull_request_comments` tool
+  returns path and line (#326).
 
 ## [0.32.1] - 2026-09-04
 ### Added
