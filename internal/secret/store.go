@@ -39,9 +39,20 @@ const (
 	envAllowInsecure = "BKT_ALLOW_INSECURE_STORE"
 	envPassphrase    = "BKT_KEYRING_PASSPHRASE"
 	envTimeout       = "BKT_KEYRING_TIMEOUT"
-	envBackend       = "KEYRING_BACKEND"
-	envFileDir       = "KEYRING_FILE_DIR"
+	// envKeyringCollection overrides the Secret Service collection used by the
+	// keyring backend. It maps to keyring's LibSecretCollectionName, which is
+	// only consulted by the Linux Secret Service backend and ignored on macOS
+	// and Windows. Unset by default so the backend falls back to ServiceName.
+	envKeyringCollection = "BKT_KEYRING_COLLECTION"
+	envBackend           = "KEYRING_BACKEND"
+	envFileDir           = "KEYRING_FILE_DIR"
 )
+
+// defaultKeyringCollection is injected at build time with -ldflags -X, letting a
+// packager bake in the collection its Secret Service provider auto-unlocks so the
+// CLI does not depend on an env var reaching every shell. Empty by default so
+// stock builds still fall back to ServiceName.
+var defaultKeyringCollection string
 
 const (
 	keyringTimeoutHeadless    = 3 * time.Second
@@ -220,6 +231,16 @@ func buildConfig(opts ...Option) (keyring.Config, error) {
 		// they had until the item is deleted and recreated (see pkg/cmd/auth).
 		cfg.KeychainTrustApplication = true
 		cfg.KeychainAccessibleWhenUnlocked = true
+	}
+
+	// LibSecretCollectionName only affects the Linux Secret Service backend;
+	// the macOS and Windows backends ignore it. Left empty unless explicitly
+	// overridden so 99designs/keyring falls back to ServiceName, preserving
+	// existing behavior for all current users.
+	if collection := os.Getenv(envKeyringCollection); collection != "" {
+		cfg.LibSecretCollectionName = collection
+	} else if collection := defaultKeyringCollection; collection != "" {
+		cfg.LibSecretCollectionName = collection
 	}
 
 	settings := openOptions{}
