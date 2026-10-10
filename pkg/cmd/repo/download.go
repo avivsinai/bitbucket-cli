@@ -213,45 +213,65 @@ func runDownloadUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *downloadOpt
 		}
 	}
 
+	settings, err := cmdutil.ResolveOutputSettings(cmd)
+	if err != nil {
+		return err
+	}
+	structured := settings.Format != "" || settings.JQ != "" || settings.Template != ""
+
 	ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
 	defer cancel()
 
+	// Report each file as soon as it is uploaded, so a later failure does
+	// not hide the URLs of files that already reached Bitbucket.
 	uploaded := make([]downloadSummary, 0, len(files))
+	var uploadErr error
 	for _, filePath := range files {
-		file, err := os.Open(filePath)
-		if err != nil {
-			return fmt.Errorf("failed to open %s: %w", filePath, err)
-		}
-
 		filename := filepath.Base(filePath)
-		err = client.UploadDownload(ctx, workspace, repoSlug, filename, file)
-		_ = file.Close()
-		if err != nil {
-			return fmt.Errorf("failed to upload %s: %w", filePath, err)
+		if err := uploadDownloadFile(ctx, client, workspace, repoSlug, filePath, filename); err != nil {
+			uploadErr = err
+			break
 		}
 
-		uploaded = append(uploaded, downloadSummary{
+		u := downloadSummary{
 			Name: filename,
 			URL:  bbcloud.DownloadURL(workspace, repoSlug, filename),
-		})
-	}
-
-	payload := struct {
-		Workspace string            `json:"workspace"`
-		Repo      string            `json:"repo"`
-		Downloads []downloadSummary `json:"downloads"`
-	}{
-		Workspace: workspace,
-		Repo:      repoSlug,
-		Downloads: uploaded,
-	}
-
-	return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
-		for _, u := range uploaded {
+		}
+		uploaded = append(uploaded, u)
+		if !structured {
 			if _, err := fmt.Fprintf(ios.Out, "Uploaded: %s\n%s\n", u.Name, u.URL); err != nil {
 				return err
 			}
 		}
-		return nil
-	})
+	}
+
+	if structured {
+		payload := struct {
+			Workspace string            `json:"workspace"`
+			Repo      string            `json:"repo"`
+			Downloads []downloadSummary `json:"downloads"`
+		}{
+			Workspace: workspace,
+			Repo:      repoSlug,
+			Downloads: uploaded,
+		}
+		if err := cmdutil.WriteOutput(cmd, ios.Out, payload, nil); err != nil {
+			return err
+		}
+	}
+
+	return uploadErr
+}
+
+func uploadDownloadFile(ctx context.Context, client *bbcloud.Client, workspace, repoSlug, filePath, filename string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", filePath, err)
+	}
+	defer func() { _ = file.Close() }()
+
+	if err := client.UploadDownload(ctx, workspace, repoSlug, filename, file); err != nil {
+		return fmt.Errorf("failed to upload %s: %w", filePath, err)
+	}
+	return nil
 }

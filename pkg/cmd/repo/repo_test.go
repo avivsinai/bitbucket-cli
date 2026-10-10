@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -535,5 +537,52 @@ func repoTestFactory(cfg *config.Config, stdout *strings.Builder) *cmdutil.Facto
 		Config: func() (*config.Config, error) {
 			return cfg, nil
 		},
+	}
+}
+
+func TestDownloadUploadReportsEarlierURLsWhenLaterFileFails(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"message":"upload rejected"}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first.png")
+	second := filepath.Join(dir, "second.png")
+	for _, p := range []string{first, second} {
+		if err := os.WriteFile(p, []byte("png"), 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+	}
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "cloud", BaseURL: server.URL, Token: "test-token"},
+		},
+	}
+	stdout := &strings.Builder{}
+	cmd := newDownloadUploadCmd(repoTestFactory(cfg, stdout))
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{first, second})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "second.png") {
+		t.Fatalf("expected upload error for second.png, got %v", err)
+	}
+	if want := "https://bitbucket.org/ws/repo/downloads/first.png"; !strings.Contains(stdout.String(), want) {
+		t.Fatalf("stdout = %q, want URL of the uploaded file %s", stdout.String(), want)
 	}
 }

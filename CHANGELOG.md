@@ -26,6 +26,14 @@ All notable changes to this project will be documented here. The format follows
   ldflags variable; the env var wins when set (#327).
 
 ### Fixed
+- `bkt repo downloads upload` and `bkt issue attachment upload` stream files
+  to Bitbucket instead of buffering the whole multipart body in memory, so
+  large release artifacts no longer need as much RAM as their size. Uploads
+  still send an exact `Content-Length` and are retried on 429 and token
+  refresh as before.
+- `bkt repo downloads upload` prints each URL as soon as its file is uploaded;
+  when a later file fails, the URLs of files already uploaded are still
+  reported (in `--json` output too) before the command exits with the error.
 - Data Center pull request comments retain the activities endpoint's inline
   anchor: `pr comments --details` shows file, line, and orphaned status, JSON
   includes anchor metadata, and the MCP `bkt_list_pull_request_comments` tool
