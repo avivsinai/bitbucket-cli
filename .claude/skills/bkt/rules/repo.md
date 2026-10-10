@@ -20,7 +20,7 @@ bkt repo <command> [flags]
 | [clone](#bkt-repo-clone) | Clone a repository | `--dest`, `--project`, `--ssh`, `--workspace` |
 | [create](#bkt-repo-create) | Create a new repository | `--cloud-project`, `--default-branch`, `--description`, `--forkable` |
 | [default-reviewers](#bkt-repo-default-reviewers) | List effective default reviewers for a repository | — |
-| [download](#bkt-repo-download) | Work with repository downloads *(Cloud)* | — |
+| [downloads](#bkt-repo-downloads) | Work with repository downloads *(Cloud)* | — |
 | [list](#bkt-repo-list) | List repositories within the active scope | `--limit`, `--project`, `--workspace` |
 | [view](#bkt-repo-view) | Display details for a repository | `--project`, `--repo`, `--workspace` |
 
@@ -253,7 +253,7 @@ bkt repo default-reviewers list [flags]
   bkt repo default-reviewers list --project PLATFORM --repo backend --source feature/auth --target main
 ```
 
-## bkt repo download
+## bkt repo downloads
 
 Manage files in a Bitbucket Cloud repository's Downloads section.
 
@@ -262,8 +262,10 @@ for a repository, which makes it the way to host images for pull request
 descriptions and comments. Workspaces on the Free plan cannot upload or
 download files; the API rejects those requests.
 
+**Alias:** `download`
+
 ```
-bkt repo download <command> [flags]
+bkt repo downloads <command> [flags]
 ```
 
 | Subcommand | Description |
@@ -271,14 +273,14 @@ bkt repo download <command> [flags]
 | list | List repository downloads (Cloud only) |
 | upload | Upload files to the repository downloads (Cloud only) |
 
-## bkt repo download list
+## bkt repo downloads list
 
 List repository downloads (Cloud only)
 
 ### Usage
 
 ```
-bkt repo download list [flags]
+bkt repo downloads list [flags]
 ```
 
 ### Flags
@@ -303,13 +305,13 @@ bkt repo download list [flags]
 
 ```bash
 # List downloads of the active context repository
-  bkt repo download list
+  bkt repo downloads list
 
   # List downloads of a specific repository as JSON
-  bkt repo download list --workspace my-team --repo api-service --json
+  bkt repo downloads list --workspace my-team --repo api-service --json
 ```
 
-## bkt repo download upload
+## bkt repo downloads upload
 
 Upload one or more files to a Bitbucket Cloud repository's Downloads section
 and print their URLs.
@@ -324,7 +326,7 @@ upload anything that should stay private to a subset of them.
 ### Usage
 
 ```
-bkt repo download upload <files>... [flags]
+bkt repo downloads upload <files>... [flags]
 ```
 
 ### Flags
@@ -349,10 +351,10 @@ bkt repo download upload <files>... [flags]
 
 ```bash
 # Upload a screenshot and print its URL
-  bkt repo download upload screenshot.png
+  bkt repo downloads upload screenshot.png
 
   # Upload several images and get Markdown image links for a PR description
-  bkt repo download upload before.png after.png --json --jq '.downloads[] | "![" + .name + "](" + .url + ")"'
+  bkt repo downloads upload before.png after.png --json --jq '.downloads[] | "![" + .name + "](" + .url + ")"'
 ```
 
 ## bkt repo list

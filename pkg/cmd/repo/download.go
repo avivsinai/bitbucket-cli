@@ -21,8 +21,9 @@ type downloadOptions struct {
 
 func newDownloadCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "download",
-		Short: "Work with repository downloads (Cloud only)",
+		Use:     "downloads",
+		Aliases: []string{"download"},
+		Short:   "Work with repository downloads (Cloud only)",
 		Long: `Manage files in a Bitbucket Cloud repository's Downloads section.
 
 Downloads is the only place the public API accepts arbitrary file uploads
@@ -92,10 +93,10 @@ func newDownloadListCmd(f *cmdutil.Factory) *cobra.Command {
 		Use:   "list",
 		Short: "List repository downloads (Cloud only)",
 		Example: `  # List downloads of the active context repository
-  bkt repo download list
+  bkt repo downloads list
 
   # List downloads of a specific repository as JSON
-  bkt repo download list --workspace my-team --repo api-service --json`,
+  bkt repo downloads list --workspace my-team --repo api-service --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDownloadList(cmd, f, opts)
@@ -174,10 +175,10 @@ cannot be uploaded.
 Downloads are visible to everyone with access to the repository. Do not
 upload anything that should stay private to a subset of them.`,
 		Example: `  # Upload a screenshot and print its URL
-  bkt repo download upload screenshot.png
+  bkt repo downloads upload screenshot.png
 
   # Upload several images and get Markdown image links for a PR description
-  bkt repo download upload before.png after.png --json --jq '.downloads[] | "![" + .name + "](" + .url + ")"'`,
+  bkt repo downloads upload before.png after.png --json --jq '.downloads[] | "![" + .name + "](" + .url + ")"'`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDownloadUpload(cmd, f, opts, args)

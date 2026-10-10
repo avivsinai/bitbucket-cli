@@ -7,8 +7,8 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- `bkt repo download upload <files>...` uploads files to a Bitbucket Cloud
-  repository's Downloads and prints their URLs; `bkt repo download list` lists
+- `bkt repo downloads upload <files>...` uploads files to a Bitbucket Cloud
+  repository's Downloads and prints their URLs; `bkt repo downloads list` lists
   them (#331).
 - `bkt pr comments view <id> <comment-id>` shows the thread that contains a
   comment or reply: root comment, replies, and inline anchor on Data Center
