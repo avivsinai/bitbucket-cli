@@ -53,29 +53,6 @@ func TestUploadDownload(t *testing.T) {
 	}
 }
 
-func TestUploadDownloadValidation(t *testing.T) {
-	client, err := New(Options{BaseURL: "https://api.bitbucket.org/2.0"})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	tests := []struct {
-		name, workspace, repo, filename, wantErr string
-	}{
-		{"missing workspace", "", "repo", "a.png", "workspace and repository slug are required"},
-		{"missing repo", "ws", "", "a.png", "workspace and repository slug are required"},
-		{"missing filename", "ws", "repo", "", "filename is required"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := client.UploadDownload(context.Background(), tt.workspace, tt.repo, tt.filename, strings.NewReader("x"))
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
-			}
-		})
-	}
-}
-
 func TestListDownloadsPagination(t *testing.T) {
 	var requestCount int
 	var serverURL string

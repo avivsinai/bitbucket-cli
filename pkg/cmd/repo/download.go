@@ -27,7 +27,8 @@ func newDownloadCmd(f *cmdutil.Factory) *cobra.Command {
 
 Downloads is the only place the public API accepts arbitrary file uploads
 for a repository, which makes it the way to host images for pull request
-descriptions and comments.`,
+descriptions and comments. Workspaces on the Free plan cannot upload or
+download files; the API rejects those requests.`,
 	}
 
 	cmd.AddCommand(newDownloadListCmd(f))
