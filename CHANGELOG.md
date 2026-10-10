@@ -6,6 +6,28 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `bkt pr comments view <id> <comment-id>` shows the thread that contains a
+  comment or reply: root comment, replies, and inline anchor on Data Center
+  and Cloud, plus a few lines of diff around the anchored line on Data Center
+  (#326).
+- `BKT_KEYRING_COLLECTION` environment variable overrides the Secret Service
+  collection used by the keyring backend on Linux. Users whose Secret Service
+  provider creates a separately encrypted wallet per collection (for example
+  KWallet) can set it to the provider's default collection name so `bkt`
+  reuses the session's already-unlocked wallet instead of prompting on every
+  invocation. When unset, behavior is unchanged: the collection falls back to
+  the `bkt` service name as before. The variable is ignored on macOS and
+  Windows. Packagers may bake the value in via the
+  `github.com/avivsinai/bitbucket-cli/internal/secret.defaultKeyringCollection`
+  ldflags variable; the env var wins when set (#327).
+
+### Fixed
+- Data Center pull request comments retain the activities endpoint's inline
+  anchor: `pr comments --details` shows file, line, and orphaned status, JSON
+  includes anchor metadata, and the MCP `bkt_list_pull_request_comments` tool
+  returns path and line (#326).
+
 ## [0.32.1] - 2026-09-04
 ### Added
 - Carried forward from the unpublished `v0.32.0` tag: `bkt skill` now supports

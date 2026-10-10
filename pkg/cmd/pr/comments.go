@@ -61,6 +61,9 @@ changing thread state.`,
   # List deleted comments (Cloud only)
   bkt pr comments 42 --state deleted
 
+  # View one comment thread with its file/line anchor
+  bkt pr comments view 42 1001
+
   # Delete a comment
   bkt pr comments delete 42 1001
 
@@ -85,6 +88,7 @@ changing thread state.`,
 	cmd.Flags().StringVar(&opts.State, "state", "all", "Filter by state: all, resolved, unresolved, deleted (Cloud only)")
 	cmd.Flags().BoolVar(&opts.Details, "details", false, "Show full comment details (file, resolved, task status)")
 
+	cmd.AddCommand(newCommentsViewCmd(f))
 	cmd.AddCommand(newCommentsResolveCmd(f))
 	cmd.AddCommand(newCommentsReopenCmd(f))
 	cmd.AddCommand(newCommentsDeleteCmd(f))
@@ -244,13 +248,12 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 			"comments": comments,
 		}
 
-		const maxDepth = 20
 		return cmdutil.WriteOutput(cmd, ios.Out, payload, func() error {
 			if len(comments) == 0 {
 				_, err := fmt.Fprintf(ios.Out, "No comments on pull request #%d\n", id)
 				return err
 			}
-			maxIndent := strings.Repeat("  ", maxDepth)
+			maxIndent := strings.Repeat("  ", maxCommentDepth)
 			var skippedDeep bool
 			printSkipped := func() error {
 				if skippedDeep {
@@ -263,18 +266,15 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 				return nil
 			}
 			for _, c := range comments {
-				if c.Depth > maxDepth {
+				if c.Depth > maxCommentDepth {
 					skippedDeep = true
 					continue
 				}
 				if err := printSkipped(); err != nil {
 					return err
 				}
-				author := c.Author.Name
-				if author == "" {
-					author = c.Author.FullName
-				}
 				if !opts.Details {
+					author := dcCommentAuthor(c)
 					indent := strings.Repeat("  ", c.Depth)
 					text := truncate(c.Text, 80-2*c.Depth)
 					if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t%s%s\n", c.ID, author, indent, text); err != nil {
@@ -282,42 +282,7 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 					}
 					continue
 				}
-				indent := strings.Repeat("  ", c.Depth)
-				kind := "Comment"
-				if strings.EqualFold(c.Severity, "BLOCKER") {
-					kind = "Task"
-				}
-				if _, err := fmt.Fprintf(ios.Out, "%s--- %s #%d by %s ---\n", indent, kind, c.ID, author); err != nil {
-					return err
-				}
-				if c.Anchor != nil {
-					if c.Anchor.Line > 0 {
-						if _, err := fmt.Fprintf(ios.Out, "%sFile: %s:%d\n", indent, c.Anchor.Path, c.Anchor.Line); err != nil {
-							return err
-						}
-					} else {
-						if _, err := fmt.Fprintf(ios.Out, "%sFile: %s\n", indent, c.Anchor.Path); err != nil {
-							return err
-						}
-					}
-				}
-				if kind == "Task" {
-					complete := "no"
-					if strings.EqualFold(c.State, "RESOLVED") {
-						complete = "yes"
-					}
-					if _, err := fmt.Fprintf(ios.Out, "%sComplete: %s\n", indent, complete); err != nil {
-						return err
-					}
-				}
-				resolved := "no"
-				if c.ThreadResolved {
-					resolved = "yes"
-				}
-				if _, err := fmt.Fprintf(ios.Out, "%sResolved: %s\n", indent, resolved); err != nil {
-					return err
-				}
-				if _, err := fmt.Fprintf(ios.Out, "\n%s%s\n\n", indent, c.Text); err != nil {
+				if err := printDCCommentDetails(ios.Out, c, false); err != nil {
 					return err
 				}
 			}
@@ -380,14 +345,8 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 				return err
 			}
 			for _, c := range comments {
-				author := "unknown"
-				if c.User != nil {
-					author = c.User.DisplayName
-					if author == "" {
-						author = c.User.Nickname
-					}
-				}
 				if !opts.Details {
+					author := cloudCommentAuthor(c)
 					if c.Deleted {
 						if _, err := fmt.Fprintf(ios.Out, "%d\t%s\t[deleted]\n", c.ID, author); err != nil {
 							return err
@@ -400,34 +359,7 @@ func runComments(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *commentsO
 					}
 					continue
 				}
-				if _, err := fmt.Fprintf(ios.Out, "--- Comment #%d by %s ---\n", c.ID, author); err != nil {
-					return err
-				}
-				if c.Deleted {
-					if _, err := fmt.Fprintf(ios.Out, "Deleted: yes\n\n"); err != nil {
-						return err
-					}
-					continue
-				}
-				if c.Inline != nil {
-					line := ""
-					if c.Inline.To != nil {
-						line = fmt.Sprintf(":%d", *c.Inline.To)
-					} else if c.Inline.From != nil {
-						line = fmt.Sprintf(":%d", *c.Inline.From)
-					}
-					if _, err := fmt.Fprintf(ios.Out, "File: %s%s\n", c.Inline.Path, line); err != nil {
-						return err
-					}
-				}
-				resolved := "no"
-				if c.Resolution != nil {
-					resolved = "yes"
-				}
-				if _, err := fmt.Fprintf(ios.Out, "Resolved: %s\n", resolved); err != nil {
-					return err
-				}
-				if _, err := fmt.Fprintf(ios.Out, "\n%s\n\n", c.Content.Raw); err != nil {
+				if err := printCloudCommentDetails(ios.Out, c, 0, false); err != nil {
 					return err
 				}
 			}
