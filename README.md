@@ -331,6 +331,7 @@ bkt repo create data-pipeline --description "Data ingestion" --project DATA
 bkt repo create frontend-app --workspace myteam --cloud-project WEB
 bkt repo browse --project DATA --repo platform-api
 bkt repo clone platform-api --project DATA --ssh
+bkt repo downloads upload before.png after.png    # Cloud: host images for PR descriptions, prints URLs
 ```
 
 `repo list`/`repo view` automatically target the right REST API for your active context: Data Center uses `/rest/api/1.0/projects/{projectKey}/repos`, while Cloud uses `/2.0/repositories/{workspace}`.
