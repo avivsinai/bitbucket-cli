@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-11
 ### Added
 - `bkt repo downloads upload <files>...` uploads files to a Bitbucket Cloud
   repository's Downloads and prints their URLs; `bkt repo downloads list` lists
@@ -43,6 +44,7 @@ All notable changes to this project will be documented here. The format follows
   anchor: `pr comments --details` shows file, line, and orphaned status, JSON
   includes anchor metadata, and the MCP `bkt_list_pull_request_comments` tool
   returns path and line (#326).
+
 
 ## [0.32.1] - 2026-09-04
 ### Added
@@ -785,7 +787,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.0...v0.31.1
