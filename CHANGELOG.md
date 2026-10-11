@@ -25,6 +25,11 @@ All notable changes to this project will be documented here. The format follows
   `github.com/avivsinai/bitbucket-cli/internal/secret.defaultKeyringCollection`
   ldflags variable; the env var wins when set (#327).
 
+### Changed
+- Building from source now requires Go 1.26 (`go.mod` declares `go 1.26.0`),
+  with `golang.org/x/sys` 0.48, `golang.org/x/term` 0.46, and the MCP Go SDK
+  1.8.0 (#333).
+
 ### Fixed
 - `bkt repo downloads upload` and `bkt issue attachment upload` stream files
   to Bitbucket instead of buffering the whole multipart body in memory, so
