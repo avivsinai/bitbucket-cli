@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -311,6 +313,61 @@ func TestNewMultipartRequest(t *testing.T) {
 
 	if err := client.Do(req, nil); err != nil {
 		t.Fatalf("Do: %v", err)
+	}
+}
+
+func TestNewMultipartRequestStreamsFileAndReplaysOn429(t *testing.T) {
+	content := strings.Repeat("release artifact bytes\n", 4096)
+	path := filepath.Join(t.TempDir(), "artifact.tar.gz")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.ContentLength <= int64(len(content)) {
+			t.Errorf("attempt %d: ContentLength = %d, want exact multipart size", attempts, r.ContentLength)
+		}
+		part, header, err := r.FormFile("files")
+		if err != nil {
+			t.Errorf("attempt %d: FormFile: %v", attempts, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		got, _ := io.ReadAll(part)
+		_ = part.Close()
+		if header.Filename != "artifact.tar.gz" || string(got) != content {
+			t.Errorf("attempt %d: got file %q with %d bytes, want artifact.tar.gz with %d bytes", attempts, header.Filename, len(got), len(content))
+		}
+		if attempts == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{BaseURL: server.URL, Retry: RetryPolicy{MaxAttempts: 2, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req, err := client.NewMultipartRequest(context.Background(), http.MethodPost, "/upload", []MultipartFile{
+		{FieldName: "files", FileName: "artifact.tar.gz", Reader: file},
+	})
+	if err != nil {
+		t.Fatalf("NewMultipartRequest: %v", err)
+	}
+	if err := client.Do(req, nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2 (429 then success)", attempts)
 	}
 }
 

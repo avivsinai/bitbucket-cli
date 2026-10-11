@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -898,7 +899,10 @@ type MultipartFile struct {
 }
 
 // NewMultipartRequest builds a multipart/form-data request for file uploads.
-// The request body is buffered in memory to support retries.
+// The body is streamed from the readers, so file content is never held in
+// memory. When every reader is an io.Seeker (e.g. *os.File) the request has an
+// exact Content-Length and can be replayed for retries; otherwise it is sent
+// chunked and can be sent only once.
 func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, files []MultipartFile) (*http.Request, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("path is required")
@@ -940,51 +944,191 @@ func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, f
 	}
 	u.RawQuery = rel.RawQuery
 
-	// Buffer the multipart content to support retries.
-	// Note: This buffers the entire payload in memory, which is acceptable
-	// for typical attachment sizes but may need review for very large files.
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-
 	if len(files) == 0 {
 		return nil, fmt.Errorf("at least one file is required")
 	}
-
 	for _, f := range files {
 		if f.Reader == nil {
 			return nil, fmt.Errorf("reader is nil for file %q", f.FileName)
 		}
-		part, err := mw.CreateFormFile(f.FieldName, f.FileName)
-		if err != nil {
-			return nil, fmt.Errorf("create form file: %w", err)
-		}
-		if _, err := io.Copy(part, f.Reader); err != nil {
-			return nil, fmt.Errorf("copy file content: %w", err)
-		}
 	}
 
-	if err := mw.Close(); err != nil {
-		return nil, fmt.Errorf("close multipart writer: %w", err)
-	}
-
-	payload := buf.Bytes()
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(payload))
+	body, err := newMultipartBody(files)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body.open())
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+body.boundary)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
-	req.ContentLength = int64(len(payload))
-
-	// Set GetBody for retry support
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(payload)), nil
-	}
+	req.ContentLength = body.length
+	req.GetBody = body.getBody
 
 	c.applyAuth(req)
 	c.applyRequestHook(req)
 
 	return req, nil
+}
+
+// multipartBody produces streamed multipart/form-data bodies for a fixed set
+// of files. Each body writes the parts through an io.Pipe from a goroutine
+// that starts on the first Read, so a body that is never read (such as the
+// original request body, which Do replaces with a GetBody clone) costs nothing.
+type multipartBody struct {
+	files    []MultipartFile
+	boundary string
+	// offsets holds each reader's start position; nil when a reader is not
+	// seekable, in which case the body can be produced only once.
+	offsets []int64
+	// length is the exact body size, or 0 (unknown, sent chunked) when the
+	// readers are not seekable.
+	length int64
+
+	mu      sync.Mutex  // held by a writer goroutine while it reads the files
+	started atomic.Bool // set once a writer has begun reading the files
+}
+
+var errMultipartNotReplayable = errors.New("multipart request body cannot be replayed: a file reader is not seekable")
+
+func newMultipartBody(files []MultipartFile) (*multipartBody, error) {
+	b := &multipartBody{files: files, boundary: multipart.NewWriter(io.Discard).Boundary()}
+
+	// Size the part headers and trailer by writing every part with no content.
+	var overhead bytes.Buffer
+	mw := multipart.NewWriter(&overhead)
+	if err := mw.SetBoundary(b.boundary); err != nil {
+		return nil, fmt.Errorf("set multipart boundary: %w", err)
+	}
+	offsets := make([]int64, len(files))
+	total := int64(0)
+	for i, f := range files {
+		if _, err := mw.CreateFormFile(f.FieldName, f.FileName); err != nil {
+			return nil, fmt.Errorf("create form file: %w", err)
+		}
+		if offsets == nil {
+			continue
+		}
+		size, start, ok := readerSize(f.Reader)
+		if !ok {
+			offsets = nil
+			continue
+		}
+		offsets[i] = start
+		total += size
+	}
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	if offsets != nil {
+		b.offsets = offsets
+		b.length = int64(overhead.Len()) + total
+	}
+	return b, nil
+}
+
+// readerSize reports the bytes remaining in r and its current offset when r
+// is seekable, leaving the offset unchanged.
+func readerSize(r io.Reader) (size, start int64, ok bool) {
+	s, isSeeker := r.(io.Seeker)
+	if !isSeeker {
+		return 0, 0, false
+	}
+	start, err := s.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0, 0, false
+	}
+	end, err := s.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, 0, false
+	}
+	if _, err := s.Seek(start, io.SeekStart); err != nil {
+		return 0, 0, false
+	}
+	return end - start, start, true
+}
+
+func (b *multipartBody) open() io.ReadCloser {
+	return &lazyPipeBody{start: b.stream}
+}
+
+// getBody is the request's GetBody. A body over non-seekable readers can be
+// produced only until one has started reading them.
+func (b *multipartBody) getBody() (io.ReadCloser, error) {
+	if b.offsets == nil && b.started.Load() {
+		return nil, errMultipartNotReplayable
+	}
+	return b.open(), nil
+}
+
+// stream returns a pipe reader fed by a goroutine that writes the multipart
+// body. Read errors from a file fail the pipe, and so the request.
+func (b *multipartBody) stream() *io.PipeReader {
+	pr, pw := io.Pipe()
+	go func() {
+		// Serialize with a previous attempt's writer that may still be
+		// unwinding after its request ended, since both use the same readers.
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		pw.CloseWithError(b.write(pw))
+	}()
+	return pr
+}
+
+func (b *multipartBody) write(w io.Writer) error {
+	if b.started.Swap(true) && b.offsets == nil {
+		return errMultipartNotReplayable
+	}
+
+	mw := multipart.NewWriter(w)
+	if err := mw.SetBoundary(b.boundary); err != nil {
+		return fmt.Errorf("set multipart boundary: %w", err)
+	}
+	for i, f := range b.files {
+		if b.offsets != nil {
+			if _, err := f.Reader.(io.Seeker).Seek(b.offsets[i], io.SeekStart); err != nil {
+				return fmt.Errorf("rewind %s: %w", f.FileName, err)
+			}
+		}
+		part, err := mw.CreateFormFile(f.FieldName, f.FileName)
+		if err != nil {
+			return fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := io.Copy(part, f.Reader); err != nil {
+			return fmt.Errorf("copy file content: %w", err)
+		}
+	}
+	if err := mw.Close(); err != nil {
+		return fmt.Errorf("close multipart writer: %w", err)
+	}
+	return nil
+}
+
+// lazyPipeBody starts its pipe on the first Read. Closing it before any Read
+// is a no-op; closing it after stops the writer goroutine.
+type lazyPipeBody struct {
+	start func() *io.PipeReader
+	once  sync.Once
+	pr    *io.PipeReader
+}
+
+func (l *lazyPipeBody) Read(p []byte) (int, error) {
+	l.once.Do(func() { l.pr = l.start() })
+	if l.pr == nil {
+		return 0, io.ErrClosedPipe
+	}
+	return l.pr.Read(p)
+}
+
+func (l *lazyPipeBody) Close() error {
+	l.once.Do(func() {}) // a Read after Close must not start the writer
+	if l.pr != nil {
+		return l.pr.Close()
+	}
+	return nil
 }
