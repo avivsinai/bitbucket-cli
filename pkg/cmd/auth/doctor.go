@@ -43,7 +43,7 @@ timeouts may be happening.
 On macOS this reports the current bkt binary's code signature, Designated
 Requirement, and whether a stored token item is present for the host. If the
 stored item was created by a bkt binary with a different Designated
-Requirement — which is common after ` + "`brew upgrade bkt`" + ` — macOS will
+Requirement — which is common after ` + "`brew upgrade bitbucket-cli`" + ` — macOS will
 keep prompting for the Keychain password on every read. The fix in that case
 is to re-run ` + "`bkt auth login`" + ` so the item is recreated with the
 current binary's DR.
@@ -308,7 +308,7 @@ func diagnose(r doctorReport, cfg *config.Config) (string, []string) {
 	if !r.StableDR && r.DesignatedReq != "" {
 		// DR is cdhash-bound. Expect re-prompts after every rebuild/upgrade.
 		diag := "This bkt binary has a cdhash-based Designated Requirement. " +
-			"Every rebuild (including every `brew upgrade bkt`) changes the cdhash, " +
+			"Every rebuild (including every `brew upgrade bitbucket-cli`) changes the cdhash, " +
 			"which invalidates any Keychain \"Always Allow\" the user has granted — " +
 			"so macOS keeps re-prompting."
 		steps = append(steps,

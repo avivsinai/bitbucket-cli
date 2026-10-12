@@ -5,6 +5,7 @@
 [![CI](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avivsinai/bitbucket-cli/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/avivsinai/bitbucket-cli/graph/badge.svg)](https://codecov.io/gh/avivsinai/bitbucket-cli)
 [![Release](https://img.shields.io/github/v/release/avivsinai/bitbucket-cli?cache=none)](https://github.com/avivsinai/bitbucket-cli/releases)
+[![Homebrew](https://img.shields.io/homebrew/v/bitbucket-cli)](https://formulae.brew.sh/formula/bitbucket-cli)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/avivsinai/bitbucket-cli/badge)](https://scorecard.dev/viewer/?uri=github.com/avivsinai/bitbucket-cli)
 [![Go Reference](https://pkg.go.dev/badge/github.com/avivsinai/bitbucket-cli.svg)](https://pkg.go.dev/github.com/avivsinai/bitbucket-cli)
 [![License](https://img.shields.io/github/license/avivsinai/bitbucket-cli?cache=none)](LICENSE)
@@ -18,7 +19,7 @@ This project (`github.com/avivsinai/bitbucket-cli`, binary `bkt`) is unrelated t
 </p>
 
 ```bash
-brew install avivsinai/tap/bitbucket-cli
+brew install bitbucket-cli
 bkt --help
 ```
 
@@ -30,9 +31,19 @@ Recorded from a real `bkt --help` run — no Bitbucket login or token required. 
 
 ### Homebrew (macOS/Linux)
 
+`bkt` is in [Homebrew core](https://formulae.brew.sh/formula/bitbucket-cli):
+
+```bash
+brew install bitbucket-cli
+```
+
+The core formula is built from source without bkt's OAuth client, so Bitbucket Cloud browser login (`bkt auth login --kind cloud --web`) needs `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` (see [Binary Downloads](#binary-downloads)). API-token login (`--web-token`) and Data Center login work as is. For the official binary with Cloud OAuth built in, use the tap:
+
 ```bash
 brew install avivsinai/tap/bitbucket-cli
 ```
+
+Both install the same `bkt` command, so install only one of them.
 
 ### WinGet (Windows)
 
@@ -294,7 +305,7 @@ old collection and must be re-added.
 
 ##### macOS note: Keychain prompts after `brew upgrade`
 
-On macOS, every `brew upgrade bkt` may trigger one Keychain prompt because the
+On macOS, every `brew upgrade bitbucket-cli` may trigger one Keychain prompt because the
 stored item's ACL is tied to the installed binary. Re-run `bkt auth login` once
 after the upgrade to refresh the ACL, then subsequent invocations should not
 prompt. Releases pin the Designated Requirement to the bundle identifier, so
