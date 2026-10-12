@@ -32,7 +32,7 @@ timeouts may be happening.
 On macOS this reports the current bkt binary's code signature, Designated
 Requirement, and whether a stored token item is present for the host. If the
 stored item was created by a bkt binary with a different Designated
-Requirement — which is common after `brew upgrade bkt` — macOS will
+Requirement — which is common after `brew upgrade bitbucket-cli` — macOS will
 keep prompting for the Keychain password on every read. The fix in that case
 is to re-run `bkt auth login` so the item is recreated with the
 current binary's DR.
