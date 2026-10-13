@@ -68,6 +68,7 @@ type loginOptions struct {
 	AllowHTTP          bool
 	Web                bool
 	WebToken           bool
+	WithToken          bool
 }
 
 func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
@@ -94,8 +95,9 @@ access token that is automatically refreshed.
 
 Credentials are verified against the remote host before being stored. If no
 OS keychain is available, pass --allow-insecure-store to use encrypted file
-fallback. In non-interactive environments, provide --username and --token
-on the command line or via stdin.`,
+fallback. In non-interactive environments, provide --username and pipe the
+token on stdin with --with-token (--token also works, but the process list
+shows it).`,
 		Example: `  # Login to Bitbucket Cloud via OAuth
   bkt auth login https://bitbucket.org --kind cloud --web
 
@@ -109,7 +111,7 @@ on the command line or via stdin.`,
   bkt auth login https://bitbucket.example.com --web-token
 
   # Non-interactive login with flags (CI pipelines)
-  bkt auth login https://bitbucket.example.com --username admin --token "$PAT"`,
+  bkt auth login https://bitbucket.example.com --username admin --with-token < pat.txt`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -127,6 +129,7 @@ on the command line or via stdin.`,
 	cmd.Flags().BoolVar(&opts.AllowHTTP, "allow-http", false, "Allow http:// URLs for login even though credentials will be sent in plaintext")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Authenticate via OAuth in the browser (Cloud only)")
 	cmd.Flags().BoolVar(&opts.WebToken, "web-token", false, "Open browser to create an API token, then prompt for credentials")
+	cmd.Flags().BoolVar(&opts.WithToken, "with-token", false, "Read the token from standard input")
 
 	return cmd
 }
@@ -192,6 +195,14 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 
 	if opts.Web && opts.WebToken {
 		return fmt.Errorf("--web and --web-token are mutually exclusive")
+	}
+	if opts.WithToken {
+		if opts.Token != "" || opts.Web || opts.WebToken {
+			return fmt.Errorf("--with-token cannot be used with --token, --web or --web-token")
+		}
+		if opts.Token, err = readTokenFromStdin(ios.In); err != nil {
+			return err
+		}
 	}
 	if opts.Web && kind == "dc" {
 		return fmt.Errorf("--web OAuth login is only supported for Bitbucket Cloud; use --web-token to open the PAT page")
@@ -857,6 +868,19 @@ func promptSecret(ios *iostreams.IOStreams, label string) (string, error) {
 
 	reader := bufio.NewReader(ios.In)
 	return promptString(reader, ios.Out, label)
+}
+
+// readTokenFromStdin reads the token piped on stdin for --with-token.
+func readTokenFromStdin(in io.Reader) (string, error) {
+	data, err := io.ReadAll(in)
+	if err != nil {
+		return "", fmt.Errorf("read token from stdin: %w", err)
+	}
+	token := strings.TrimSpace(string(data))
+	if token == "" {
+		return "", fmt.Errorf("--with-token: no token on stdin")
+	}
+	return token, nil
 }
 
 func isTerminal(in io.Reader) bool {
