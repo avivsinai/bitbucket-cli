@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-10-13
 ### Added
 - `bkt` is in Homebrew core: `brew install bitbucket-cli`. The
   `avivsinai/tap` formula remains the official binary with Bitbucket Cloud
@@ -16,6 +17,7 @@ All notable changes to this project will be documented here. The format follows
 ### Fixed
 - `bkt auth doctor` and the README name the right Homebrew upgrade command
   (`brew upgrade bitbucket-cli`).
+
 
 ## [0.33.0] - 2026-10-11
 ### Added
@@ -798,7 +800,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.1...HEAD
+[0.33.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.31.1...v0.32.0
