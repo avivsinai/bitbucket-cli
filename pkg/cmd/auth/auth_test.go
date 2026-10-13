@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -840,6 +841,45 @@ func TestRunLoginDCFullFlow(t *testing.T) {
 	}
 	if !strings.Contains(output, "Admin User") {
 		t.Errorf("expected display name in output, got:\n%s", output)
+	}
+}
+
+func TestRunLoginDCWithTokenReadsStdin(t *testing.T) {
+	// A script pipes the PAT instead of passing --token, which ps shows.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/rest/api/1.0/users/admin" && r.Header.Get("Authorization") == "Basic "+base64.StdEncoding.EncodeToString([]byte("admin:piped-pat")) {
+			_ = json.NewEncoder(w).Encode(map[string]any{"name": "admin", "displayName": "Admin User", "slug": "admin"})
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	setupFileKeyring(t)
+	t.Setenv(secret.EnvToken, "")
+	t.Setenv("BKT_CONFIG_DIR", t.TempDir())
+
+	cfg := &config.Config{
+		Hosts:    make(map[string]*config.Host),
+		Contexts: make(map[string]*config.Context),
+	}
+	f, stdout, _ := newAuthTestFactory(cfg)
+	f.IOStreams.In = io.NopCloser(strings.NewReader("piped-pat\n"))
+
+	err := runLogin(newTestCmd(), f, &loginOptions{
+		Host:               srv.URL,
+		Kind:               "dc",
+		Username:           "admin",
+		WithToken:          true,
+		AllowHTTP:          true,
+		AllowInsecureStore: true,
+	})
+	if err != nil {
+		t.Fatalf("runLogin: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Logged in") {
+		t.Errorf("expected success message, got:\n%s", stdout.String())
 	}
 }
 
