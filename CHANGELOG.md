@@ -6,13 +6,15 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `bkt auth login --with-token` reads the token from stdin, so a script signs
+  in without the token showing in the process list.
+
 ## [0.33.1] - 2026-10-13
 ### Added
 - `bkt` is in Homebrew core: `brew install bitbucket-cli`. The
   `avivsinai/tap` formula remains the official binary with Bitbucket Cloud
   OAuth built in.
-- `bkt auth login --with-token` reads the token from stdin, so a script signs
-  in without the token showing in the process list.
 
 ### Fixed
 - `bkt auth doctor` and the README name the right Homebrew upgrade command
