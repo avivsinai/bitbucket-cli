@@ -8,7 +8,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -77,7 +79,7 @@ func Detect(repoPath string) (Locator, error) {
 	}
 
 	for _, raw := range urls {
-		loc, err := ParseLocator(raw)
+		loc, err := ParseRemoteLocator(raw)
 		if err != nil {
 			continue
 		}
@@ -156,9 +158,25 @@ func ListRemotes(repoPath string) (map[string][]string, error) {
 // ParseLocator parses a git remote URL into a Locator containing the host,
 // kind, and repository identifiers.
 func ParseLocator(raw string) (Locator, error) {
-	host, segments, err := dissectRemote(raw)
+	return parseLocator(raw, nil)
+}
+
+// ParseRemoteLocator is like ParseLocator but first resolves SSH host aliases
+// through the user's OpenSSH configuration (`ssh -G`), so a remote such as
+// git@work.bitbucket.org:team/repo.git maps to the host git actually reaches.
+// Use it for URLs read from git remotes; arguments typed by the user should
+// keep going through ParseLocator.
+func ParseRemoteLocator(raw string) (Locator, error) {
+	return parseLocator(raw, resolveSSHHost)
+}
+
+func parseLocator(raw string, resolveSSH func(string) string) (Locator, error) {
+	host, segments, isSSH, err := dissectRemote(raw)
 	if err != nil {
 		return Locator{}, err
+	}
+	if isSSH && resolveSSH != nil {
+		host = resolveSSH(host)
 	}
 	if len(segments) < 2 {
 		return Locator{}, fmt.Errorf("remote %q missing repository segments", raw)
@@ -186,26 +204,33 @@ func ParseLocator(raw string) (Locator, error) {
 	return loc, nil
 }
 
-func dissectRemote(raw string) (string, []string, error) {
+// dissectRemote splits a remote URL into host and path segments and reports
+// whether git reaches it over SSH (scp-like syntax or an ssh:// scheme).
+func dissectRemote(raw string) (string, []string, bool, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", nil, fmt.Errorf("empty remote URL")
+		return "", nil, false, fmt.Errorf("empty remote URL")
 	}
 
 	if strings.Contains(raw, "://") {
 		u, err := url.Parse(raw)
 		if err != nil {
-			return "", nil, fmt.Errorf("parse remote: %w", err)
+			return "", nil, false, fmt.Errorf("parse remote: %w", err)
 		}
 		host := hostWithoutPort(u.Host)
 		path := cleanPath(u.Path)
 		segments := splitSegments(path)
-		return host, segments, nil
+		isSSH := false
+		switch strings.ToLower(u.Scheme) {
+		case "ssh", "git+ssh", "ssh+git":
+			isSSH = true
+		}
+		return host, segments, isSSH, nil
 	}
 
 	colon := strings.Index(raw, ":")
 	if colon == -1 {
-		return "", nil, fmt.Errorf("invalid remote URL %q", raw)
+		return "", nil, false, fmt.Errorf("invalid remote URL %q", raw)
 	}
 	hostPart := raw[:colon]
 	pathPart := raw[colon+1:]
@@ -216,7 +241,51 @@ func dissectRemote(raw string) (string, []string, error) {
 
 	host := hostWithoutPort(hostPart)
 	segments := splitSegments(pathPart)
-	return host, segments, nil
+	return host, segments, true, nil
+}
+
+// sshHostnameLookup returns the HostName OpenSSH would connect to for host.
+// It is a variable so tests can avoid depending on the local ssh setup.
+var sshHostnameLookup = lookupSSHHostname
+
+var (
+	sshHostCache   sync.Map
+	sshHostPattern = regexp.MustCompile(`^[a-z0-9_][a-z0-9._-]*$`)
+)
+
+// resolveSSHHost maps an SSH host alias to its configured HostName. Lookups
+// are cached per process; on any failure the host is returned unchanged.
+func resolveSSHHost(host string) string {
+	if host == "" || host == "bitbucket.org" || !sshHostPattern.MatchString(host) {
+		return host
+	}
+	if cached, ok := sshHostCache.Load(host); ok {
+		return cached.(string)
+	}
+	resolved := host
+	if name, err := sshHostnameLookup(host); err == nil {
+		if name = hostWithoutPort(name); name != "" {
+			resolved = name
+		}
+	}
+	sshHostCache.Store(host, resolved)
+	return resolved
+}
+
+func lookupSSHHostname(host string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "ssh", "-G", "--", host).Output()
+	if err != nil {
+		return "", fmt.Errorf("ssh -G %s: %w", host, err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if name, ok := strings.CutPrefix(strings.TrimSpace(line), "hostname "); ok {
+			return strings.TrimSpace(name), nil
+		}
+	}
+	return "", fmt.Errorf("ssh -G %s: no hostname in output", host)
 }
 
 func cleanPath(path string) string {
