@@ -1343,7 +1343,7 @@ func preferredGitRemote(ctx context.Context, host *config.Host) (string, error) 
 	if host != nil {
 		for _, name := range names {
 			for _, rawURL := range remotes[name] {
-				loc, locErr := remote.ParseLocator(rawURL)
+				loc, locErr := remote.ParseRemoteLocator(rawURL)
 				if locErr != nil {
 					continue
 				}
