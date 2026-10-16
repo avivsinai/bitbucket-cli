@@ -5,6 +5,10 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Repository auto-detection resolves SSH host aliases through `ssh -G`, as
+  `gh` does, so remotes such as `git@work.bitbucket.org:team/repo.git` map to
+  their Bitbucket host (#344).
 
 ## [0.34.0] - 2026-10-15
 ### Added
