@@ -479,8 +479,11 @@ func LocatorMatchesHost(host *config.Host, loc remote.Locator) bool {
 		if loc.Kind != "dc" {
 			return false
 		}
+		// Accept the host as written in the remote too, so an ssh_config
+		// HostName (an IP or internal name) does not hide the configured host.
 		baseHost := hostHostname(host.BaseURL)
-		return baseHost != "" && strings.EqualFold(baseHost, loc.Host)
+		return baseHost != "" && (strings.EqualFold(baseHost, loc.Host) ||
+			strings.EqualFold(baseHost, loc.RemoteHost))
 	default:
 		return false
 	}

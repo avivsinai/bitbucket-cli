@@ -25,6 +25,9 @@ type Locator struct {
 	Workspace  string
 	ProjectKey string
 	RepoSlug   string
+	// RemoteHost is the host as written in the git remote when SSH alias
+	// resolution replaced it in Host; empty otherwise.
+	RemoteHost string
 }
 
 // Detect attempts to infer the locator from git remotes.
@@ -175,15 +178,19 @@ func parseLocator(raw string, resolveSSH func(string) string) (Locator, error) {
 	if err != nil {
 		return Locator{}, err
 	}
+	remoteHost := ""
 	if isSSH && resolveSSH != nil {
-		host = resolveSSH(host)
+		if resolved := resolveSSH(host); resolved != host {
+			remoteHost, host = host, resolved
+		}
 	}
 	if len(segments) < 2 {
 		return Locator{}, fmt.Errorf("remote %q missing repository segments", raw)
 	}
 
 	loc := Locator{
-		Host: host,
+		Host:       host,
+		RemoteHost: remoteHost,
 	}
 
 	if host == "bitbucket.org" {

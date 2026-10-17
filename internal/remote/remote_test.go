@@ -124,17 +124,17 @@ func TestDetectResolvesSSHHostAlias(t *testing.T) {
 		{
 			name:   "cloud scp-like alias",
 			remote: "git@work.bitbucket.org:workspace/repo.git",
-			want:   Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "workspace", RepoSlug: "repo"},
+			want:   Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "workspace", RepoSlug: "repo", RemoteHost: "work.bitbucket.org"},
 		},
 		{
 			name:   "cloud ssh scheme alias",
 			remote: "ssh://git@work.bitbucket.org/workspace/repo.git",
-			want:   Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "workspace", RepoSlug: "repo"},
+			want:   Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "workspace", RepoSlug: "repo", RemoteHost: "work.bitbucket.org"},
 		},
 		{
 			name:   "data center alias with port",
 			remote: "ssh://git@bbdc:7999/proj/service.git",
-			want:   Locator{Host: "bitbucket.example.com", Kind: "dc", ProjectKey: "PROJ", RepoSlug: "service"},
+			want:   Locator{Host: "bitbucket.example.com", Kind: "dc", ProjectKey: "PROJ", RepoSlug: "service", RemoteHost: "bbdc"},
 		},
 	}
 

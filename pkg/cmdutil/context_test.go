@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
+	"github.com/avivsinai/bitbucket-cli/internal/remote"
 	"github.com/avivsinai/bitbucket-cli/internal/secret"
 )
 
@@ -247,6 +248,16 @@ func TestResolveContextOverridesProjectFromRemoteSSH(t *testing.T) {
 	}
 	if ctx.DefaultRepo != "sample-app" {
 		t.Fatalf("repo = %q, want %q", ctx.DefaultRepo, "sample-app")
+	}
+}
+
+func TestLocatorMatchesHostAcceptsHostAsWrittenInRemote(t *testing.T) {
+	host := &config.Host{Kind: "dc", BaseURL: "https://bitbucket.example.com"}
+	// ssh_config maps the configured host to an address: HostName 10.1.2.3.
+	loc := remote.Locator{Host: "10.1.2.3", RemoteHost: "bitbucket.example.com", Kind: "dc", ProjectKey: "TEAM", RepoSlug: "app"}
+
+	if !LocatorMatchesHost(host, loc) {
+		t.Fatalf("LocatorMatchesHost() = false, want true for remote host %q", loc.RemoteHost)
 	}
 }
 
