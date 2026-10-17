@@ -110,6 +110,132 @@ func TestDetectNotGitRepoPreservesUnderlyingError(t *testing.T) {
 	}
 }
 
+func TestDetectResolvesSSHHostAlias(t *testing.T) {
+	stubSSHHostnames(t, map[string]string{
+		"work.bitbucket.org": "bitbucket.org",
+		"bbdc":               "bitbucket.example.com",
+	})
+
+	tests := []struct {
+		name   string
+		remote string
+		want   Locator
+	}{
+		{
+			name:   "cloud scp-like alias",
+			remote: "git@work.bitbucket.org:workspace/repo.git",
+			want:   Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "workspace", RepoSlug: "repo", RemoteHost: "work.bitbucket.org"},
+		},
+		{
+			name:   "cloud ssh scheme alias",
+			remote: "ssh://git@work.bitbucket.org/workspace/repo.git",
+			want:   Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "workspace", RepoSlug: "repo", RemoteHost: "work.bitbucket.org"},
+		},
+		{
+			name:   "data center alias with port",
+			remote: "ssh://git@bbdc:7999/proj/service.git",
+			want:   Locator{Host: "bitbucket.example.com", Kind: "dc", ProjectKey: "PROJ", RepoSlug: "service", RemoteHost: "bbdc"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := initGitRepo(t, tt.remote)
+
+			loc, err := Detect(dir)
+			if err != nil {
+				t.Fatalf("Detect() error = %v", err)
+			}
+			if loc != tt.want {
+				t.Fatalf("locator = %+v, want %+v", loc, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseRemoteLocatorKeepsHostWhenLookupFails(t *testing.T) {
+	stubSSHHostnames(t, nil)
+
+	loc, err := ParseRemoteLocator("git@work.bitbucket.org:workspace/repo.git")
+	if err != nil {
+		t.Fatalf("ParseRemoteLocator() error = %v", err)
+	}
+	if loc.Host != "work.bitbucket.org" || loc.Kind != "dc" {
+		t.Fatalf("locator = %+v, want unresolved host parsed as before", loc)
+	}
+}
+
+func TestParseRemoteLocatorSkipsLookup(t *testing.T) {
+	tests := []struct {
+		name   string
+		remote string
+	}{
+		{name: "https remote", remote: "https://work.bitbucket.org/workspace/repo.git"},
+		{name: "canonical cloud host", remote: "git@bitbucket.org:workspace/repo.git"},
+		{name: "option-like host", remote: "-oProxyCommand=x:workspace/repo.git"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := stubSSHHostnames(t, map[string]string{"work.bitbucket.org": "bitbucket.org"})
+
+			if _, err := ParseRemoteLocator(tt.remote); err != nil {
+				t.Fatalf("ParseRemoteLocator() error = %v", err)
+			}
+			if *calls != 0 {
+				t.Fatalf("ssh lookups = %d, want 0", *calls)
+			}
+		})
+	}
+}
+
+func TestParseLocatorDoesNotResolveSSHHostAlias(t *testing.T) {
+	calls := stubSSHHostnames(t, map[string]string{"work.bitbucket.org": "bitbucket.org"})
+
+	loc, err := ParseLocator("git@work.bitbucket.org:workspace/repo.git")
+	if err != nil {
+		t.Fatalf("ParseLocator() error = %v", err)
+	}
+	if loc.Host != "work.bitbucket.org" || *calls != 0 {
+		t.Fatalf("locator = %+v, lookups = %d; want alias untouched and no lookups", loc, *calls)
+	}
+}
+
+func TestResolveSSHHostCachesLookups(t *testing.T) {
+	calls := stubSSHHostnames(t, map[string]string{"work.bitbucket.org": "BitBucket.org"})
+
+	for i := 0; i < 3; i++ {
+		if got := resolveSSHHost("work.bitbucket.org"); got != "bitbucket.org" {
+			t.Fatalf("resolveSSHHost() = %q, want %q", got, "bitbucket.org")
+		}
+	}
+	if *calls != 1 {
+		t.Fatalf("ssh lookups = %d, want 1", *calls)
+	}
+}
+
+// stubSSHHostnames replaces the ssh -G lookup with a fixed alias table and
+// returns a pointer to the number of lookups performed. Unknown hosts fail.
+func stubSSHHostnames(t *testing.T, aliases map[string]string) *int {
+	t.Helper()
+
+	calls := 0
+	original := sshHostnameLookup
+	sshHostnameLookup = func(host string) (string, error) {
+		calls++
+		if name, ok := aliases[host]; ok {
+			return name, nil
+		}
+		return "", errors.New("unknown host")
+	}
+	sshHostCache.Clear()
+	t.Cleanup(func() {
+		sshHostnameLookup = original
+		sshHostCache.Clear()
+	})
+	return &calls
+}
+
 func initGitRepo(t *testing.T, remoteURL string) string {
 	t.Helper()
 
