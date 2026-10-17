@@ -95,7 +95,10 @@ func TestServeCommandStdoutCarriesOnlyJSONRPC(t *testing.T) {
 
 	_ = stdinW.Close()
 	select {
-	case <-runDone:
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("serve command: %v", err)
+		}
 	case <-ctx.Done():
 		t.Fatal("serve command did not stop after stdin close")
 	}
