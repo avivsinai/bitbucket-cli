@@ -601,7 +601,13 @@ func ensurePublishedFilesCommitted(ctx context.Context, root string, skills []di
 
 func publishRepositoryURL(locator remote.Locator, owner string) string {
 	if locator.Kind == "dc" {
-		return fmt.Sprintf("https://%s/scm/%s/%s.git", locator.Host, owner, locator.RepoSlug)
+		// A Data Center host is configured by the name in the remote; an
+		// ssh_config HostName may be an address bkt does not know.
+		host := locator.Host
+		if locator.RemoteHost != "" {
+			host = locator.RemoteHost
+		}
+		return fmt.Sprintf("https://%s/scm/%s/%s.git", host, owner, locator.RepoSlug)
 	}
 	return fmt.Sprintf("https://%s/%s/%s.git", locator.Host, owner, locator.RepoSlug)
 }
