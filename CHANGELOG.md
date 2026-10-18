@@ -5,10 +5,13 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.35.0] - 2026-10-18
 ### Added
 - Repository auto-detection resolves SSH host aliases through `ssh -G`, as
   `gh` does, so remotes such as `git@work.bitbucket.org:team/repo.git` map to
   their Bitbucket host (#344).
+
 
 ## [0.34.0] - 2026-10-15
 ### Added
@@ -808,7 +811,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.32.1...v0.33.0
