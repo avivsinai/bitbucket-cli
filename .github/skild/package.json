@@ -1,0 +1,8 @@
+{
+  "name": "bkt-skild-tooling",
+  "private": true,
+  "description": "Pins the skild CLI that release.yml and publish-skill.yml use; npm ci installs it from package-lock.json.",
+  "dependencies": {
+    "skild": "0.13.1"
+  }
+}

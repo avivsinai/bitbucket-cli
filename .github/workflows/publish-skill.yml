@@ -28,8 +28,15 @@ jobs:
         with:
           node-version: '20'
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: .skild-tooling
+          sparse-checkout: .github/skild
+
       - name: Install skild
-        run: npm install -g skild
+        run: |
+          npm ci --prefix .skild-tooling/.github/skild --ignore-scripts
+          echo "$GITHUB_WORKSPACE/.skild-tooling/.github/skild/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Configure skild auth
         run: |
@@ -65,7 +72,7 @@ jobs:
               echo "Warning: Skipping alias for $SKILL: length ${#SKILL} outside 3..64"
             fi
 
-            if OUTPUT=$(npx skild publish \
+            if OUTPUT=$(skild publish \
               --dir "$dir" \
               "${ALIAS_ARGS[@]}" \
               --skill-version "$VERSION" 2>&1); then
@@ -77,7 +84,7 @@ jobs:
             elif echo "$OUTPUT" | grep -q "Alias already in use"; then
               echo "$OUTPUT"
               echo "Warning: Alias '$SKILL' taken — retrying without alias..."
-              if OUTPUT2=$(npx skild publish \
+              if OUTPUT2=$(skild publish \
                 --dir "$dir" \
                 --skill-version "$VERSION" 2>&1); then
                 echo "$OUTPUT2"
