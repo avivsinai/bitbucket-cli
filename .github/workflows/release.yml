@@ -379,10 +379,17 @@ jobs:
         with:
           node-version: '20'
 
+      # A manual run can check out a tag that predates the lockfile, so take
+      # the pinned tooling from the workflow's own commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: .skild-tooling
+          sparse-checkout: .github/skild
+
       - name: Install skild
         run: |
-          npm ci --prefix .github/skild --ignore-scripts
-          echo "$GITHUB_WORKSPACE/.github/skild/node_modules/.bin" >> "$GITHUB_PATH"
+          npm ci --prefix .skild-tooling/.github/skild --ignore-scripts
+          echo "$GITHUB_WORKSPACE/.skild-tooling/.github/skild/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Configure skild auth
         run: |
