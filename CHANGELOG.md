@@ -5,6 +5,12 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- macOS release binaries are signed with a Developer ID and notarized when the
+  release signing secrets are configured. Keychain then keys the token's
+  partition to the team ID instead of the build hash, so one "Always Allow"
+  survives `brew upgrade`. The first run of the first signed release asks one
+  last time.
 
 ## [0.35.0] - 2026-10-18
 ### Added
