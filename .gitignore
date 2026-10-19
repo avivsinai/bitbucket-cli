@@ -35,3 +35,6 @@ prds/
 .agent-mail/
 .amqrc
 prds/
+
+# CI installs the pinned skild tooling here.
+.github/skild/node_modules/
