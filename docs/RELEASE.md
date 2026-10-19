@@ -64,6 +64,20 @@
   Never put its value in repository files, workflow commands, arguments, or
   logs. When the secret is absent, the workflow emits a warning and skips only
   the WinGet upload; the rest of the release continues.
+- macOS binaries are signed with a Developer ID and notarized by
+  `scripts/codesign-macos.sh` when these repository secrets are set:
+  `APPLE_TEAM_ID`, `APPLE_DEVELOPER_ID_P12_BASE64` (a "Developer ID
+  Application" certificate, its key and the Developer ID intermediate, base64
+  of the .p12),
+  `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_NOTARY_ISSUER_ID`,
+  `APPLE_NOTARY_KEY_ID`, and `APPLE_NOTARY_KEY_P8_BASE64` (an App Store Connect
+  API key, base64 of the .p8). Set all six or none: with none, the release
+  warns and signs ad-hoc; with some, it fails. Ad-hoc binaries get a new
+  Keychain partition ID (`cdhash:`) per build, so users must approve Keychain
+  access again after each upgrade; Developer ID binaries share one
+  `teamid:` partition ID. Keep the signing identifier
+  `io.github.avivsinai.bitbucket-cli`: a changed identifier or team makes every
+  user approve again.
 - `scripts/check-release-version.sh vX.Y.Z` now validates both metadata versions and the matching `CHANGELOG.md` heading.
 - If a release PR merges but the tag publish fails verification, fix forward with the next patch version instead of rewriting the failed tag.
 

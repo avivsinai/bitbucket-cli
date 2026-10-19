@@ -225,8 +225,9 @@ func buildConfig(opts ...Option) (keyring.Config, error) {
 		// migrates to the data-protection keychain.
 		//
 		// The trust flag alone does not stop re-prompts after `brew upgrade
-		// bkt` — that requires a stable Designated Requirement on the signed
-		// binary (see scripts/codesign-macos.sh). It just ensures a clean
+		// bkt` — that requires a stable Designated Requirement and a stable
+		// Keychain partition ID, which only a Developer ID signature gives
+		// (see scripts/codesign-macos.sh). It just ensures a clean
 		// first-run experience for new items. Existing items keep whatever ACL
 		// they had until the item is deleted and recreated (see pkg/cmd/auth).
 		cfg.KeychainTrustApplication = true
