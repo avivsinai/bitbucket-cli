@@ -8,11 +8,13 @@ All notable changes to this project will be documented here. The format follows
 ### Fixed
 - Repository auto-detection treats `ssh.bitbucket.org` remotes as Bitbucket
   Cloud. Bitbucket Cloud moves SSH to this hostname on 12 November 2026 (#357).
-- macOS release binaries are signed with a Developer ID and notarized when the
-  release signing secrets are configured. Keychain then keys the token's
-  partition to the team ID instead of the build hash, so one "Always Allow"
-  survives `brew upgrade`. The first run of the first signed release asks one
-  last time.
+
+### Changed
+- The release workflow can sign and notarize macOS binaries with a Developer ID.
+  This release is still signed ad-hoc, so macOS asks again for Keychain access
+  after `brew upgrade`. A Developer ID release will key the Keychain grant to the
+  team ID, so one "Always Allow" then survives upgrades.
+- Build with `golang.org/x/sys` 0.49 and `golang.org/x/term` 0.47.
 
 ## [0.35.0] - 2026-10-18
 ### Added
