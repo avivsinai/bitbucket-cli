@@ -153,6 +153,28 @@ func TestDetectResolvesSSHHostAlias(t *testing.T) {
 	}
 }
 
+func TestParseRemoteLocatorCloudSSHHostname(t *testing.T) {
+	// #357: Bitbucket Cloud moves SSH to ssh.bitbucket.org on 12 Nov 2026.
+	stubSSHHostnames(t, map[string]string{"bb-work": "ssh.bitbucket.org"})
+
+	tests := []struct {
+		remote string
+		want   Locator
+	}{
+		{"git@ssh.bitbucket.org:myteam/my-repo.git", Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "myteam", RepoSlug: "my-repo"}},
+		{"git@bb-work:myteam/my-repo.git", Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "myteam", RepoSlug: "my-repo", RemoteHost: "bb-work"}},
+	}
+	for _, tt := range tests {
+		loc, err := ParseRemoteLocator(tt.remote)
+		if err != nil {
+			t.Fatalf("ParseRemoteLocator(%q) error = %v", tt.remote, err)
+		}
+		if loc != tt.want {
+			t.Fatalf("ParseRemoteLocator(%q) = %+v, want %+v", tt.remote, loc, tt.want)
+		}
+	}
+}
+
 func TestParseRemoteLocatorKeepsHostWhenLookupFails(t *testing.T) {
 	stubSSHHostnames(t, nil)
 

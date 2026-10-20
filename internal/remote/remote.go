@@ -184,6 +184,10 @@ func parseLocator(raw string, resolveSSH func(string) string) (Locator, error) {
 			remoteHost, host = host, resolved
 		}
 	}
+	// Bitbucket Cloud serves SSH from ssh.bitbucket.org as of 12 Nov 2026.
+	if host == "ssh.bitbucket.org" {
+		host = "bitbucket.org"
+	}
 	if len(segments) < 2 {
 		return Locator{}, fmt.Errorf("remote %q missing repository segments", raw)
 	}
