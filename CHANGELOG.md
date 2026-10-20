@@ -5,6 +5,10 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- macOS release binaries run on macOS 13 and later again. Releases built on the
+  `macos-latest` runner required macOS 26, so older Macs refused to start `bkt`.
+
 
 ## [0.35.1] - 2026-10-20
 ### Fixed
