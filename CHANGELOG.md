@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.35.1] - 2026-10-20
 ### Fixed
 - Repository auto-detection treats `ssh.bitbucket.org` remotes as Bitbucket
   Cloud. Bitbucket Cloud moves SSH to this hostname on 12 November 2026 (#357).
@@ -15,6 +17,7 @@ All notable changes to this project will be documented here. The format follows
   after `brew upgrade`. A Developer ID release will key the Keychain grant to the
   team ID, so one "Always Allow" then survives upgrades.
 - Build with `golang.org/x/sys` 0.49 and `golang.org/x/term` 0.47.
+
 
 ## [0.35.0] - 2026-10-18
 ### Added
@@ -821,7 +824,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.1...HEAD
+[0.35.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.33.0...v0.33.1
