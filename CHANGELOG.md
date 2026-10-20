@@ -6,6 +6,8 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 ### Fixed
+- Repository auto-detection treats `ssh.bitbucket.org` remotes as Bitbucket
+  Cloud. Bitbucket Cloud moves SSH to this hostname on 12 November 2026 (#357).
 - macOS release binaries are signed with a Developer ID and notarized when the
   release signing secrets are configured. Keychain then keys the token's
   partition to the team ID instead of the build hash, so one "Always Allow"

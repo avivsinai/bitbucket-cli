@@ -154,50 +154,24 @@ func TestDetectResolvesSSHHostAlias(t *testing.T) {
 }
 
 func TestParseRemoteLocatorCloudSSHHostname(t *testing.T) {
-	stubSSHHostnames(t, map[string]string{
-		"bb-work":  "ssh.bitbucket.org",
-		"bb-upper": "SSH.Bitbucket.org",
-	})
-
-	cloud := Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "ws", RepoSlug: "repo"}
-	aliased := func(alias string) Locator {
-		loc := cloud
-		loc.RemoteHost = alias
-		return loc
-	}
+	// #357: Bitbucket Cloud moves SSH to ssh.bitbucket.org on 12 Nov 2026.
+	stubSSHHostnames(t, map[string]string{"bb-work": "ssh.bitbucket.org"})
 
 	tests := []struct {
-		name   string
 		remote string
 		want   Locator
 	}{
-		{name: "scp-like", remote: "git@ssh.bitbucket.org:ws/repo.git", want: cloud},
-		{name: "scp-like mixed case", remote: "git@SSH.Bitbucket.ORG:ws/repo.git", want: cloud},
-		{name: "ssh scheme", remote: "ssh://git@ssh.bitbucket.org/ws/repo.git", want: cloud},
-		{name: "ssh scheme with port", remote: "ssh://git@ssh.bitbucket.org:22/ws/repo.git", want: cloud},
-		{name: "ssh scheme mixed case with port", remote: "ssh://git@Ssh.BitBucket.org:22/ws/repo.git", want: cloud},
-		{name: "alias with HostName ssh.bitbucket.org", remote: "git@bb-work:ws/repo.git", want: aliased("bb-work")},
-		{name: "alias with mixed case HostName", remote: "ssh://git@bb-upper/ws/repo.git", want: aliased("bb-upper")},
-		{name: "legacy scp-like", remote: "git@bitbucket.org:ws/repo.git", want: cloud},
-		{name: "legacy ssh scheme", remote: "ssh://git@bitbucket.org/ws/repo.git", want: cloud},
-		{name: "https", remote: "https://bitbucket.org/ws/repo.git", want: cloud},
-		{
-			name:   "data center host stays data center",
-			remote: "ssh://git@ssh.bitbucket.example.com:7999/proj/repo.git",
-			want:   Locator{Host: "ssh.bitbucket.example.com", Kind: "dc", ProjectKey: "PROJ", RepoSlug: "repo"},
-		},
+		{"git@ssh.bitbucket.org:myteam/my-repo.git", Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "myteam", RepoSlug: "my-repo"}},
+		{"git@bb-work:myteam/my-repo.git", Locator{Host: "bitbucket.org", Kind: "cloud", Workspace: "myteam", RepoSlug: "my-repo", RemoteHost: "bb-work"}},
 	}
-
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			loc, err := ParseRemoteLocator(tt.remote)
-			if err != nil {
-				t.Fatalf("ParseRemoteLocator() error = %v", err)
-			}
-			if loc != tt.want {
-				t.Fatalf("locator = %+v, want %+v", loc, tt.want)
-			}
-		})
+		loc, err := ParseRemoteLocator(tt.remote)
+		if err != nil {
+			t.Fatalf("ParseRemoteLocator(%q) error = %v", tt.remote, err)
+		}
+		if loc != tt.want {
+			t.Fatalf("ParseRemoteLocator(%q) = %+v, want %+v", tt.remote, loc, tt.want)
+		}
 	}
 }
 

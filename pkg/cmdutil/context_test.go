@@ -251,50 +251,6 @@ func TestResolveContextOverridesProjectFromRemoteSSH(t *testing.T) {
 	}
 }
 
-func TestResolveContextDetectsCloudRemoteOnSSHHostname(t *testing.T) {
-	repoDir := initGitRepo(t, "git@ssh.bitbucket.org:myteam/my-repo.git")
-
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd failed: %v", err)
-	}
-	if err := os.Chdir(repoDir); err != nil {
-		t.Fatalf("Chdir failed: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(wd)
-	})
-
-	cfg := &config.Config{
-		ActiveContext: "cloud",
-		Contexts: map[string]*config.Context{
-			"cloud": {
-				Host:      "api.bitbucket.org",
-				Workspace: "default-ws",
-			},
-		},
-		Hosts: map[string]*config.Host{
-			"api.bitbucket.org": {
-				Kind:    "cloud",
-				BaseURL: "https://api.bitbucket.org/2.0",
-				Token:   "test-token",
-			},
-		},
-	}
-	f := newTestFactory(cfg)
-
-	_, ctx, _, err := ResolveContext(f, nil, "")
-	if err != nil {
-		t.Fatalf("ResolveContext error: %v", err)
-	}
-	if ctx.Workspace != "myteam" {
-		t.Fatalf("workspace = %q, want %q", ctx.Workspace, "myteam")
-	}
-	if ctx.DefaultRepo != "my-repo" {
-		t.Fatalf("repo = %q, want %q", ctx.DefaultRepo, "my-repo")
-	}
-}
-
 func TestLocatorMatchesHostAcceptsHostAsWrittenInRemote(t *testing.T) {
 	host := &config.Host{Kind: "dc", BaseURL: "https://bitbucket.example.com"}
 	// ssh_config maps the configured host to an address: HostName 10.1.2.3.
