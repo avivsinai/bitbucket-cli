@@ -9,6 +9,10 @@ All notable changes to this project will be documented here. The format follows
 - macOS release binaries run on macOS 13 and later again. Releases built on the
   `macos-latest` runner required macOS 26, so older Macs refused to start `bkt`.
 
+### Changed
+- macOS release binaries are signed with a Developer ID (Aviv Sinai,
+  93ZUZ2PTM9) and notarized by Apple. After this upgrade, macOS asks for
+  Keychain access one last time; later upgrades keep the approval.
 
 ## [0.35.1] - 2026-10-20
 ### Fixed
