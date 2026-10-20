@@ -7,6 +7,14 @@ builds:
     binary: bkt
     env:
       - CGO_ENABLED={{- if eq .Os "darwin" }}1{{- else }}0{{- end }}
+      # Darwin links through clang (cgo), which defaults the minimum macOS to
+      # the build host (macOS 26 on macos-latest), so older Macs refuse to run
+      # the binary. Pin it to the Go toolchain floor. The flags carry the pin
+      # too, because MACOSX_DEPLOYMENT_TARGET alone is not in the build-cache
+      # key; CGO_CFLAGS keeps Go's default -O2 -g. Ignored when cgo is off.
+      - MACOSX_DEPLOYMENT_TARGET=13.0
+      - CGO_CFLAGS=-O2 -g -mmacosx-version-min=13.0
+      - CGO_LDFLAGS=-mmacosx-version-min=13.0
     goos:
       - linux
       - darwin
