@@ -6,78 +6,84 @@ requests, docs fixes, and release automation improvements.
 ## Ground rules
 
 - Be respectful and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
-- We do **not** require a CLA. Instead, by contributing you agree to the
-  [Developer Certificate of Origin (DCO)](https://developercertificate.org/).
-  Please sign your commits with `git commit -s`.
-- Always include tests when you add or change behavior. Table-driven unit tests
-  live alongside the package they exercise.
-- Run the quality gates before opening a PR:
+- We do **not** require a CLA. By contributing you agree to the
+  [Developer Certificate of Origin (DCO)](https://developercertificate.org/);
+  sign your commits with `git commit -s`.
+- Include tests when you add or change behavior.
+- For non-trivial changes, open an issue first so we can agree on direction.
 
-  ```bash
-  make fmt
-  make test
-  make build
-  make sbom   # optional but encouraged if you have syft installed
-  ```
+## Build and test
 
-- For non-trivial changes, open an issue first so we can align on
-  direction.
-
-## Testing
-
-Tests live alongside the code they exercise (`foo.go` → `foo_test.go`).
+Go 1.26 or later. The Make targets also work on Windows under GNU Make.
 
 ```bash
-go test ./...                          # Run all tests
-go test ./pkg/bbdc/...                 # Run a single package
-go test -run TestListPullRequests ./pkg/bbdc/  # Run a specific test
-go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out  # Coverage report
+make build                 # ./bin/bkt
+make test                  # go test ./...
+make fmt                   # go fmt ./...
+make lint                  # golangci-lint
+make tidy                  # go mod tidy
+make generate-skill        # regenerate skills/bkt/rules from command help
+make sync-skills           # copy skills/bkt to the .claude/ and .agents/ mirrors
+make check-skills          # verify the mirrors match
+make nix-update-vendor-hash  # after any go.mod/go.sum change
 ```
 
-### Conventions
+`go run ./cmd/bkt --help` is the quickest smoke test. `go test ./...` also runs
+smoke tests that drive the CLI against an in-memory Bitbucket mock
+(`pkg/cmd/smoke/cli_smoke_test.go`). Use `BKT_CONFIG_DIR` pointing at a scratch
+directory when you try commands, so your real configuration stays untouched.
 
-- **Table-driven tests** for functions with multiple input/output cases.
-- **`httptest.NewServer`** for API client tests — no real network calls.
-- **`t.Cleanup()`** / **`defer`** for resource teardown; **`t.TempDir()`** for temp files.
-- **`t.Setenv()`** for environment overrides (automatically restored after test).
-- Descriptive test names that explain the scenario, not just the function.
-- Both happy-path and error cases for every public function.
+### Test conventions
 
-## Workflow
+- Tests live next to the code they exercise (`foo.go` → `foo_test.go`).
+- Prefer table-driven tests for functions with several input/output cases.
+- Use `httptest.NewServer` for API clients; tests make no real network calls.
+- Use `t.TempDir()`, `t.Setenv()`, and `t.Cleanup()` for isolation.
+- Name tests after the scenario, not only the function.
+
+## Project layout
+
+```
+cmd/bkt/          CLI entry point
+cmd/docgen/       generates skills/bkt/rules from command help
+internal/bktcmd/  Main() wiring (factory + root command)
+internal/build/   version metadata (set via ldflags)
+internal/config/  contexts and hosts in $XDG_CONFIG_HOME/bkt
+internal/remote/  git remote parsing
+internal/secret/  OS keychain and encrypted file store
+pkg/cmd/          Cobra commands (auth, repo, pr, ...)
+pkg/cmdutil/      shared command helpers and factory
+pkg/bbdc/         Bitbucket Data Center client
+pkg/bbcloud/      Bitbucket Cloud client
+pkg/oauth/        Bitbucket Cloud OAuth flow and consumer
+pkg/httpx/        shared HTTP client, retries, token refresh
+pkg/format/       output rendering
+skills/bkt/       canonical agent skill (mirrored to .claude/ and .agents/)
+```
+
+`skills/bkt/` is canonical. After you edit it, or change command help, run
+`make generate-skill sync-skills` and commit the result; CI fails when the
+mirrors or generated rules drift.
+
+## Pull requests
 
 1. Fork the repository and create a feature branch.
-2. Make your changes with clear, conventional commits (`feat:`, `fix:`, `docs:`,
-   etc.).
-3. Update documentation and changelog entries when you change user-facing
-   behavior.
-4. Run the quality gates listed above. `make test` must pass on Linux and macOS.
-5. Open a pull request. Include:
-   - A concise summary of the change and rationale
-   - Testing notes (commands executed, platforms exercised)
-   - Screenshots or terminal captures for CLI UX changes
-6. Respond to review feedback. We aim to respond within two business days.
+2. Use conventional commits (`feat:`, `fix:`, `docs:`, `ci:`, `chore:`).
+3. Update docs and add a `CHANGELOG.md` entry under `Unreleased` for
+   user-facing changes.
+4. Run `make fmt test build`. CI runs on Linux and Windows.
+5. Open a pull request with a short summary, testing notes, and a terminal
+   capture for CLI output changes.
 
-## Project structure recap
+We aim to respond within two business days.
 
-See [README](README.md#project-layout) for the code layout. In short:
+## Releases
 
-- `pkg/cmd/...` holds Cobra commands
-- `pkg/bbdc` and `pkg/bbcloud` encapsulate Bitbucket Data Center and Cloud APIs
-- `internal/config` persists contexts/hosts in `$XDG_CONFIG_HOME/bkt`
-- `.github/` contains automation, templates, and CI workflows
-
-## Release process (summary)
-
-The detailed steps live in [`docs/RELEASE.md`](docs/RELEASE.md). In short:
-
-1. Update `CHANGELOG.md` with the release notes.
-2. Run `./scripts/release.sh X.Y.Z` from `master` to open the release PR.
-3. After the release PR merges, GitHub Actions runs [GoReleaser](.goreleaser.yaml)
-   from the verified merged commit, creates the tag, publishes binaries, and
-   builds SBOMs via Syft. Version, commit, and date are injected via ldflags.
+Maintainers release with `./scripts/release.sh X.Y.Z`, which opens a release
+PR. After it merges, CI tags the commit and publishes binaries, packages, and
+SBOMs. See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Community roles
 
-Governance and decision-making guidelines live in [GOVERNANCE.md](GOVERNANCE.md).
-If you're interested in becoming a maintainer, open an issue so we
-can chat about expectations.
+Governance lives in [GOVERNANCE.md](GOVERNANCE.md). If you want to become a
+maintainer, open an issue so we can talk about expectations.

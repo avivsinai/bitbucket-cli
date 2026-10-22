@@ -12,15 +12,15 @@
 ## Decision making
 
 - Day-to-day decisions happen in issues or PRs.
-- Significant changes (CLI UX, API surface, security posture) require an
-  accepted design proposal or RFC tracked in `docs/rfcs/` (future enhancement).
+- Significant changes (CLI UX, API surface, security posture) start as an
+  issue that describes the problem and the proposed design, and need
+  maintainer agreement before implementation.
 - Maintainers aim for consensus. If consensus cannot be reached, the maintainer
   quorum decides.
 
 ## Meetings
 
-We operate asynchronously. Ad-hoc maintainer syncs occur as needed; notes are
-published in `docs/notes/` when applicable.
+We work asynchronously; decisions are recorded in issues and pull requests.
 
 ## Becoming a maintainer
 
