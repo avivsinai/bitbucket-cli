@@ -963,7 +963,7 @@ func oauthExpiry(hostKey string, host *config.Host) (expires, refresh string) {
 		remaining := time.Until(tok.ExpiresAt).Truncate(time.Minute)
 		return fmt.Sprintf("%s (in %s)", tok.ExpiresAt.Format(time.RFC3339), remaining), ""
 	}
-	if _, err := oauth.CloudClientFor(tok); err != nil {
+	if _, err := oauth.CloudClientsFor(tok); err != nil {
 		return "expired", "unavailable; " + err.Error()
 	}
 	return "expired", "available"

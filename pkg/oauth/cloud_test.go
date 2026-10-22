@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -45,31 +46,37 @@ func TestResolveCloudClientEnv(t *testing.T) {
 	}
 }
 
-func TestCloudClientForRefreshesWithIssuingConsumer(t *testing.T) {
+func TestCloudClientsForRefreshesWithIssuingConsumer(t *testing.T) {
 	builtIn := CloudClient{ID: cloudClientID, Secret: cloudClientSecret}
-	env := CloudClient{ID: "env-id", Secret: "env-secret"} // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_ID", env.ID)
-	t.Setenv("BKT_OAUTH_CLIENT_SECRET", env.Secret)
+	env := CloudClient{ID: "env-id", Secret: "env-secret"}              // gitleaks:allow
+	rotated := CloudClient{ID: cloudClientID, Secret: "rotated-secret"} // gitleaks:allow
 
 	tests := []struct {
 		name     string
+		env      CloudClient
 		clientID string
-		want     CloudClient
+		want     []CloudClient
 		wantErr  bool
 	}{
-		{name: "legacy token uses resolved consumer", clientID: "", want: env},
-		{name: "env-issued token", clientID: env.ID, want: env},
-		{name: "built-in-issued token ignores env", clientID: builtIn.ID, want: builtIn},
-		{name: "unknown consumer", clientID: "other-id", wantErr: true},
+		{name: "legacy token, no env", clientID: "", want: []CloudClient{builtIn}},
+		{name: "legacy token tries env then built-in", env: env, clientID: "", want: []CloudClient{env, builtIn}},
+		{name: "legacy token ignores partial env", env: CloudClient{ID: "env-id"}, clientID: "", want: []CloudClient{builtIn}},
+		{name: "env-issued token", env: env, clientID: env.ID, want: []CloudClient{env}},
+		{name: "built-in-issued token ignores other env", env: env, clientID: builtIn.ID, want: []CloudClient{builtIn}},
+		{name: "rotated built-in secret wins", env: rotated, clientID: builtIn.ID, want: []CloudClient{rotated, builtIn}},
+		{name: "unknown consumer", env: env, clientID: "other-id", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CloudClientFor(&Token{ClientID: tt.clientID})
+			t.Setenv("BKT_OAUTH_CLIENT_ID", tt.env.ID)
+			t.Setenv("BKT_OAUTH_CLIENT_SECRET", tt.env.Secret)
+
+			got, err := CloudClientsFor(&Token{ClientID: tt.clientID})
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("CloudClientFor error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("CloudClientsFor error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if got != tt.want {
-				t.Errorf("CloudClientFor = %+v, want %+v", got, tt.want)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("CloudClientsFor = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

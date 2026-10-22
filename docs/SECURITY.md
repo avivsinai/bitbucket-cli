@@ -14,9 +14,22 @@ implementation details.
   (`pkg/oauth/cloud.go`). A secret shipped inside a native app cannot stay
   confidential (RFC 8252 §8.5), so it is public-client material, not a user
   secret; the GitHub CLI and Git Credential Manager ship theirs the same way.
-  The consumer is marked public on Bitbucket, so its secret cannot mint
-  `client_credentials` tokens. A user's access is protected by their consent
-  in the browser and by the tokens in their keychain.
+  A user's access is protected by their consent in the browser and by the
+  tokens in their keychain. The consumer's configuration carries the
+  invariants that make a public secret safe, so keep them:
+  - Marked **public** on Bitbucket, so the secret cannot mint
+    `client_credentials` tokens that act as the consumer's owner.
+  - Callback restricted to the loopback host. Bitbucket matches the
+    `redirect_uri` host exactly and allows any port, so codes reach only the
+    listener bkt binds on `127.0.0.1` before it opens the browser.
+  - Permissions limited to what bkt's Cloud commands use. Bitbucket grants the
+    consumer's configured permissions whatever scopes bkt requests.
+- Residual risks of a shared public consumer: Bitbucket Cloud ignores PKCE, so
+  local malware that captures an authorization code on the loopback port can
+  redeem it; anyone can show bkt's consent screen; and API quota is counted per
+  consumer. A stolen refresh token still needs the user's keychain. If the
+  consumer is ever revoked, users log in again with `--web-token`, or set
+  `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` to their own consumer.
 - For development, set `BKT_CONFIG_DIR` to a throwaway directory.
 - Never commit test credentials. Use environment variables or the
   `internal/config/testdata` fixtures when unit testing.

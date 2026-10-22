@@ -15,7 +15,8 @@ import (
 // GitHub CLI and Git Credential Manager, and every build (release, Homebrew,
 // go install, Nix) can log in. The consumer is marked public on Bitbucket, so
 // the secret cannot mint client_credentials tokens. bkt sends PKCE, which
-// Bitbucket Cloud ignores today.
+// Bitbucket Cloud ignores today. docs/SECURITY.md lists the consumer
+// settings this depends on.
 const (
 	// CloudAuthorizeURL is the Bitbucket Cloud authorization endpoint.
 	CloudAuthorizeURL = "https://bitbucket.org/site/oauth2/authorize"
@@ -51,22 +52,26 @@ func ResolveCloudClient() (CloudClient, error) {
 	return CloudClient{ID: id, Secret: secret}, nil
 }
 
-// CloudClientFor returns the consumer that can refresh tok. Bitbucket binds a
-// refresh token to the consumer that issued it.
-func CloudClientFor(tok *Token) (CloudClient, error) {
-	if tok.ClientID == cloudClientID {
-		return CloudClient{ID: cloudClientID, Secret: cloudClientSecret}, nil
+// CloudClientsFor returns the consumers that may refresh tok, to try in
+// order. Bitbucket binds a refresh token to the consumer that issued it.
+// A complete BKT_OAUTH_CLIENT_ID / BKT_OAUTH_CLIENT_SECRET pair comes first
+// when its ID matches, so a rotated secret for the same consumer wins over the
+// compiled one. Tokens stored before bkt recorded the consumer may come from
+// either, so they get both.
+func CloudClientsFor(tok *Token) ([]CloudClient, error) {
+	builtIn := CloudClient{ID: cloudClientID, Secret: cloudClientSecret}
+	var clients []CloudClient
+	id, secret := os.Getenv("BKT_OAUTH_CLIENT_ID"), os.Getenv("BKT_OAUTH_CLIENT_SECRET")
+	if id != "" && secret != "" && (tok.ClientID == "" || tok.ClientID == id) {
+		clients = append(clients, CloudClient{ID: id, Secret: secret})
 	}
-	c, err := ResolveCloudClient()
-	if err != nil {
-		return CloudClient{}, err
+	if (tok.ClientID == "" || tok.ClientID == builtIn.ID) && (len(clients) == 0 || clients[0] != builtIn) {
+		clients = append(clients, builtIn)
 	}
-	if tok.ClientID == "" || tok.ClientID == c.ID {
-		// Tokens stored before bkt recorded the consumer refresh with the
-		// resolved one, as they always did.
-		return c, nil
+	if len(clients) == 0 {
+		return nil, fmt.Errorf("this OAuth token was issued to consumer %s; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to that consumer, or run `bkt auth login https://bitbucket.org --kind cloud --web` again", tok.ClientID)
 	}
-	return CloudClient{}, fmt.Errorf("this OAuth token was issued to consumer %s; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to that consumer, or run `bkt auth login https://bitbucket.org --kind cloud --web` again", tok.ClientID)
+	return clients, nil
 }
 
 // CloudScopes returns the OAuth scopes requested during authorization.
