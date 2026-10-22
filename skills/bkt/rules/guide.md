@@ -39,14 +39,12 @@ If not authenticated, log in:
 # Data Center (PAT-based)
 bkt auth login https://bitbucket.example.com --username alice --token <PAT>
 
-# Bitbucket Cloud — OAuth (official binaries open browser out of the box)
+# Bitbucket Cloud — OAuth (opens the browser; no setup needed)
 bkt auth login https://bitbucket.org --kind cloud --web
 
 # Bitbucket Cloud — API token (--web-token opens Atlassian's token creation page)
 bkt auth login https://bitbucket.org --kind cloud --web-token
 ```
-
-For source and Nix builds, set `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` env vars before running `--web`.
 
 **3. Set up a context** — contexts bind a host to a project/workspace and optional default repo, so you don't repeat flags on every command:
 

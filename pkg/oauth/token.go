@@ -12,6 +12,9 @@ type Token struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
 	ExpiresAt    time.Time `json:"expires_at"`
+	// ClientID is the consumer that issued the token, the only one that can
+	// refresh it. Empty for tokens stored before bkt recorded it.
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // tokenRefreshGrace is subtracted from ExpiresAt when checking expiry so tokens

@@ -147,17 +147,12 @@ jobs:
         run: go vet ./...
       - name: Run tests
         run: make test
-      - name: Check OAuth release contract
-        run: ./scripts/check-oauth-release-contract.sh
       - name: Check Homebrew formula test
         run: ./scripts/check-homebrew-formula-test.sh
       - name: Check WinGet release contract
         run: ./scripts/check-winget-release-contract.sh
       - name: Build CLI
         run: VERSION=${{ needs.prepare.outputs.tag }} make build
-        env:
-          BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
-          BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
       - name: Check embedded version
         run: ./bin/bkt --version | grep -Fx "bkt version ${{ needs.prepare.outputs.tag }}"
 
@@ -229,16 +224,6 @@ jobs:
               raise SystemExit(f"missing changelog section for {version}")
           output_path.write_text(match.group(0).strip() + "\n", encoding="utf-8")
           PY
-
-      - name: Validate OAuth secrets
-        env:
-          BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
-          BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
-        run: |
-          if [ -z "$BKT_OAUTH_CLIENT_ID" ] || [ -z "$BKT_OAUTH_CLIENT_SECRET" ]; then
-            echo "::error::BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET must be set as repository secrets"
-            exit 1
-          fi
 
       - name: Configure WinGet publishing
         id: winget
@@ -324,8 +309,6 @@ jobs:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
           WINGET_SKIP_UPLOAD: ${{ steps.winget.outputs.skip_upload }}
-          BKT_OAUTH_CLIENT_ID: ${{ secrets.BKT_OAUTH_CLIENT_ID }}
-          BKT_OAUTH_CLIENT_SECRET: ${{ secrets.BKT_OAUTH_CLIENT_SECRET }}
           BKT_MACOS_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           BKT_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           BKT_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}

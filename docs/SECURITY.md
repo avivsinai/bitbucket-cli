@@ -10,11 +10,28 @@ implementation details.
   Linux Secret Service) or an encrypted local file backend. Host metadata lives
   in `$XDG_CONFIG_HOME/bkt/config.yml` with permissions `0600`. The `BKT_TOKEN`
   environment variable provides runtime-only injection for CI/headless use.
-- Official release artifacts embed bkt's Bitbucket Cloud OAuth consumer
-  credentials so `bkt auth login --kind cloud --web` works out of the box.
-  Treat those credentials as public-client material owned by this CLI, not as
-  user secrets. Source and Nix builds read `BKT_OAUTH_CLIENT_ID` and
-  `BKT_OAUTH_CLIENT_SECRET` from the runtime environment.
+- bkt's Bitbucket Cloud OAuth consumer key and secret are in source
+  (`pkg/oauth/cloud.go`). A secret shipped inside a native app cannot stay
+  confidential (RFC 8252 §8.5), so it is public-client material, not a user
+  secret; the GitHub CLI and Git Credential Manager ship theirs the same way.
+  A user's access is protected by their consent in the browser and by the
+  tokens in their keychain. Two consumer settings make a public secret safe;
+  keep them:
+  - Marked **public** on Bitbucket, so the secret cannot mint
+    `client_credentials` tokens that act as the consumer's owner.
+  - Callback restricted to the loopback host. Bitbucket matches the
+    `redirect_uri` host exactly and allows any port, so codes reach only the
+    listener bkt binds on `127.0.0.1` before it opens the browser.
+- Bitbucket grants a token every permission configured on the consumer,
+  whatever scopes bkt requests, so the consumer's permissions decide what a
+  bkt login can do. Grant only what bkt's Cloud commands use.
+- Residual risks of a shared public consumer: Bitbucket Cloud ignores PKCE, so
+  local malware that captures an authorization code on the loopback port can
+  redeem it; anyone can show bkt's consent screen; and API quota is counted per
+  consumer. Stealing a user's tokens still requires access to their keychain.
+  If the consumer is ever revoked, users log in again with `--web-token`, or
+  set `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` to their own
+  consumer.
 - For development, set `BKT_CONFIG_DIR` to a throwaway directory.
 - Never commit test credentials. Use environment variables or the
   `internal/config/testdata` fixtures when unit testing.

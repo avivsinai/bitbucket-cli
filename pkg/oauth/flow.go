@@ -97,6 +97,7 @@ func RunFlow(ctx context.Context, opts FlowOptions) (*FlowResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	tok.ClientID = opts.ClientID
 
 	userInfoURL := opts.UserInfoURL
 	if userInfoURL == "" {
@@ -124,7 +125,12 @@ func RefreshToken(ctx context.Context, refreshToken, clientID, clientSecret, tok
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(clientID, clientSecret)
 
-	return doTokenRequest(req)
+	tok, err := doTokenRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	tok.ClientID = clientID
+	return tok, nil
 }
 
 func buildAuthorizeURL(opts FlowOptions, redirectURI, state, codeChallenge string) string {

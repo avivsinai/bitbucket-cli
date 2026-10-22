@@ -91,9 +91,6 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 		if err != nil {
 			return nil, fmt.Errorf("resolve host key: %w", err)
 		}
-		if err := preflightExpiredOAuth(hostKey, host); err != nil {
-			return nil, err
-		}
 		opts.TokenRefresher = oauthTokenRefresher(hostKey, host)
 	}
 
@@ -132,16 +129,23 @@ func oauthTokenRefresher(hostKey string, host *config.Host) func(ctx context.Con
 				host.OAuthExpiresAt = tok.ExpiresAt
 				return nil
 			}
-			if oauth.CloudClientID() == "" || oauth.CloudClientSecret() == "" {
-				return oauthMissingCredsError(hostKey, tok.ExpiresAt)
+			clients, err := oauth.CloudClientsFor(tok)
+			if err != nil {
+				return fmt.Errorf("refresh OAuth token for %s: %w", hostKey, err)
 			}
 
-			newTok, err := oauth.RefreshToken(ctx,
-				tok.RefreshToken,
-				oauth.CloudClientID(),
-				oauth.CloudClientSecret(),
-				oauth.CloudTokenURL,
-			)
+			var newTok *oauth.Token
+			for _, client := range clients {
+				newTok, err = oauth.RefreshToken(ctx,
+					tok.RefreshToken,
+					client.ID,
+					client.Secret,
+					oauth.CloudTokenURL,
+				)
+				if err == nil {
+					break
+				}
+			}
 			if err != nil {
 				return fmt.Errorf("refresh failed (re-login with `bkt auth login --web`): %w", err)
 			}
@@ -165,23 +169,6 @@ func oauthTokenRefresher(hostKey string, host *config.Host) func(ctx context.Con
 		host.Token = accessToken
 		return accessToken, nil
 	}
-}
-
-func preflightExpiredOAuth(hostKey string, host *config.Host) error {
-	if host == nil || host.OAuthExpiresAt.IsZero() || time.Now().Before(host.OAuthExpiresAt) {
-		return nil
-	}
-	if oauth.CloudClientID() != "" && oauth.CloudClientSecret() != "" {
-		return nil
-	}
-	return oauthMissingCredsError(hostKey, host.OAuthExpiresAt)
-}
-
-func oauthMissingCredsError(hostKey string, expiresAt time.Time) error {
-	if !expiresAt.IsZero() && time.Now().After(expiresAt) {
-		return fmt.Errorf("oauth access token for %s expired at %s, and BKT_OAUTH_CLIENT_ID / BKT_OAUTH_CLIENT_SECRET are not set. Run `bkt auth login https://bitbucket.org --kind cloud --web-token` to replace it with a scoped API token, or restore the OAuth consumer env vars", hostKey, expiresAt.Format(time.RFC3339))
-	}
-	return fmt.Errorf("cloud OAuth consumer credentials are missing for %s; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to refresh OAuth, or run `bkt auth login https://bitbucket.org --kind cloud --web-token` to replace the stored OAuth credential with a scoped API token", hostKey)
 }
 
 func oauthRefreshLockPath(hostKey string) (string, error) {
