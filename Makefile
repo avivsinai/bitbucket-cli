@@ -34,14 +34,10 @@ GIT_DIRTY := $(shell git diff-index --quiet HEAD -- 2>$(NULL_DEVICE) || echo dir
 VERSION ?= $(if $(GIT_TAG),$(GIT_TAG),dev-$(if $(GIT_COMMIT_SHORT),$(GIT_COMMIT_SHORT),unknown)$(if $(GIT_DIRTY),-dirty,))
 COMMIT ?= $(if $(GIT_COMMIT),$(GIT_COMMIT),unknown)
 BUILD_DATE ?= $(if $(BUILD_DATE_VALUE),$(BUILD_DATE_VALUE),unknown)
-BKT_OAUTH_CLIENT_ID ?=
-BKT_OAUTH_CLIENT_SECRET ?=
 LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.versionFromLdflags=$(VERSION) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
-	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE) \
-	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientID=$(BKT_OAUTH_CLIENT_ID) \
-	-X github.com/avivsinai/bitbucket-cli/pkg/oauth.cloudClientSecret=$(BKT_OAUTH_CLIENT_SECRET)
+	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
 .PHONY: build fmt lint test tidy sbom release snapshot clean check-skills sync-skills check-generated-skill release-local generate-skill nix-update-vendor-hash require-bash
 

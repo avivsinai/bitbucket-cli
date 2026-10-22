@@ -4,75 +4,74 @@ import (
 	"testing"
 )
 
-func TestCloudClientIDFromEnv(t *testing.T) {
-	orig := cloudClientID
-	defer func() { cloudClientID = orig }()
+// Homebrew core, go install, and Nix build from source without release
+// ldflags; Cloud OAuth login must still work there.
+func TestResolveCloudClientDefaultsToBuiltIn(t *testing.T) {
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
 
-	cloudClientID = ""                        // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_ID", "env-id") // gitleaks:allow
-
-	if got := CloudClientID(); got != "env-id" {
-		t.Errorf("CloudClientID() = %q, want env value %q", got, "env-id")
+	got, err := ResolveCloudClient()
+	if err != nil {
+		t.Fatalf("ResolveCloudClient: %v", err)
+	}
+	if got.ID == "" || got.Secret == "" {
+		t.Fatal("built-in OAuth consumer is empty")
 	}
 }
 
-func TestCloudClientIDFromLdflags(t *testing.T) {
-	orig := cloudClientID
-	defer func() { cloudClientID = orig }()
+func TestResolveCloudClientEnv(t *testing.T) {
+	tests := []struct {
+		name, id, secret string
+		want             CloudClient
+		wantErr          bool
+	}{
+		{name: "pair overrides built-in", id: "env-id", secret: "env-secret", want: CloudClient{ID: "env-id", Secret: "env-secret"}}, // gitleaks:allow
+		{name: "id without secret", id: "env-id", wantErr: true},
+		{name: "secret without id", secret: "env-secret", wantErr: true}, // gitleaks:allow
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BKT_OAUTH_CLIENT_ID", tt.id)
+			t.Setenv("BKT_OAUTH_CLIENT_SECRET", tt.secret)
 
-	cloudClientID = "build-id"                // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_ID", "env-id") // gitleaks:allow
-
-	if got := CloudClientID(); got != "build-id" {
-		t.Errorf("CloudClientID() = %q, want build-time value %q", got, "build-id")
+			got, err := ResolveCloudClient()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ResolveCloudClient error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("ResolveCloudClient = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestCloudClientIDEmpty(t *testing.T) {
-	orig := cloudClientID
-	defer func() { cloudClientID = orig }()
+func TestCloudClientForRefreshesWithIssuingConsumer(t *testing.T) {
+	builtIn := CloudClient{ID: cloudClientID, Secret: cloudClientSecret}
+	env := CloudClient{ID: "env-id", Secret: "env-secret"} // gitleaks:allow
+	t.Setenv("BKT_OAUTH_CLIENT_ID", env.ID)
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", env.Secret)
 
-	cloudClientID = ""                  // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_ID", "") // gitleaks:allow
-
-	if got := CloudClientID(); got != "" {
-		t.Errorf("CloudClientID() = %q, want empty", got)
+	tests := []struct {
+		name     string
+		clientID string
+		want     CloudClient
+		wantErr  bool
+	}{
+		{name: "legacy token uses resolved consumer", clientID: "", want: env},
+		{name: "env-issued token", clientID: env.ID, want: env},
+		{name: "built-in-issued token ignores env", clientID: builtIn.ID, want: builtIn},
+		{name: "unknown consumer", clientID: "other-id", wantErr: true},
 	}
-}
-
-func TestCloudClientSecretFromEnv(t *testing.T) {
-	orig := cloudClientSecret
-	defer func() { cloudClientSecret = orig }()
-
-	cloudClientSecret = ""                            // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "env-secret") // gitleaks:allow
-
-	if got := CloudClientSecret(); got != "env-secret" {
-		t.Errorf("CloudClientSecret() = %q, want env value %q", got, "env-secret")
-	}
-}
-
-func TestCloudClientSecretFromLdflags(t *testing.T) {
-	orig := cloudClientSecret
-	defer func() { cloudClientSecret = orig }()
-
-	cloudClientSecret = "build-secret"                // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "env-secret") // gitleaks:allow
-
-	if got := CloudClientSecret(); got != "build-secret" {
-		t.Errorf("CloudClientSecret() = %q, want build-time value %q", got, "build-secret")
-	}
-}
-
-func TestCloudClientSecretEmpty(t *testing.T) {
-	orig := cloudClientSecret
-	defer func() { cloudClientSecret = orig }()
-
-	cloudClientSecret = ""                  // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "") // gitleaks:allow
-
-	if got := CloudClientSecret(); got != "" {
-		t.Errorf("CloudClientSecret() = %q, want empty", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := CloudClientFor(&Token{ClientID: tt.clientID})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("CloudClientFor error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("CloudClientFor = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 

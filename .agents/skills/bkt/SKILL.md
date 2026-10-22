@@ -50,9 +50,8 @@ Read only the reference for the requested command group:
 - Never place tokens, OAuth secrets, or passwords in commands that could enter
   logs or committed files. Use the CLI's supported credential flow or environment
   variables described in the auth references.
-- Official release binaries embed the Cloud browser-OAuth consumer credentials.
-  Do not remove that behavior as generic hardening. Source and Nix builds may
-  require `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET`.
+- Every bkt build carries its Cloud browser-OAuth consumer, so
+  `bkt auth login --kind cloud --web` needs no setup.
 - Before a merge or other consequential write, inspect the exact target,
   repository, and current checks. Report the resulting URL or identifier.
 

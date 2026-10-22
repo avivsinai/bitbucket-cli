@@ -49,11 +49,13 @@
 ## Guardrails
 
 - Treat `scripts/release.sh` as the only supported release entrypoint.
-- Official release artifacts must embed bkt's Bitbucket Cloud OAuth consumer
-  credentials through GoReleaser ldflags so `bkt auth login --kind cloud --web`
-  remains zero-config for release binaries. Do not remove the ldflags, release
-  workflow secret validation, or `scripts/check-oauth-release-contract.sh`
-  without an explicit breaking-change decision and changelog entry.
+- bkt's Bitbucket Cloud OAuth consumer lives in `pkg/oauth/cloud.go`, so every
+  build, including Homebrew core's source build, supports
+  `bkt auth login --kind cloud --web`. Releases need no OAuth secrets.
+- Homebrew core autobumps `bitbucket-cli` a few hours after each tag. Do not
+  open a manual bump PR; if no BrewTestBot PR appears within a day, use
+  `brew bump-formula-pr` and follow homebrew-core's AI-disclosure rules (no AI
+  co-author trailers).
 - Refresh `flake.nix`'s `vendorHash` whenever `go.mod` or `go.sum` changes; do not wait until release time because Nix CI runs on pull requests. Use `make nix-update-vendor-hash` after dependency bumps.
 - Submit the first package version manually with `wingetcreate new` and wait for
   its `microsoft/winget-pkgs` PR to be accepted before advertising the

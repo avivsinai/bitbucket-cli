@@ -30,9 +30,6 @@ jobs:
       - name: Check generated skill rules are up-to-date
         run: make check-generated-skill
 
-      - name: Check OAuth release contract
-        run: ./scripts/check-oauth-release-contract.sh
-
       - name: Check Homebrew formula test
         run: ./scripts/check-homebrew-formula-test.sh
 
@@ -81,9 +78,6 @@ jobs:
 
       - name: Build CLI
         run: make build
-        env:
-          BKT_OAUTH_CLIENT_ID: ci-oauth-client-id
-          BKT_OAUTH_CLIENT_SECRET: ci-oauth-client-secret # gitleaks:allow
 
       - name: Generate SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -115,9 +109,6 @@ jobs:
 
       - name: Build via GNU Make
         run: make build
-        env:
-          BKT_OAUTH_CLIENT_ID: ci-oauth-client-id
-          BKT_OAUTH_CLIENT_SECRET: ci-oauth-client-secret # gitleaks:allow
 
       - name: Test via GNU Make
         run: make test

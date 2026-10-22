@@ -5,6 +5,18 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Bitbucket Cloud browser login (`bkt auth login --kind cloud --web`) and
+  OAuth token refresh work in every build, including Homebrew core,
+  `go install`, and Nix. bkt's OAuth consumer now ships in source, as the
+  GitHub CLI and Git Credential Manager ship theirs, instead of only in
+  release binaries.
+
+### Changed
+- `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` now select your own
+  OAuth consumer over bkt's, and must be set together. Before, release
+  binaries ignored them. A stored OAuth token refreshes with the consumer that
+  issued it.
 
 ## [0.35.2] - 2026-10-20
 ### Fixed

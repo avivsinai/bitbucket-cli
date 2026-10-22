@@ -37,7 +37,7 @@ Recorded from a real `bkt --help` run — no Bitbucket login or token required. 
 brew install bitbucket-cli
 ```
 
-The core formula is built from source without bkt's OAuth client, so Bitbucket Cloud browser login (`bkt auth login --kind cloud --web`) needs `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` (see [Binary Downloads](#binary-downloads)). API-token login (`--web-token`) and Data Center login work as is. For the official binary with Cloud OAuth built in, use the tap:
+The tap installs the prebuilt, Developer ID-signed release binary instead:
 
 ```bash
 brew install avivsinai/tap/bitbucket-cli
@@ -88,8 +88,6 @@ Don't have Nix yet? See [nixos.asia/en/install](https://nixos.asia/en/install) f
 
 Download pre-built binaries for your platform from the [releases page](https://github.com/avivsinai/bitbucket-cli/releases/latest).
 The `.tar.gz` and `.zip` release archives also include `skills/bkt/`, so the CLI and canonical skill files stay in sync when you install from a release artifact.
-
-Official binaries support Bitbucket Cloud OAuth (`bkt auth login --kind cloud --web`) out of the box. Source and Nix builds can use the same flow by setting `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` in the environment. API-token login via `--web-token` works without that extra setup.
 
 ### Bitbucket Pipelines
 

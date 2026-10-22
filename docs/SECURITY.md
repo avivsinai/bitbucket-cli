@@ -10,11 +10,13 @@ implementation details.
   Linux Secret Service) or an encrypted local file backend. Host metadata lives
   in `$XDG_CONFIG_HOME/bkt/config.yml` with permissions `0600`. The `BKT_TOKEN`
   environment variable provides runtime-only injection for CI/headless use.
-- Official release artifacts embed bkt's Bitbucket Cloud OAuth consumer
-  credentials so `bkt auth login --kind cloud --web` works out of the box.
-  Treat those credentials as public-client material owned by this CLI, not as
-  user secrets. Source and Nix builds read `BKT_OAUTH_CLIENT_ID` and
-  `BKT_OAUTH_CLIENT_SECRET` from the runtime environment.
+- bkt's Bitbucket Cloud OAuth consumer key and secret are in source
+  (`pkg/oauth/cloud.go`). A secret shipped inside a native app cannot stay
+  confidential (RFC 8252 §8.5), so it is public-client material, not a user
+  secret; the GitHub CLI and Git Credential Manager ship theirs the same way.
+  The consumer is marked public on Bitbucket, so its secret cannot mint
+  `client_credentials` tokens. A user's access is protected by their consent
+  in the browser and by the tokens in their keychain.
 - For development, set `BKT_CONFIG_DIR` to a throwaway directory.
 - Never commit test credentials. Use environment variables or the
   `internal/config/testdata` fixtures when unit testing.

@@ -104,32 +104,6 @@ func TestNewCloudClientOAuthSkipsRefresherWithBKTToken(t *testing.T) {
 	}
 }
 
-func TestNewCloudClientOAuthExpiredMissingCredsPreflight(t *testing.T) {
-	host := &config.Host{
-		Kind:           "cloud",
-		BaseURL:        "https://api.bitbucket.org/2.0",
-		Username:       "erank_ai21",
-		AuthMethod:     "oauth",
-		Token:          "expired-access",
-		OAuthExpiresAt: time.Now().Add(-time.Minute),
-	}
-
-	t.Setenv(secret.EnvToken, "")
-	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
-	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
-
-	_, err := NewCloudClient(host)
-	if err == nil {
-		t.Fatal("expected expired OAuth preflight error")
-	}
-	if !strings.Contains(err.Error(), "oauth access token for api.bitbucket.org expired at") {
-		t.Errorf("error = %q, want expired OAuth message", err)
-	}
-	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web-token") {
-		t.Errorf("error = %q, want API-token recovery command", err)
-	}
-}
-
 func TestNewFrozenCloudClientOAuthNeverRefreshes(t *testing.T) {
 	t.Setenv(secret.EnvToken, "")
 	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
@@ -244,7 +218,7 @@ func TestSecretOptsNilHost(t *testing.T) {
 	}
 }
 
-func TestOAuthTokenRefresherMissingCreds(t *testing.T) {
+func TestOAuthTokenRefresherRejectsUnknownConsumer(t *testing.T) {
 	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
 	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
 	t.Setenv("BKT_ALLOW_INSECURE_STORE", "1")
@@ -254,6 +228,7 @@ func TestOAuthTokenRefresherMissingCreds(t *testing.T) {
 	t.Setenv("KEYRING_FILE_DIR", fileDir)
 
 	tok := oauth.FromResponse("old-access", "old-refresh", -60)
+	tok.ClientID = "other-consumer"
 	blob, err := tok.Marshal()
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -279,14 +254,14 @@ func TestOAuthTokenRefresherMissingCreds(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "BKT_OAUTH_CLIENT_ID / BKT_OAUTH_CLIENT_SECRET are not set") {
+	if !strings.Contains(err.Error(), "issued to consumer other-consumer") {
 		t.Errorf("error = %q", err)
 	}
 	if strings.Contains(err.Error(), "auth logout") {
 		t.Errorf("error = %q, should not recommend logout", err)
 	}
-	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web-token") {
-		t.Errorf("error = %q, want API-token recovery command", err)
+	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web") {
+		t.Errorf("error = %q, want re-login command", err)
 	}
 }
 
