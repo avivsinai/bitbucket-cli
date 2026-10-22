@@ -1,6 +1,6 @@
 // Package mcpserver implements bkt's Model Context Protocol server: a typed
 // tool registry over the bbdc/bbcloud clients, serving one context frozen at
-// startup. v1 is read-only and stdio-only; see docs/plans for the full spec.
+// startup. v1 is read-only and stdio-only.
 package mcpserver
 
 import (

@@ -43,8 +43,8 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 		Long: `Manage authentication credentials for Bitbucket Data Center and Cloud hosts.
 
 Tokens are stored in the OS keychain by default. For Data Center hosts, bkt
-uses Personal Access Tokens (PATs). For Bitbucket Cloud, bkt uses Atlassian
-API tokens with scopes.
+uses Personal Access Tokens (PATs). For Bitbucket Cloud, bkt uses browser
+OAuth (--web) or Atlassian API tokens with scopes.
 
 Use "bkt auth login" to add a host, "bkt auth status" to inspect stored
 credentials, and "bkt auth logout" to remove them.`,
