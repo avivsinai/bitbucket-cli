@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.36.0] - 2026-10-22
 ### Fixed
 - Bitbucket Cloud browser login (`bkt auth login --kind cloud --web`) and
   OAuth token refresh work in every build, including Homebrew core,
@@ -17,6 +19,7 @@ All notable changes to this project will be documented here. The format follows
   OAuth consumer over bkt's, and must be set together. Before, release
   binaries ignored them. A stored OAuth token refreshes with the consumer that
   issued it.
+
 
 ## [0.35.2] - 2026-10-20
 ### Fixed
@@ -847,7 +850,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.2...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.2...v0.36.0
 [0.35.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.1...v0.35.2
 [0.35.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.34.0...v0.35.0
