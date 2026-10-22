@@ -573,8 +573,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 			TokenSource: tokenSource,
 		}
 		if am == "oauth" && tokenSource != secret.EnvToken {
-			hs.Expires = oauthExpiryLabel(key, h)
-			hs.Refresh = oauthRefreshStatus(hs.Expires)
+			hs.Expires, hs.Refresh = oauthExpiry(key, h)
 		}
 		hosts = append(hosts, hs)
 	}
@@ -937,41 +936,35 @@ func storedTokenIsOAuthBlob(hostKey string, host *config.Host) bool {
 	return oauth.IsTokenBlob(raw)
 }
 
-// oauthExpiryLabel reads the OAuth JSON blob from the keyring and returns a
-// human-readable expiry string. Returns "" on any error (best-effort).
-func oauthExpiryLabel(hostKey string, host *config.Host) string {
+// oauthExpiry reads the OAuth JSON blob from the keyring and returns a
+// human-readable expiry and, once expired, whether bkt can refresh it.
+// Returns empty strings on any error (best-effort).
+func oauthExpiry(hostKey string, host *config.Host) (expires, refresh string) {
 	opts := []secret.Option{}
 	if host.AllowInsecureStore {
 		opts = append(opts, secret.WithAllowFileFallback(true))
 	}
 	store, err := secret.Open(opts...)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	raw, err := store.Get(secret.TokenKey(hostKey))
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	if !oauth.IsTokenBlob(raw) {
-		return ""
+		return "", ""
 	}
 	tok, err := oauth.Unmarshal(raw)
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	if tok.IsExpired() {
-		return "expired"
+	if !tok.IsExpired() {
+		remaining := time.Until(tok.ExpiresAt).Truncate(time.Minute)
+		return fmt.Sprintf("%s (in %s)", tok.ExpiresAt.Format(time.RFC3339), remaining), ""
 	}
-	remaining := time.Until(tok.ExpiresAt).Truncate(time.Minute)
-	return fmt.Sprintf("%s (in %s)", tok.ExpiresAt.Format(time.RFC3339), remaining)
-}
-
-func oauthRefreshStatus(expires string) string {
-	if expires != "expired" {
-		return ""
+	if _, err := oauth.CloudClientFor(tok); err != nil {
+		return "expired", "unavailable; " + err.Error()
 	}
-	if _, err := oauth.ResolveCloudClient(); err != nil {
-		return "unavailable; " + err.Error()
-	}
-	return "available"
+	return "expired", "available"
 }

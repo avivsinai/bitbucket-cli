@@ -54,17 +54,17 @@ func ResolveCloudClient() (CloudClient, error) {
 // CloudClientFor returns the consumer that can refresh tok. Bitbucket binds a
 // refresh token to the consumer that issued it.
 func CloudClientFor(tok *Token) (CloudClient, error) {
+	if tok.ClientID == cloudClientID {
+		return CloudClient{ID: cloudClientID, Secret: cloudClientSecret}, nil
+	}
 	c, err := ResolveCloudClient()
 	if err != nil {
 		return CloudClient{}, err
 	}
-	switch tok.ClientID {
-	case "", c.ID:
+	if tok.ClientID == "" || tok.ClientID == c.ID {
 		// Tokens stored before bkt recorded the consumer refresh with the
 		// resolved one, as they always did.
 		return c, nil
-	case cloudClientID:
-		return CloudClient{ID: cloudClientID, Secret: cloudClientSecret}, nil
 	}
 	return CloudClient{}, fmt.Errorf("this OAuth token was issued to consumer %s; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to that consumer, or run `bkt auth login https://bitbucket.org --kind cloud --web` again", tok.ClientID)
 }
