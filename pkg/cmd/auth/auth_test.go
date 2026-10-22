@@ -484,14 +484,14 @@ func TestRunStatusDetectsOAuthBlobWhenAuthMethodMissing(t *testing.T) {
 func TestRunStatusWarnsWhenOAuthExpiredAndRefreshUnavailable(t *testing.T) {
 	setupFileKeyring(t)
 	t.Setenv(secret.EnvToken, "")
-	t.Setenv("BKT_OAUTH_CLIENT_ID", "only-id")
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
 	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
 
 	store, err := secret.Open(secret.WithAllowFileFallback(true))
 	if err != nil {
 		t.Fatalf("secret.Open: %v", err)
 	}
-	blob := `{"access_token":"at-from-keyring","refresh_token":"rt-456","expires_at":"2000-01-01T00:00:00Z"}`
+	blob := `{"access_token":"at-from-keyring","refresh_token":"rt-456","expires_at":"2000-01-01T00:00:00Z","client_id":"other-consumer"}`
 	if err := store.Set(secret.TokenKey("api.bitbucket.org"), blob); err != nil {
 		t.Fatalf("store.Set: %v", err)
 	}
