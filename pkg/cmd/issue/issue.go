@@ -14,7 +14,7 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
-var errIssuesRemoved = errors.New("Atlassian removed Bitbucket Cloud Issues on 20 August 2026 (the API returns 410 Gone); track issues in Jira")
+var errIssuesRemoved = errors.New("issue tracking is gone: Atlassian removed Bitbucket Cloud Issues on 20 August 2026 (the API returns 410 Gone); track issues in Jira")
 
 // NewCmdIssue wires issue subcommands.
 func NewCmdIssue(f *cmdutil.Factory) *cobra.Command {
