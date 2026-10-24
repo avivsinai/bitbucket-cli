@@ -5,6 +5,18 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- **Log in again once:** run `bkt auth login https://bitbucket.org --kind cloud --web`.
+  bkt's Bitbucket Cloud OAuth consumer now grants Repositories Admin, so
+  `bkt repo create` works with browser login; before, it failed with
+  "credentials lack one or more required privilege scopes". It also no longer
+  grants unused project-write, workspace-membership, and issue permissions.
+  Bitbucket expires every token issued before this change.
+
+### Removed
+- `bkt issue` now explains that Atlassian removed Bitbucket Cloud Issues on
+  20 August 2026 and exits, instead of calling an API that answers 410 Gone.
+  The command is hidden from help; track issues in Jira.
 
 ## [0.36.0] - 2026-10-22
 ### Fixed

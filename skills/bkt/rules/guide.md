@@ -29,7 +29,7 @@ bkt auth status
 - Create an "API token with scopes" (not a general API token)
 - Select **Bitbucket** as the application
 - Required scope: **Account: Read** (`read:user:bitbucket`)
-- Additional scopes as needed: Repositories, Pull requests, Issues
+- Additional scopes as needed: Repositories (Admin for `bkt repo create`), Pull requests, Pipelines, Webhooks
 
 For config-free use in containers and CI pipelines, see [headless authentication](headless.md).
 
@@ -66,7 +66,7 @@ Some commands are **Data Center only** or **Cloud only** — check the command r
 | Repositories | yes | yes |
 | Branches (list) | yes | yes |
 | Branches (create/delete/protect) | yes | — |
-| Issues | — | yes |
+| Issues | — | — (removed by Atlassian; use Jira) |
 | Pipelines | — | yes |
 | Permissions | yes | — |
 | Webhooks | yes | yes |
@@ -153,7 +153,6 @@ Every command accepts these inherited flags:
 - [commit](commit.md) — Work with commits
 - [context](context.md) — Manage Bitbucket CLI contexts
 - [extension](extension.md) — Manage bkt CLI extensions
-- [issue](issue.md) — Work with Bitbucket Cloud issues *(Cloud)*
 - [mcp](mcp.md) — Model Context Protocol server for agents
 - [perms](perms.md) — Manage Bitbucket permissions *(DC)*
 - [pipeline](pipeline.md) — Run and inspect Bitbucket Cloud pipelines *(Cloud)*

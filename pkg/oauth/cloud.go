@@ -75,8 +75,8 @@ func CloudClientsFor(tok *Token) ([]CloudClient, error) {
 }
 
 // CloudScopes returns the OAuth scopes requested during authorization.
-// Scopes cover the full Cloud command set: repos, PRs, issues, pipelines,
-// pipeline variables, and webhooks.
+// Bitbucket Cloud ignores this parameter and grants the scopes configured on
+// the consumer, so the list only documents what bkt's commands use.
 func CloudScopes() []string {
-	return []string{"account", "repository", "pullrequest", "issue", "pipeline", "webhook"}
+	return []string{"account", "repository", "pullrequest", "pipeline", "webhook"}
 }

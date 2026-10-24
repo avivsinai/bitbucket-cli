@@ -1,7 +1,7 @@
 ---
 name: bkt
 version: 0.36.0
-description: Operate Bitbucket Cloud or Data Center repositories, pull requests, branches, issues, pipelines, permissions, and webhooks with bkt. Use when a request names Bitbucket or bkt; confirm the platform before platform-specific commands.
+description: Operate Bitbucket Cloud or Data Center repositories, pull requests, branches, pipelines, permissions, and webhooks with bkt. Use when a request names Bitbucket or bkt; confirm the platform before platform-specific commands.
 metadata:
   short-description: Bitbucket CLI for repos, PRs, branches
   compatibility: claude-code, codex-cli
@@ -34,8 +34,9 @@ Read only the reference for the requested command group:
 - [pull requests](rules/pr.md), [repositories](rules/repo.md),
   [branches](rules/branch.md), [commits](rules/commit.md), or
   [statuses](rules/status.md)
-- [Cloud issues](rules/issue.md), [pipelines](rules/pipeline.md), or
-  [variables](rules/variable.md)
+- [pipelines](rules/pipeline.md) or [variables](rules/variable.md)
+- Bitbucket Cloud Issues no longer exist (Atlassian removed them in August
+  2026); route issue tracking to Jira.
 - [Data Center administration](rules/admin.md),
   [projects](rules/project.md), or [permissions](rules/perms.md)
 - [authentication](rules/auth.md), [contexts](rules/context.md),
@@ -65,7 +66,6 @@ Read only the reference for the requested command group:
 - [commit](rules/commit.md) — Work with commits
 - [context](rules/context.md) — Manage Bitbucket CLI contexts
 - [extension](rules/extension.md) — Manage bkt CLI extensions
-- [issue](rules/issue.md) — Work with Bitbucket Cloud issues *(Cloud)*
 - [mcp](rules/mcp.md) — Model Context Protocol server for agents
 - [perms](rules/perms.md) — Manage Bitbucket permissions *(DC)*
 - [pipeline](rules/pipeline.md) — Run and inspect Bitbucket Cloud pipelines *(Cloud)*
