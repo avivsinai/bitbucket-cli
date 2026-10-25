@@ -82,9 +82,9 @@ bkt auth login https://bitbucket.org --kind cloud --username <atlassian-email> -
 Create the token under [Atlassian account → Security → API tokens](https://id.atlassian.com/manage-profile/security/api-tokens) with **Create API token with scopes**. Choose **Bitbucket** as the app (general Atlassian tokens do not work) and grant:
 
 - **Account: Read** (`read:user:bitbucket`), required
-- **Repositories: Read, Write**
+- **Repositories: Read, Write**, plus **Admin** for `bkt repo create`
 - **Pull requests: Read, Write**
-- **Issues: Read, Write** (optional)
+- **Pipelines** and **Webhooks**, if you use `bkt pipeline`, `bkt variable`, or `bkt webhook`
 
 Log in with your Atlassian account **email**, not your Bitbucket username. Atlassian has removed app passwords; replace any you still use with an API token.
 
@@ -186,14 +186,7 @@ bkt pr comments resolve 42 1001
 bkt pr merge 42 --message "merge: feature/cache"
 ```
 
-**Issues** (Cloud; Data Center uses Jira)
-
-```bash
-bkt issue list --state open --kind bug
-bkt issue create -t "Login broken" -k bug -p major
-bkt issue comment 42 -b "Fixed in v1.2.0"
-bkt issue attachment upload 42 screenshot.png
-```
+**Issues.** Atlassian removed Bitbucket Cloud Issues in August 2026, and Data Center never had them; track issues in Jira.
 
 **Pipelines, branches, permissions, webhooks**
 

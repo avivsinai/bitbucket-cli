@@ -2,6 +2,7 @@ package issue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,32 +14,20 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
+var errIssuesRemoved = errors.New("issue tracking is gone: Atlassian removed Bitbucket Cloud Issues on 20 August 2026 (the API returns 410 Gone); track issues in Jira")
+
 // NewCmdIssue wires issue subcommands.
 func NewCmdIssue(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "issue",
-		Short: "Work with Bitbucket Cloud issues (Cloud only)",
-		Long: `Create and manage issues in Bitbucket Cloud repositories.
-
-Note: The issue tracker is only available for Bitbucket Cloud. Bitbucket Data Center
-uses Jira for issue tracking.`,
+		Short: "Bitbucket Cloud issues (removed by Atlassian)",
+		Long: `Atlassian removed the Bitbucket Cloud issue tracker on 20 August 2026, and its
+API now answers 410 Gone. Bitbucket Data Center never had one. Track issues in
+Jira instead.`,
+		// Kept so existing scripts get this explanation instead of "unknown command".
+		Hidden: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := cmdutil.ResolveOutputSettings(cmd); err != nil {
-				return err
-			}
-			ios, err := f.Streams()
-			if err != nil {
-				return nil // swallow — subcommand will handle
-			}
-			override := cmdutil.FlagValue(cmd, "context")
-			_, _, host, err := cmdutil.ResolveContext(f, cmd, override)
-			if err != nil {
-				return nil // swallow — subcommand prints its own error
-			}
-			if host.Kind == "cloud" {
-				fmt.Fprintln(ios.ErrOut, "WARNING: Bitbucket Cloud is removing native Issues on August 20, 2026. Migrate to Jira for issue tracking.")
-			}
-			return nil
+			return errIssuesRemoved
 		},
 	}
 

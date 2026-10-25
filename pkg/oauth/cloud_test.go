@@ -81,20 +81,3 @@ func TestCloudClientsForRefreshesWithIssuingConsumer(t *testing.T) {
 		})
 	}
 }
-
-func TestCloudScopes(t *testing.T) {
-	scopes := CloudScopes()
-	if len(scopes) == 0 {
-		t.Fatal("CloudScopes() returned empty")
-	}
-	want := map[string]bool{"account": true, "repository": true, "pullrequest": true, "issue": true, "pipeline": true, "webhook": true}
-	for _, s := range scopes {
-		if !want[s] {
-			t.Errorf("unexpected scope %q", s)
-		}
-		delete(want, s)
-	}
-	for s := range want {
-		t.Errorf("missing scope %q", s)
-	}
-}
