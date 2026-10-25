@@ -214,6 +214,20 @@ for path in sorted(pathlib.Path("skills").glob("*/SKILL.md")):
         path.write_text(head + fm_new + tail)
         changed.append(str(path))
 
+flake_path = pathlib.Path("flake.nix")
+if flake_path.exists():
+    flake_text = flake_path.read_text()
+    flake_new = re.sub(
+        r'(?m)^(\s*version = )"[^"]*"(;\n?\n?)$',
+        lambda m: f'{m.group(1)}"{version}";\n' + m.group(2),
+        flake_text,
+        count=1,
+    )
+    if flake_new == flake_text:
+        raise SystemExit("error: flake.nix version line not found or sync marker missing")
+    flake_path.write_text(flake_new)
+    changed.append("flake.nix")
+
 for path in [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]:
     pp = pathlib.Path(path)
     if not pp.exists():
@@ -247,7 +261,7 @@ if [ "$skip_verify" -eq 0 ]; then
   make build
 fi
 
-git add CHANGELOG.md skills/*/SKILL.md .claude/skills/bkt .agents/skills/bkt .claude-plugin/plugin.json
+git add CHANGELOG.md skills/*/SKILL.md .claude/skills/bkt .agents/skills/bkt .claude-plugin/plugin.json flake.nix
 [ -f .codex-plugin/plugin.json ] && git add .codex-plugin/plugin.json
 
 git diff --cached --quiet && {
