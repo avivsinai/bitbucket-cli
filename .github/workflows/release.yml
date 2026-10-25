@@ -282,6 +282,18 @@ jobs:
             echo "BKT_NOTARY_KEY_PATH=$RUNNER_TEMP/notary-key.p8"
           } >>"$GITHUB_ENV"
 
+      # Tap and Scoop pushes use a short-lived release App token scoped to
+      # those two repos; the PAT is only the fallback until the App is
+      # configured (vars.RELEASE_APP_CLIENT_ID). Same pattern as yoetz #623.
+      - name: Mint release App token for tap and Scoop
+        id: tap-app
+        if: vars.RELEASE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: homebrew-tap,scoop-bucket
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7
         with:
@@ -290,7 +302,7 @@ jobs:
           args: release --clean --release-notes ${{ runner.temp }}/RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ steps.tap-app.outputs.token || secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
           WINGET_SKIP_UPLOAD: ${{ steps.winget.outputs.skip_upload }}
           BKT_MACOS_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
