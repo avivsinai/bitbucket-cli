@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.37.0] - 2026-10-25
 ### Changed
 - **Log in again once:** run `bkt auth login https://bitbucket.org --kind cloud --web`.
   bkt's Bitbucket Cloud OAuth consumer now grants Repositories Admin, so
@@ -17,6 +19,7 @@ All notable changes to this project will be documented here. The format follows
 - `bkt issue` now explains that Atlassian removed Bitbucket Cloud Issues on
   20 August 2026 and exits, instead of calling an API that answers 410 Gone.
   The command is hidden from help; track issues in Jira.
+
 
 ## [0.36.0] - 2026-10-22
 ### Fixed
@@ -862,7 +865,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.2...v0.36.0
 [0.35.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.1...v0.35.2
 [0.35.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.0...v0.35.1
