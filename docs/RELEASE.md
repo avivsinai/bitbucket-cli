@@ -20,7 +20,10 @@
 
 3. **Automation** (all handled by `release.yml` after the release PR merges)
    - The workflow validates the merged release commit on `master`.
-   - It creates `vX.Y.Z` only after the merged commit passes verification.
+   - It creates `vX.Y.Z` only after the merged commit passes verification,
+     using a token from the release GitHub App (`vars.RELEASE_APP_CLIENT_ID`,
+     `secrets.RELEASE_APP_PRIVATE_KEY`). The `v*` tag ruleset lets only that
+     App (and the admin, in a declared crisis) create tags.
    - GoReleaser builds:
      - Linux, macOS, and Windows binaries (amd64 + arm64)
      - Checksums (`bkt_${VERSION}_checksums.txt`)
@@ -32,10 +35,9 @@
      secret is configured.
    - The workflow emits GitHub build provenance attestations for the released files.
    - The `Publish skills` job in `release.yml` publishes the `bkt` skill as part
-     of the same release run (skippable via the `skip-skill-publish` dispatch
-     input). Separately, `notify-marketplace.yml` refreshes the marketplace on
-     every push to `master`. `publish-skill.yml` is a manual `workflow_dispatch`
-     fallback for re-publishing an existing tag.
+     of the same release run. Separately, `notify-marketplace.yml` refreshes the
+     marketplace on every push to `master`. `publish-skill.yml` is a manual
+     `workflow_dispatch` fallback for re-publishing an existing tag's skill.
 
 4. **Post-release**
    - Verify the release artifacts and SBOMs.
@@ -81,7 +83,13 @@
   `io.github.avivsinai.bitbucket-cli`: a changed identifier or team makes every
   user approve again.
 - `scripts/check-release-version.sh vX.Y.Z` now validates both metadata versions and the matching `CHANGELOG.md` heading.
-- If a release PR merges but the tag publish fails verification, fix forward with the next patch version instead of rewriting the failed tag.
+- Releases are immutable: a published release and its tag cannot change. If any
+  publish step fails (GoReleaser, tap, WinGet), fix forward with the next patch
+  version; there is no re-run path for an existing tag.
+- `master` is protected by a ruleset: PR only, required checks, squash/linear,
+  no force-push. The admin bypass (PR merges only) is a crisis escape hatch;
+  agents never merge past red or pending checks unless the maintainer declares
+  a crisis.
 
 ## Dry runs
 

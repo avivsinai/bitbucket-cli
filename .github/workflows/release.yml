@@ -4,28 +4,17 @@ on:
   push:
     branches:
       - master
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Existing tag to (re)release (e.g. v1.2.3)'
-        required: true
-        type: string
-      skip-skill-publish:
-        description: "Skip skill publishing (GoReleaser + Homebrew always run)"
-        required: false
-        type: boolean
-        default: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.sha }}
+  group: release-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   prepare:
-    if: "${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release): v') }}"
+    if: "${{ startsWith(github.event.head_commit.message, 'chore(release): v') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -44,7 +33,6 @@ jobs:
         id: prepare
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_TAG: ${{ github.event.inputs.tag }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         shell: bash
         run: |
@@ -63,20 +51,6 @@ jobs:
           }
 
           case "$EVENT_NAME" in
-            workflow_dispatch)
-              tag="$INPUT_TAG"
-              validate_tag "$tag"
-              git fetch --force --tags origin
-              if ! git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1; then
-                echo "::error::Tag ${tag} does not exist. workflow_dispatch is only for rerunning an existing release."
-                exit 1
-              fi
-              git checkout --detach "$tag"
-              version="${tag#v}"
-              ./scripts/check-release-version.sh "$version"
-              release_ref="$tag"
-              release_sha="$(tag_commit_sha "$tag")"
-              ;;
             push)
               commit_subject="${COMMIT_MESSAGE%%$'\n'*}"
               tag="${commit_subject#chore(release): }"
@@ -178,11 +152,22 @@ jobs:
       - name: Install Syft
         run: brew install syft
 
+      # The v* tag ruleset lets only the release App create tags. Until the
+      # App is configured (vars.RELEASE_APP_CLIENT_ID), the job token is used.
+      - name: Mint release App token
+        id: release-app
+        if: vars.RELEASE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Create release tag after verification
         shell: bash
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+          GH_TOKEN: ${{ steps.release-app.outputs.token || github.token }}
         run: |
           set -euo pipefail
 
@@ -198,8 +183,7 @@ jobs:
               exit 1
             fi
           else
-            git tag "$TAG" "$RELEASE_SHA"
-            git push origin "refs/tags/${TAG}"
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${TAG}" -f sha="$RELEASE_SHA" >/dev/null
           fi
 
       - name: Extract release notes for this tag
@@ -346,9 +330,7 @@ jobs:
   skill-publish:
     name: Publish skills
     needs: [prepare, release]
-    if: >-
-      needs.release.result == 'success' &&
-      (github.event_name == 'push' || inputs.skip-skill-publish != 'true')
+    if: needs.release.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -362,8 +344,7 @@ jobs:
         with:
           node-version: '24'
 
-      # A manual run can check out a tag that predates the lockfile, so take
-      # the pinned tooling from the workflow's own commit.
+      # Take the pinned tooling from the workflow's own commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: .skild-tooling

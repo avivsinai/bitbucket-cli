@@ -38,7 +38,8 @@ This is the master agent instruction file for this repository. Keep repository p
 
 - Release from `master` only through `./scripts/release.sh X.Y.Z` and the resulting release PR; do not create manual tags or GitHub releases.
 - A push to `master` updates the AvivSinai marketplace immediately for the `bkt` skill.
-- Keep `CHANGELOG.md` and skill/plugin metadata on one version in the release commit; after the release PR merges, CI validates the merged commit, creates the tag, publishes GitHub/Homebrew artifacts, and uses the committed changelog entry as the GitHub release notes.
+- Keep `CHANGELOG.md` and skill/plugin metadata on one version in the release commit; after the release PR merges, CI validates the merged commit, creates the tag with the release GitHub App, publishes GitHub/Homebrew artifacts, and uses the committed changelog entry as the GitHub release notes. Releases are immutable: a failed publish is fixed with the next patch, never by re-running a tag.
+- `master` is ruleset-protected (PR only, required checks, squash/linear). Never merge past red or pending checks, or push a tag, unless the maintainer declares a crisis.
 - Bitbucket Cloud browser OAuth (`bkt auth login --kind cloud --web`) is
   zero-config in every build — release binaries, Homebrew core, `go install`,
   Nix — because bkt's OAuth consumer lives in source (`pkg/oauth/cloud.go`), as
