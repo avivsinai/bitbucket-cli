@@ -21,11 +21,14 @@ Options:
   --skip-verify      Skip local verification gates
   --allow-empty      Allow releasing with an empty Unreleased section
   --no-auto-merge    Create the PR but do not enable auto-merge
+  --no-push          Prepare and commit locally; do not push or open a PR
+  --ci               GitHub Actions mode: set commit identity and require a token
   -h, --help         Show this help text
 
 Examples:
   ./scripts/release.sh 1.2.3
   ./scripts/release.sh 1.2.3 --no-auto-merge
+  ./scripts/release.sh 1.2.3 --no-push
 EOF
 }
 
@@ -41,6 +44,8 @@ release_date="$(date -u +%Y-%m-%d)"
 skip_verify=0
 allow_empty=0
 auto_merge=1
+no_push=0
+ci=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -65,6 +70,14 @@ while [ $# -gt 0 ]; do
       auto_merge=0
       shift
       ;;
+    --no-push)
+      no_push=1
+      shift
+      ;;
+    --ci)
+      ci=1
+      shift
+      ;;
     --*)
       echo "error: unknown option: $1" >&2
       usage >&2
@@ -85,8 +98,10 @@ done
 [ -n "$version" ] || { usage >&2; exit 1; }
 
 require_command git
-require_command gh
 require_command python3
+if [ "$no_push" -eq 0 ] || [ "$ci" -eq 1 ]; then
+  require_command gh
+fi
 
 printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' || {
   echo "error: version must be X.Y.Z or X.Y.Z-rc.1, got: $version" >&2
@@ -100,6 +115,18 @@ printf '%s' "$release_date" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || {
 tag="v${version}"
 branch="release/${tag}"
 
+if [ "$ci" -eq 1 ]; then
+  git config --local user.name "github-actions[bot]"
+  git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  if [ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
+    # Use gh as a credential helper so the token is never placed in the remote URL.
+    gh auth setup-git >/dev/null
+  elif [ "$no_push" -eq 0 ]; then
+    echo "error: --ci requires GH_TOKEN or GITHUB_TOKEN to push the release PR" >&2
+    exit 1
+  fi
+fi
+
 git diff --quiet --ignore-submodules HEAD -- || {
   echo "error: worktree is dirty; commit or stash first" >&2
   exit 1
@@ -109,20 +136,26 @@ git diff --cached --quiet --ignore-submodules -- || {
   exit 1
 }
 
-current_branch="$(git branch --show-current)"
-[ "$current_branch" = "master" ] || {
-  echo "error: releases must be prepared from master; current branch is $current_branch" >&2
-  exit 1
-}
+# Local --no-push rehearsal may run off master. --ci always prepares from master
+# so the GitHub Actions workflow cannot cut a release from a feature branch.
+if [ "$no_push" -eq 0 ] || [ "$ci" -eq 1 ]; then
+  current_branch="$(git branch --show-current)"
+  [ "$current_branch" = "master" ] || {
+    echo "error: releases must be prepared from master; current branch is $current_branch" >&2
+    exit 1
+  }
+fi
 
 git fetch --quiet origin master --tags
 
-local_head="$(git rev-parse HEAD)"
-remote_head="$(git rev-parse origin/master)"
-[ "$local_head" = "$remote_head" ] || {
-  echo "error: local master is not at origin/master; pull or reset before releasing" >&2
-  exit 1
-}
+if [ "$no_push" -eq 0 ] || [ "$ci" -eq 1 ]; then
+  local_head="$(git rev-parse HEAD)"
+  remote_head="$(git rev-parse origin/master)"
+  [ "$local_head" = "$remote_head" ] || {
+    echo "error: local master is not at origin/master; pull or reset before releasing" >&2
+    exit 1
+  }
+fi
 
 if git show-ref --verify --quiet "refs/heads/${branch}"; then
   echo "error: branch already exists locally: ${branch}" >&2
@@ -218,8 +251,8 @@ flake_path = pathlib.Path("flake.nix")
 if flake_path.exists():
     flake_text = flake_path.read_text()
     flake_new = re.sub(
-        r'(?m)^(\s*version = )"[^"]*"(;\n?\n?)$',
-        lambda m: f'{m.group(1)}"{version}";\n' + m.group(2),
+        r'(?m)^(\s*version = )"[^"]*"((?:;\n?)+)',
+        lambda m: f'{m.group(1)}"{version}"{m.group(2)}',
         flake_text,
         count=1,
     )
@@ -270,6 +303,15 @@ git diff --cached --quiet && {
 }
 
 git commit -m "chore(release): ${tag}"
+
+if [ "$no_push" -eq 1 ]; then
+  echo ""
+  echo "Prepared ${tag} locally (not pushed)"
+  echo "Release branch: ${branch}"
+  echo "Commit: $(git rev-parse HEAD)"
+  exit 0
+fi
+
 git push -u origin "$branch"
 
 pr_body=$(

@@ -79,9 +79,10 @@ We aim to respond within two business days.
 
 ## Releases
 
-Maintainers release with `./scripts/release.sh X.Y.Z`, which opens a release
-PR. After it merges, CI tags the commit and publishes binaries, packages, and
-SBOMs. See [`docs/RELEASE.md`](docs/RELEASE.md).
+Maintainers cut a release from GitHub Actions (**Actions → Release request**)
+or with `./scripts/release.sh X.Y.Z`. Either path opens a release PR. After it
+merges, CI tags the commit and publishes binaries, packages, and SBOMs. See
+[`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Community roles
 
