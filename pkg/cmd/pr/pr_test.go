@@ -346,6 +346,8 @@ func TestListWorkspaceCloud(t *testing.T) {
 			State:     "OPEN",
 			CreatedOn: "not-a-timestamp",
 		},
+		{ID: 3, Title: "Merged PR", State: "MERGED"},
+		{ID: 4, Title: "Declined PR", State: "DECLINED"},
 	}
 	// Set nested fields - use Destination.Repository.Slug as primary source
 	prs[0].Source.Branch.Name = "feature-1"
@@ -420,14 +422,21 @@ func TestListWorkspaceCloud(t *testing.T) {
 		},
 	}
 
-	cmd := newListCmd(f)
-	cmd.SilenceErrors = true
-	cmd.SilenceUsage = true
-	cmd.SetArgs([]string{"--mine"})
-
-	err = cmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for _, args := range [][]string{{"--mine"}, {"--mine", "--state", "OPEN"}} {
+		stdout.Reset()
+		cmd := newListCmd(f)
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("args=%v: unexpected error: %v", args, err)
+		}
+		if output := stdout.String(); strings.Contains(output, "Merged PR") || strings.Contains(output, "Declined PR") {
+			t.Errorf("args=%v: expected only open PRs, got:\n%s", args, output)
+		}
+		if output := stdout.String(); !strings.Contains(output, "First PR") || !strings.Contains(output, "Second PR") {
+			t.Errorf("args=%v: expected both open PRs, got:\n%s", args, output)
+		}
 	}
 
 	output := stdout.String()

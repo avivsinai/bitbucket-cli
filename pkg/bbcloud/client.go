@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -844,6 +845,7 @@ func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, u
 		return nil, fmt.Errorf("username is required")
 	}
 
+	var path string
 	if next != "" {
 		endpoint := fmt.Sprintf("/workspaces/%s/pullrequests/%s",
 			url.PathEscape(workspace), url.PathEscape(username))
@@ -851,25 +853,36 @@ func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, u
 		if err != nil {
 			return nil, err
 		}
-		return c.fetchPullRequestsPage(ctx, normalized)
+		path = normalized
+	} else {
+		pageLen := opts.Limit
+		if pageLen <= 0 || pageLen > 100 {
+			pageLen = 20
+		}
+
+		var params []string
+		params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
+		params = append(params, pullRequestStateParams(opts.State)...)
+
+		path = fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
+			url.PathEscape(workspace),
+			url.PathEscape(username),
+			strings.Join(params, "&"),
+		)
 	}
 
-	pageLen := opts.Limit
-	if pageLen <= 0 || pageLen > 100 {
-		pageLen = 20
+	page, err := c.fetchPullRequestsPage(ctx, path)
+	if err != nil {
+		return nil, err
 	}
-
-	var params []string
-	params = append(params, fmt.Sprintf("pagelen=%d", pageLen))
-	params = append(params, pullRequestStateParams(opts.State)...)
-
-	path := fmt.Sprintf("/workspaces/%s/pullrequests/%s?%s",
-		url.PathEscape(workspace),
-		url.PathEscape(username),
-		strings.Join(params, "&"),
-	)
-
-	return c.fetchPullRequestsPage(ctx, path)
+	// The workspace endpoint can ignore state. Filter every page before the
+	// caller applies its limit, retaining Next even when no values match.
+	if state := strings.ToUpper(strings.TrimSpace(opts.State)); state != "" && state != "ALL" {
+		page.Values = slices.DeleteFunc(page.Values, func(pr PullRequest) bool {
+			return !strings.EqualFold(pr.State, state)
+		})
+	}
+	return page, nil
 }
 
 // ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
