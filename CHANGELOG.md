@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Bitbucket Cloud `bkt pr list --mine` honors `--state` even when the workspace
+  API returns PRs in other states, and applies `--limit` to matching PRs (#377).
+
 ## [0.37.0] - 2026-10-25
 ### Changed
 - **Log in again once:** run `bkt auth login https://bitbucket.org --kind cloud --web`.
