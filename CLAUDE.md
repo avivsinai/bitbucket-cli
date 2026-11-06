@@ -36,7 +36,9 @@ This is the master agent instruction file for this repository. Keep repository p
 
 ## Release Contract
 
-- Release from `master` only through `./scripts/release.sh X.Y.Z` and the resulting release PR; do not create manual tags or GitHub releases.
+- Release from `master` only through the `release-request.yml` workflow
+  (`workflow_dispatch` with version `X.Y.Z`) or `./scripts/release.sh X.Y.Z`,
+  and the resulting release PR; do not create manual tags or GitHub releases.
 - A push to `master` updates the AvivSinai marketplace immediately for the `bkt` skill.
 - Keep `CHANGELOG.md` and skill/plugin metadata on one version in the release commit; after the release PR merges, CI validates the merged commit, creates the tag with the release GitHub App, publishes GitHub/Homebrew artifacts, and uses the committed changelog entry as the GitHub release notes. Releases are immutable: a failed publish is fixed with the next patch, never by re-running a tag.
 - `master` is ruleset-protected (PR only, required checks, squash/linear). Never merge past red or pending checks, or push a tag, unless the maintainer declares a crisis.

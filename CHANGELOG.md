@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Maintainers can cut a release from GitHub Actions (`release-request.yml`)
+  instead of running `scripts/release.sh` locally.
+
 ### Fixed
 - Bitbucket Cloud `bkt pr list --mine` honors `--state` even when the workspace
   API returns PRs in other states, and applies `--limit` to matching PRs (#377).

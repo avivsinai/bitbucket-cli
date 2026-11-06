@@ -3,8 +3,14 @@
 1. **Prepare**
    - Ensure `master` is green and up to date.
    - Update `CHANGELOG.md` under `Unreleased`.
-   - Do not tag manually. Use the release PR script so changelog + skill/plugin metadata move together.
-   - Run `make release RELEASE_VERSION=X.Y.Z` or `./scripts/release.sh X.Y.Z` from `master`.
+   - Do not tag manually. Use the release PR so changelog + skill/plugin metadata move together.
+   - Cut the release from GitHub Actions: **Actions → Release request → Run workflow**,
+     with `version` set to `X.Y.Z` and the branch set to `master`. The workflow
+     mints a token from the release GitHub App, runs `./scripts/release.sh X.Y.Z --ci`,
+     pushes `release/vX.Y.Z`, and opens a squash-auto-merge PR. Merging as the App
+     is what lets `.github/workflows/release.yml` fire.
+   - Maintainers can still run `make release RELEASE_VERSION=X.Y.Z` or
+     `./scripts/release.sh X.Y.Z` from `master`.
      - This verifies the worktree is clean and at `origin/master`.
      - It creates `release/vX.Y.Z`.
      - It turns `Unreleased` into `## [X.Y.Z] - YYYY-MM-DD`.
@@ -50,7 +56,9 @@
 
 ## Guardrails
 
-- Treat `scripts/release.sh` as the only supported release entrypoint.
+- Treat `scripts/release.sh` as the only supported release entrypoint. GitHub
+  Actions `release-request.yml` is the hosted way to run it; do not duplicate
+  the changelog or version-bump steps in a new script.
 - bkt's Bitbucket Cloud OAuth consumer lives in `pkg/oauth/cloud.go`, so every
   build, including Homebrew core's source build, supports
   `bkt auth login --kind cloud --web`. Releases need no OAuth secrets.
@@ -97,7 +105,7 @@ Use `goreleaser release --clean --snapshot` to exercise the publishing pipeline 
 publishing artifacts. For local release-prep rehearsal without pushing, run:
 
 ```bash
-make release RELEASE_VERSION=X.Y.Z RELEASE_NO_AUTO_MERGE=1
+./scripts/release.sh X.Y.Z --no-push
 ```
 
 ## Release cadence
