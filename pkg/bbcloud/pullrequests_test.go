@@ -93,12 +93,12 @@ func TestListPullRequestsPaginates(t *testing.T) {
 		switch count {
 		case 1:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"values": []map[string]any{{"id": 1}, {"id": 2}},
+				"values": []map[string]any{{"id": 1, "state": "OPEN"}, {"id": 2, "state": "OPEN"}},
 				"next":   serverURL + "/repositories/ws/repo/pullrequests?pagelen=20&page=2",
 			})
 		case 2:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"values": []map[string]any{{"id": 3}},
+				"values": []map[string]any{{"id": 3, "state": "OPEN"}},
 			})
 		default:
 			t.Fatalf("unexpected request %d", count)

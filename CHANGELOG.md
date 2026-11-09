@@ -11,6 +11,8 @@ All notable changes to this project will be documented here. The format follows
   instead of running `scripts/release.sh` locally.
 
 ### Fixed
+- Bitbucket Cloud repository-scoped PR lists honor `--state` even when the API
+  ignores it with `--reviewer` or `--mine`, filtering before pagination limits (#380).
 - Bitbucket Cloud `bkt pr list --mine` honors `--state` even when the workspace
   API returns PRs in other states, and applies `--limit` to matching PRs (#377).
 
