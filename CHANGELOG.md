@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-11-09
 ### Added
 - `bkt pr mergeability <id>` reports read-only Bitbucket Cloud merge eligibility,
   conflicts, blocking checks, and unknown results in text or structured output (#382).
@@ -17,6 +18,7 @@ All notable changes to this project will be documented here. The format follows
   ignores it with `--reviewer` or `--mine`, filtering before pagination limits (#380).
 - Bitbucket Cloud `bkt pr list --mine` honors `--state` even when the workspace
   API returns PRs in other states, and applies `--limit` to matching PRs (#377).
+
 
 ## [0.37.0] - 2026-10-25
 ### Changed
@@ -877,7 +879,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.2...v0.36.0
 [0.35.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.1...v0.35.2
