@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+
+	"gopkg.in/yaml.v3"
 )
 
 // PullRequestMergeability summarizes a read-only Cloud merge simulation.
@@ -14,6 +16,20 @@ type PullRequestMergeability struct {
 	Mergeable        string            `json:"mergeable"`
 	MergeStateStatus string            `json:"mergeStateStatus"`
 	Checks           []json.RawMessage `json:"checks"`
+}
+
+// MarshalYAML preserves the JSON field names and renders raw checks as objects,
+// rather than exposing their underlying byte slices as YAML integer sequences.
+func (m PullRequestMergeability) MarshalYAML() (any, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return nil, err
+	}
+	return node.Content[0], nil
 }
 
 type mergeabilityCheck struct {

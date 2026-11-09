@@ -6,10 +6,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestPRMergeabilityCloud(t *testing.T) {
-	for _, format := range []string{"text", "json", "jq", "failure"} {
+	for _, format := range []string{"text", "json", "yaml", "jq", "failure"} {
 		t.Run(format, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodGet || r.URL.Path != "/repositories/other-workspace/other-repo/pullrequests/42/mergeability/checks" {
@@ -27,7 +29,9 @@ func TestPRMergeabilityCloud(t *testing.T) {
 			}))
 			defer srv.Close()
 			args := []string{"pr", "mergeability", "42", "--workspace", "other-workspace", "--repo", "other-repo"}
-			if format != "text" {
+			if format == "yaml" {
+				args = append(args, "--yaml")
+			} else if format != "text" {
 				args = append(args, "--json")
 			}
 			if format == "jq" {
@@ -52,6 +56,19 @@ func TestPRMergeabilityCloud(t *testing.T) {
 				var result struct{ Mergeable, MergeStateStatus string }
 				if err := json.Unmarshal([]byte(stdout), &result); err != nil || result.Mergeable != "MERGEABLE" || result.MergeStateStatus != "CLEAN" {
 					t.Fatalf("invalid JSON summary %s: %v", stdout, err)
+				}
+			case "yaml":
+				var result map[string]any
+				if err := yaml.Unmarshal([]byte(stdout), &result); err != nil || result["mergeable"] != "MERGEABLE" || result["mergeStateStatus"] != "CLEAN" {
+					t.Fatalf("invalid YAML summary %s: %v", stdout, err)
+				}
+				checks, ok := result["checks"].([]any)
+				if !ok || len(checks) != 3 {
+					t.Fatalf("invalid YAML checks: %s", stdout)
+				}
+				check, ok := checks[0].(map[string]any)
+				if !ok || check["type"] != "pullrequest_state_check" {
+					t.Fatalf("lost YAML check fields: %s", stdout)
 				}
 			case "jq":
 				if strings.TrimSpace(stdout) != `"MERGEABLE"` {
