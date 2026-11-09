@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -871,18 +870,7 @@ func (c *Client) ListWorkspacePullRequestsPage(ctx context.Context, workspace, u
 		)
 	}
 
-	page, err := c.fetchPullRequestsPage(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	// The workspace endpoint can ignore state. Filter every page before the
-	// caller applies its limit, retaining Next even when no values match.
-	if state := strings.ToUpper(strings.TrimSpace(opts.State)); state != "" && state != "ALL" {
-		page.Values = slices.DeleteFunc(page.Values, func(pr PullRequest) bool {
-			return !strings.EqualFold(pr.State, state)
-		})
-	}
-	return page, nil
+	return c.fetchPullRequestsPageForState(ctx, path, opts.State)
 }
 
 // ListWorkspacePullRequests lists pull requests authored by the specified user across all repositories in the workspace.
