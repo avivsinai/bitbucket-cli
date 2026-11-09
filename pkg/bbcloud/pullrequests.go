@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -140,7 +141,7 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSl
 		if err != nil {
 			return nil, err
 		}
-		return c.fetchPullRequestsPage(ctx, normalized)
+		return c.fetchPullRequestsPageForState(ctx, normalized, opts.State)
 	}
 
 	pageLen := opts.Limit
@@ -161,7 +162,22 @@ func (c *Client) ListRepoPullRequestsPage(ctx context.Context, workspace, repoSl
 		strings.Join(params, "&"),
 	)
 
-	return c.fetchPullRequestsPage(ctx, path)
+	return c.fetchPullRequestsPageForState(ctx, path, opts.State)
+}
+
+// Cloud can ignore state when identity filters are present. Filter each page
+// before callers apply their limit, preserving Next even if no values match.
+func (c *Client) fetchPullRequestsPageForState(ctx context.Context, path, rawState string) (*PullRequestsPage, error) {
+	page, err := c.fetchPullRequestsPage(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if state := strings.ToUpper(strings.TrimSpace(rawState)); state != "" && state != "ALL" {
+		page.Values = slices.DeleteFunc(page.Values, func(pr PullRequest) bool {
+			return !strings.EqualFold(pr.State, state)
+		})
+	}
+	return page, nil
 }
 
 func pullRequestStateParams(raw string) []string {
