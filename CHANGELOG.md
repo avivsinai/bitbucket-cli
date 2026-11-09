@@ -6,11 +6,13 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-11-09
 ### Fixed
 - Fetch newly created release tags into the packaging checkout before GoReleaser
   runs. v0.38.0 created its tag but stopped before publishing binaries because
   GoReleaser selected v0.37.0. This release publishes the mergeability command
   and Cloud state-filtering fixes documented under 0.38.0 below.
+
 
 ## [0.38.0] - 2026-11-09
 ### Added
@@ -885,7 +887,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.1...HEAD
+[0.38.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.35.2...v0.36.0
