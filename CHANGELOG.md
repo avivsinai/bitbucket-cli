@@ -7,6 +7,8 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `bkt pr mergeability <id>` reports read-only Bitbucket Cloud merge eligibility,
+  conflicts, blocking checks, and unknown results in text or structured output (#382).
 - Maintainers can cut a release from GitHub Actions (`release-request.yml`)
   instead of running `scripts/release.sh` locally.
 
