@@ -186,6 +186,15 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${TAG}" -f sha="$RELEASE_SHA" >/dev/null
           fi
 
+          # API-created tags are not present in this checkout. Fetch the exact
+          # verified tag before packagers resolve the current release locally.
+          git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          fetched_sha="$(tag_commit_sha "$TAG")"
+          if [[ "$fetched_sha" != "$RELEASE_SHA" ]]; then
+            echo "::error::Fetched tag ${TAG} points to ${fetched_sha}, not ${RELEASE_SHA}."
+            exit 1
+          fi
+
       - name: Extract release notes for this tag
         shell: bash
         env:
