@@ -78,6 +78,7 @@ limitations are noted in each subcommand's help.`,
 	cmd.AddCommand(newReactionCmd(f))
 	cmd.AddCommand(newSuggestionCmd(f))
 	cmd.AddCommand(newChecksCmd(f))
+	cmd.AddCommand(newMergeabilityCmd(f))
 	cmd.AddCommand(newPublishCmd(f))
 
 	return cmd
