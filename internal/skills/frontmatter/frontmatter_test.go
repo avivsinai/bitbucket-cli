@@ -369,3 +369,18 @@ func TestStripInstallMetadata(t *testing.T) {
 		})
 	}
 }
+
+// Before the fix an empty frontmatter block was not recognised: the text up to
+// the next markdown rule was parsed as YAML and dropped from the body on install.
+func TestParseEmptyFrontmatter(t *testing.T) {
+	res, err := Parse("---\n---\n# Title\n\n---\n\ntext\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Metadata.Name != "" || len(res.RawYAML) != 0 {
+		t.Fatalf("metadata = %+v, raw = %v; want empty", res.Metadata, res.RawYAML)
+	}
+	if !strings.Contains(res.Body, "# Title") || !strings.Contains(res.Body, "\n---\n") {
+		t.Fatalf("body lost content: %q", res.Body)
+	}
+}

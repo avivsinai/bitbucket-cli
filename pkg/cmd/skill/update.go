@@ -164,7 +164,7 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 		}
 		var filtered []installedSkill
 		for _, s := range installed {
-			if requested[s.name] {
+			if requested[s.name] || (s.sourcePath != "" && requested[skillNameFromSourcePath(s.sourcePath)]) {
 				filtered = append(filtered, s)
 			}
 		}
@@ -269,26 +269,39 @@ func runUpdate(cmd *cobra.Command, f *cmdutil.Factory, opts *updateOptions) erro
 			continue
 		}
 
-		for _, remote := range state.skills {
+		var remote *discovery.Skill
+		for i := range state.skills {
+			cand := &state.skills[i]
 			matched := false
 			if s.sourcePath != "" {
-				matched = remote.Path == s.sourcePath
+				matched = cand.Path == s.sourcePath
 			} else {
-				matched = remote.InstallName() == s.name || remote.Name == s.name
+				matched = cand.InstallName() == s.name || cand.Name == s.name
 			}
-			if !matched {
-				continue
-			}
-			newCommit, commitErr := state.repo.LatestCommit(ctx, state.resolved.SHA, remote.Path)
-			if commitErr != nil {
-				checkFailed = true
-				fmt.Fprintf(ios.ErrOut, "! Skipping %s: could not determine latest commit: %v\n", s.name, commitErr)
+			if matched {
+				remote = cand
 				break
 			}
-			if newCommit != s.commit || opts.Force {
-				updates = append(updates, pendingUpdate{local: s, repo: state.repo, resolved: state.resolved, skill: remote, newCommit: newCommit})
+		}
+		if remote == nil && s.sourcePath != "" {
+			// Installed by an exact path outside the discovery conventions.
+			if direct, directErr := discovery.DiscoverSkillByPath(ctx, state.repo, state.resolved.SHA, s.sourcePath, discovery.DiscoverSkillByPathOptions{SkipDescription: true}); directErr == nil {
+				remote = direct
 			}
-			break
+		}
+		if remote == nil {
+			checkFailed = true
+			fmt.Fprintf(ios.ErrOut, "! %s: not found in %s\n", s.name, s.repoURL)
+			continue
+		}
+		newCommit, commitErr := state.repo.LatestCommit(ctx, state.resolved.SHA, remote.Path)
+		if commitErr != nil {
+			checkFailed = true
+			fmt.Fprintf(ios.ErrOut, "! Skipping %s: could not determine latest commit: %v\n", s.name, commitErr)
+			continue
+		}
+		if newCommit != s.commit || opts.Force {
+			updates = append(updates, pendingUpdate{local: s, repo: state.repo, resolved: state.resolved, skill: *remote, newCommit: newCommit})
 		}
 	}
 	stop()

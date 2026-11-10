@@ -1761,3 +1761,40 @@ func TestFollowerRetriesWhenLeaderContextCancelled(t *testing.T) {
 		t.Fatalf("TokenRefresher called %d times, want 2 (failed leader + follower replacement)", got)
 	}
 }
+
+// Before the fix a 429 with Retry-After longer than the request deadline made
+// the client wait out the deadline and report "context deadline exceeded"
+// instead of the 429.
+func TestClientRetryAfterBeyondDeadlineReturnsHTTPError(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(Options{
+		BaseURL: server.URL,
+		Retry:   RetryPolicy{MaxAttempts: 3, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 20 * time.Millisecond},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	req, err := client.NewRequest(ctx, http.MethodGet, "/limited", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	err = client.Do(req, nil)
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("err = %v, want *HTTPError with status 429", err)
+	}
+	if hits != 1 {
+		t.Fatalf("server saw %d requests, want 1", hits)
+	}
+}
