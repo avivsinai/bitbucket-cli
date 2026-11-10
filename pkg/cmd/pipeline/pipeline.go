@@ -90,7 +90,7 @@ only.
 
 Use --wait to poll the triggered pipeline until it completes, with exponential
 backoff and jitter. Exit codes in --wait mode: 0 = pipeline succeeded,
-1 = pipeline completed unsuccessfully, 8 = timed out while still running.`,
+1 = pipeline completed unsuccessfully, 8 = timed out while still running, 130 = interrupted.`,
 		Example: `  # Run the pipeline on the main branch
   bkt pipeline run
 
@@ -125,7 +125,7 @@ backoff and jitter. Exit codes in --wait mode: 0 = pipeline succeeded,
 	cmd.Flags().StringVar(&opts.Ref, "ref", "main", "Branch to run the pipeline on")
 	cmd.Flags().StringVar(&opts.SelectorType, "selector-type", "", "Pipeline selector type (for example custom or pull-requests)")
 	cmd.Flags().StringVar(&opts.SelectorPattern, "selector-pattern", "", "Pipeline definition name or pattern; omit for default")
-	cmd.Flags().StringSliceVar(&opts.Variables, "var", nil, "Pipeline variable in KEY=VALUE form (repeatable)")
+	cmd.Flags().StringArrayVar(&opts.Variables, "var", nil, "Pipeline variable in KEY=VALUE form (repeatable)")
 	addWaitFlags(cmd, &opts.waitOptions, "Wait for the triggered pipeline to complete")
 
 	return cmd
@@ -202,7 +202,7 @@ pipeline UUID. This command is available for Bitbucket Cloud contexts only.
 
 Use --wait to poll until the pipeline completes, with exponential backoff and
 jitter. Exit codes in --wait mode: 0 = pipeline succeeded, 1 = pipeline
-completed unsuccessfully, 8 = timed out while still running.`,
+completed unsuccessfully, 8 = timed out while still running, 130 = interrupted.`,
 		Example: `  # View pipeline run by build number
   bkt pipeline view 42
 

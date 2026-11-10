@@ -232,7 +232,11 @@ func TestParseEnvFile(t *testing.T) {
 				t.Fatalf("failed to write temp file: %v", err)
 			}
 
-			got, err := parseEnvFile(tmpFile)
+			entries, err := parseEnvFile(tmpFile)
+			got := make(map[string]string, len(entries))
+			for _, e := range entries {
+				got[e.Key] = e.Value
+			}
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error containing %q, got nil", tt.errContains)
@@ -321,6 +325,28 @@ func TestStdinValueDropsOneLineEnding(t *testing.T) {
 	} {
 		if got := stdinValue([]byte(in)); got != want {
 			t.Errorf("stdinValue(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// `variable set --env-file` applied variables in random map order, so a failed
+// import left an unpredictable subset applied.
+func TestParseEnvFileKeepsFileOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.env")
+	if err := os.WriteFile(path, []byte("ZED=1\n# c\nALPHA=2\nMID=3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := parseEnvFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []envEntry{{"ZED", "1"}, {"ALPHA", "2"}, {"MID", "3"}}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
 		}
 	}
 }

@@ -516,6 +516,38 @@ func TestPipelineRunSendsSelector(t *testing.T) {
 	}
 }
 
+// `--var LIST=a,b` used to fail with `invalid variable "b"` because the flag
+// split its value on the comma.
+func TestPipelineRunVarKeepsCommas(t *testing.T) {
+	var body struct {
+		Variables []struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"variables"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(pipelineJSONBody("PENDING", "")))
+	}))
+	defer srv.Close()
+
+	f, _, _ := pipelineTestFactory(srv.URL)
+	cmd := newRunCmd(f)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--var", "LIST=a,b"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(body.Variables) != 1 || body.Variables[0].Key != "LIST" || body.Variables[0].Value != "a,b" {
+		t.Fatalf("variables = %+v, want one LIST=a,b", body.Variables)
+	}
+}
+
 func TestPipelineRunRejectsArguments(t *testing.T) {
 	called := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
