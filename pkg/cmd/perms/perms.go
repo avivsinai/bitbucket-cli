@@ -91,7 +91,7 @@ Use --limit to control how many entries are returned; set it to 0 to fetch all.`
   bkt perms project list --project MYPROJ --limit 0
 
   # Output as JSON
-  bkt perms project list --project MYPROJ --output json`,
+  bkt perms project list --project MYPROJ --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProjectList(cmd, f, listOpts)
 		},
@@ -210,7 +210,7 @@ to control how many entries are returned; set it to 0 to fetch all.`,
   bkt perms repo list --project MYPROJ --repo my-service --limit 0
 
   # Output as JSON
-  bkt perms repo list --project MYPROJ --repo my-service --output json`,
+  bkt perms repo list --project MYPROJ --repo my-service --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRepoList(cmd, f, listOpts)
 		},

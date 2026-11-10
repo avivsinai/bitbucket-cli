@@ -677,13 +677,6 @@ func (c *Client) ListPipelineSteps(ctx context.Context, workspace, repoSlug, pip
 	return steps, nil
 }
 
-// PipelineLog represents a step log chunk.
-type PipelineLog struct {
-	StepUUID string `json:"step_uuid"`
-	Type     string `json:"type"`
-	Log      string `json:"log"`
-}
-
 // CommitStatus describes build status for a commit.
 // Type alias to shared types.CommitStatus for backward compatibility.
 type CommitStatus = types.CommitStatus

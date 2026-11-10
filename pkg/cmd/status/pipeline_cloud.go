@@ -37,7 +37,7 @@ context and does not work with Data Center.`,
   bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --workspace myteam --repo backend
 
   # Output as JSON
-  bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --output json`,
+  bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.UUID = args[0]

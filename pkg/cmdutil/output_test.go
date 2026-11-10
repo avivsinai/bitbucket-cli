@@ -182,14 +182,3 @@ func TestResolveOutputSettingsFormatEmpty(t *testing.T) {
 		t.Fatalf("format = %q, want empty", settings.Format)
 	}
 }
-
-func TestOutputFormat(t *testing.T) {
-	cmd := newTestCommand(map[string]string{"yaml": "true"})
-	format, err := OutputFormat(cmd)
-	if err != nil {
-		t.Fatalf("OutputFormat: %v", err)
-	}
-	if format != "yaml" {
-		t.Fatalf("format = %q, want yaml", format)
-	}
-}

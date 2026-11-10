@@ -101,9 +101,8 @@ type RateLimit struct {
 }
 
 type cacheEntry struct {
-	etag     string
-	body     []byte
-	storedAt time.Time
+	etag string
+	body []byte
 }
 
 // New constructs a Client from options.
@@ -464,9 +463,6 @@ func (c *Client) Do(req *http.Request, v any) error {
 			// Drain and discard response body when caller doesn't need it; errors are intentionally ignored
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
-			if c.enableCache && attemptReq.Method == http.MethodGet {
-				c.storeCache(attemptReq, nil, resp.Header.Get("ETag"))
-			}
 			return nil
 		}
 
@@ -774,7 +770,7 @@ func (c *Client) storeCache(req *http.Request, body []byte, etag string) {
 		return
 	}
 	c.cacheMu.Lock()
-	c.cache[c.cacheKey(req)] = &cacheEntry{etag: etag, body: append([]byte(nil), body...), storedAt: time.Now()}
+	c.cache[c.cacheKey(req)] = &cacheEntry{etag: etag, body: append([]byte(nil), body...)}
 	c.cacheMu.Unlock()
 }
 

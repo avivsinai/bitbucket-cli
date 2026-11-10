@@ -51,6 +51,31 @@ func TestExecuteStatusCheckReturnsErrPendingOnTimeoutWithPendingBuilds(t *testin
 	}
 }
 
+// A status fetch that times out without --wait used to print "No builds
+// found." and exit 0.
+func TestExecuteStatusCheckReportsFetchTimeoutWithoutWait(t *testing.T) {
+	var stdout bytes.Buffer
+	ios := &iostreams.IOStreams{Out: &stdout, ErrOut: &bytes.Buffer{}}
+
+	err := executeStatusCheck(&checksResult{
+		ctx:  context.Background(),
+		ios:  ios,
+		cmd:  newStatusCheckTestCommand(),
+		opts: &checksOptions{ID: 42},
+		fetchFunc: func() ([]types.CommitStatus, error) {
+			return nil, context.DeadlineExceeded
+		},
+		commitSHA: "abc123def456",
+		payload:   map[string]any{},
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+	}
+	if got := stdout.String(); got != "" {
+		t.Fatalf("stdout = %q, want no output", got)
+	}
+}
+
 func TestExecuteStatusCheckReturnsErrSilentOnFailedBuilds(t *testing.T) {
 	var stdout bytes.Buffer
 	ios := &iostreams.IOStreams{Out: &stdout, ErrOut: &bytes.Buffer{}}

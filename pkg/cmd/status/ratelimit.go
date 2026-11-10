@@ -26,7 +26,7 @@ sent to populate the rate-limit headers before reporting.`,
   bkt status rate-limit
 
   # Show rate limits as JSON
-  bkt status rate-limit --output json
+  bkt status rate-limit --json
 
   # Check rate limits for a specific context
   bkt status rate-limit --context my-cloud-ctx`,

@@ -80,13 +80,14 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 	if host.AuthMethod != "oauth" {
 		opts.AuthMethod = host.AuthMethod
 	}
-	if host.AuthMethod == "oauth" && (!enableOAuthRefresh || secret.TokenFromEnv() == "") {
+	// Keyring-stored OAuth tokens use Bearer auth. When BKT_TOKEN overrides,
+	// the caller controls the token type and the auth method defaults to
+	// basic (matching API-token behavior), for frozen clients too.
+	keyringOAuth := host.AuthMethod == "oauth" && secret.TokenFromEnv() == ""
+	if keyringOAuth {
 		opts.AuthMethod = "bearer"
 	}
-	if enableOAuthRefresh && host.AuthMethod == "oauth" && secret.TokenFromEnv() == "" {
-		// Keyring-stored OAuth tokens use Bearer auth + auto-refresh.
-		// When BKT_TOKEN overrides, the caller controls the token type
-		// and auth method defaults to basic (matching API-token behavior).
+	if enableOAuthRefresh && keyringOAuth {
 		hostKey, err := HostKeyFromURL(host.BaseURL)
 		if err != nil {
 			return nil, fmt.Errorf("resolve host key: %w", err)

@@ -18,13 +18,23 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/iostreams"
 )
 
-// newTestFactory returns a factory writing to buffers, with isolated config and
-// home directories so tests never touch the developer's files.
-func newTestFactory(t *testing.T) (*cmdutil.Factory, *strings.Builder, *strings.Builder) {
+// isolateSkillEnv points every lookup that resolves a user-scope skill
+// directory at a temporary home: the home directory itself and the agent
+// config-dir overrides that registry.InstallDir reads.
+func isolateSkillEnv(t *testing.T) {
 	t.Helper()
 	testHome := t.TempDir()
 	t.Setenv("HOME", testHome)
 	t.Setenv("USERPROFILE", testHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+}
+
+// newTestFactory returns a factory writing to buffers, with isolated config and
+// home directories so tests never touch the developer's files.
+func newTestFactory(t *testing.T) (*cmdutil.Factory, *strings.Builder, *strings.Builder) {
+	t.Helper()
+	isolateSkillEnv(t)
 	t.Setenv("BKT_CONFIG_DIR", t.TempDir())
 
 	cfg, err := config.Load()

@@ -17,16 +17,8 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
-func isolateUpdateHome(t *testing.T) {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-}
-
 func runUpdateJSON(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
-	isolateUpdateHome(t)
 	f, stdout, stderr := newTestFactory(t)
 	root := &cobra.Command{Use: "bkt"}
 	root.PersistentFlags().Bool("json", false, "")
@@ -81,7 +73,6 @@ func TestUpdateJSONEmptyResultsAreArray(t *testing.T) {
 }
 
 func TestUpdateRuntimeFailureIsNotUpToDateSuccess(t *testing.T) {
-	isolateUpdateHome(t)
 	repo := newSkillsRepo()
 	repo.Err = errors.New("service unavailable")
 	stubRepository(t, repo)
@@ -105,7 +96,6 @@ func TestUpdateMixedRepositoriesProcessesHealthyAndReturnsFailure(t *testing.T) 
 			name = "dry run"
 		}
 		t.Run(name, func(t *testing.T) {
-			isolateUpdateHome(t)
 			healthy := newSkillsRepo()
 			original := openRepositoryFunc
 			openRepositoryFunc = func(_ *cobra.Command, _ *cmdutil.Factory, arg string) (source.Repository, error) {

@@ -5,6 +5,25 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- `bkt pr checks` without `--wait` reports a timed-out status request as an
+  error. It used to print "No builds found." and exit 0.
+- Data Center `bkt pr list --mine` on a repository asks Bitbucket for the
+  author's pull requests, so `--limit` applies to them. It used to filter the
+  newest `--limit` pull requests of all authors.
+- `bkt mcp serve` sends a `BKT_TOKEN` override of an OAuth-saved Cloud host
+  with basic auth, as every other command does. It used to send it as a bearer
+  token, and every tool failed with `auth_failed`.
+- `bkt variable set NAME` drops a CRLF line ending from a piped value. The
+  stored value used to keep the `\r`.
+- `bkt skill update` no longer treats the skills a repository authors under
+  `skills/` as installed skills that lack metadata.
+- A config entry with no fields (`contexts: {work: }`) no longer crashes every
+  command.
+- Help examples: `--json` replaces a `--output json` flag that does not exist
+  (`auth status`, `context list`, `status`, `perms`, `admin logging get`),
+  `pr create` uses `--title`, and the Cloud `context create` examples use
+  `--host api.bitbucket.org`.
 
 ## [0.38.1] - 2026-11-09
 ### Fixed
