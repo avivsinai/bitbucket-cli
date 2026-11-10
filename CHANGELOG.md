@@ -20,10 +20,19 @@ All notable changes to this project will be documented here. The format follows
   `skills/` as installed skills that lack metadata.
 - A config entry with no fields (`contexts: {work: }`) no longer crashes every
   command.
+- `bkt extension remove .` is rejected. It used to delete every installed
+  extension.
+- `bkt extension exec <name> --flag` forwards flags to the extension. It used
+  to fail with "unknown flag".
+- A Data Center remote under a context path
+  (`https://host/bitbucket/scm/PROJ/repo.git`) resolves to the right project
+  and repository.
+- A blank `PAGER` no longer crashes commands that page their output.
 - Help examples: `--json` replaces a `--output json` flag that does not exist
   (`auth status`, `context list`, `status`, `perms`, `admin logging get`),
-  `pr create` uses `--title`, and the Cloud `context create` examples use
-  `--host api.bitbucket.org`.
+  `pr create` uses `--title`, the Cloud `context create` examples use
+  `--host api.bitbucket.org`, and the `api` example drops a `--workspace` flag
+  that does not exist.
 
 ## [0.38.1] - 2026-11-09
 ### Fixed

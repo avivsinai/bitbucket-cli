@@ -33,8 +33,8 @@ implementation details.
   set `BKT_OAUTH_CLIENT_ID` and `BKT_OAUTH_CLIENT_SECRET` to their own
   consumer.
 - For development, set `BKT_CONFIG_DIR` to a throwaway directory.
-- Never commit test credentials. Use environment variables or the
-  `internal/config/testdata` fixtures when unit testing.
+- Never commit test credentials. Unit tests use `t.TempDir()` with
+  `BKT_CONFIG_DIR`.
 
 ## Dependency updates
 

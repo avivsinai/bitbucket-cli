@@ -282,3 +282,24 @@ func runGit(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v failed: %v\n%s", args, err, output)
 	}
 }
+
+// A Data Center server under a context path
+// (https://host/bitbucket/scm/PROJ/repo.git) used to parse as project
+// "bitbucket", repository "scm".
+func TestExtractDCProjectRepoUnderContextPath(t *testing.T) {
+	tests := []struct {
+		segments      []string
+		project, repo string
+	}{
+		{[]string{"bitbucket", "scm", "PROJ", "repo"}, "PROJ", "repo"},
+		{[]string{"bitbucket", "projects", "PROJ", "repos", "repo"}, "PROJ", "repo"},
+		{[]string{"scm", "PROJ", "repo"}, "PROJ", "repo"},
+		{[]string{"PROJ", "repo"}, "PROJ", "repo"},
+	}
+	for _, tt := range tests {
+		project, repo := extractDCProjectRepo(tt.segments)
+		if project != tt.project || repo != tt.repo {
+			t.Errorf("extractDCProjectRepo(%v) = %q, %q; want %q, %q", tt.segments, project, repo, tt.project, tt.repo)
+		}
+	}
+}

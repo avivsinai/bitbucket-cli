@@ -519,3 +519,20 @@ func FirstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+// ResolveCloudRepo resolves workspace and repository for Cloud commands.
+func ResolveCloudRepo(f *Factory, cmd *cobra.Command, workspaceOverride, repoOverride string) (string, string, *config.Host, error) {
+	_, ctxCfg, host, err := ResolveContext(f, cmd, FlagValue(cmd, "context"))
+	if err != nil {
+		return "", "", nil, err
+	}
+	if host.Kind != "cloud" {
+		return "", "", nil, fmt.Errorf("command supports Bitbucket Cloud contexts only")
+	}
+	workspace := FirstNonEmpty(workspaceOverride, ctxCfg.Workspace)
+	repo := FirstNonEmpty(repoOverride, ctxCfg.DefaultRepo)
+	if workspace == "" || repo == "" {
+		return "", "", nil, fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
+	}
+	return workspace, repo, host, nil
+}

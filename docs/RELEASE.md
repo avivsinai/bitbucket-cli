@@ -31,9 +31,9 @@
      `secrets.RELEASE_APP_PRIVATE_KEY`). The `v*` tag ruleset lets only that
      App (and the admin, in a declared crisis) create tags.
    - GoReleaser builds:
-     - Linux, macOS, and Windows binaries (amd64 + arm64)
-     - Checksums (`bkt_${VERSION}_checksums.txt`)
-     - SBOMs (`sbom-${VERSION}.cyclonedx.json` via Syft)
+     - Linux and macOS binaries (amd64 + arm64) and Windows binaries (amd64)
+     - Checksums (`checksums.txt`)
+     - SBOMs (one `<archive>.sbom.json` per archive, via Syft)
    - Artifacts are uploaded to the GitHub Release page.
    - GoReleaser generates WinGet manifests. After the initial package version is
      accepted into the catalog, it attempts to open an update PR from

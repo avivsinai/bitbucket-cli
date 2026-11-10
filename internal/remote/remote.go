@@ -333,11 +333,15 @@ func splitSegments(path string) []string {
 }
 
 func extractDCProjectRepo(segments []string) (string, string) {
-	if len(segments) >= 4 && strings.EqualFold(segments[0], "projects") && strings.EqualFold(segments[2], "repos") {
-		return segments[1], segments[3]
-	}
-	if len(segments) >= 3 && strings.EqualFold(segments[0], "scm") {
-		return segments[1], segments[2]
+	// The marker is not always the first segment: a server can live under a
+	// context path such as /bitbucket.
+	for i, seg := range segments {
+		if strings.EqualFold(seg, "projects") && len(segments) >= i+4 && strings.EqualFold(segments[i+2], "repos") {
+			return segments[i+1], segments[i+3]
+		}
+		if strings.EqualFold(seg, "scm") && len(segments) >= i+3 {
+			return segments[i+1], segments[i+2]
+		}
 	}
 	if len(segments) >= 2 {
 		return segments[0], segments[1]
