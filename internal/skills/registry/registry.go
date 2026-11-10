@@ -127,7 +127,9 @@ func AgentHelpList() string {
 
 // InstallDir resolves the installation directory for an agent host and scope.
 // Project scope is anchored at gitRoot so skills land at the top level
-// regardless of the current subdirectory; user scope is anchored at homeDir.
+// regardless of the current subdirectory; user scope is anchored at homeDir,
+// except for agents whose config-dir environment variable is set
+// (CLAUDE_CONFIG_DIR, PI_CODING_AGENT_DIR), which wins.
 func (h *AgentHost) InstallDir(scope Scope, gitRoot, homeDir string) (string, error) {
 	switch scope {
 	case ScopeProject:

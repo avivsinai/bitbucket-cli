@@ -2,9 +2,6 @@ package cmdutil
 
 import (
 	"errors"
-	"fmt"
-
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -25,9 +22,4 @@ type ExitError struct {
 
 func (e *ExitError) Error() string {
 	return e.Msg
-}
-
-// NotImplemented returns a helpful placeholder error for unfinished commands.
-func NotImplemented(cmd *cobra.Command) error {
-	return fmt.Errorf("%s not yet implemented", cmd.CommandPath())
 }

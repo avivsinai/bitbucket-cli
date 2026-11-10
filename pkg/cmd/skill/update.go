@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -36,6 +37,7 @@ type installedSkill struct {
 	sourcePath  string // bitbucket-path in the source repository
 	dir         string // local directory
 	installedBy string // "gh" when the skill carries github-* metadata instead
+	hasMetadata bool   // carries install metadata from any tool
 	metadataErr error
 }
 
@@ -530,6 +532,11 @@ func scanAllAgentsForUpdate(gitRoot, homeDir string) []installedSkill {
 			if err != nil {
 				continue
 			}
+			if scanFilterForAgentHost(host, scope) == scanInstalledOnly {
+				// This directory also holds the skills the repository
+				// authors; only installed ones can be updated.
+				skills = slices.DeleteFunc(skills, func(s installedSkill) bool { return !s.hasMetadata })
+			}
 			all = append(all, skills...)
 		}
 	}
@@ -585,6 +592,7 @@ func parseInstalledSkill(data []byte, name, dir string) installedSkill {
 	if meta == nil {
 		return s
 	}
+	s.hasMetadata = hasInstallMetadata(meta)
 	str := func(key string) string {
 		v, _ := meta[key].(string)
 		return v

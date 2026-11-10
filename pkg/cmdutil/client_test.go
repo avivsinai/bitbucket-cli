@@ -2,7 +2,6 @@ package cmdutil
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -101,6 +100,33 @@ func TestNewCloudClientOAuthSkipsRefresherWithBKTToken(t *testing.T) {
 	username, token, ok := req.BasicAuth()
 	if !ok || username != "erank_ai21" || token != "env-override" {
 		t.Errorf("BasicAuth = (%q, %q, %t), want OAuth host env override as basic auth", username, token, ok)
+	}
+}
+
+// `bkt mcp serve` with BKT_TOKEN overriding an OAuth-saved Cloud host used
+// to send the API token as Bearer, while every other command sent Basic.
+func TestNewFrozenCloudClientSendsBKTTokenOverrideAsBasicAuth(t *testing.T) {
+	host := &config.Host{
+		Kind:       "cloud",
+		BaseURL:    "https://api.bitbucket.org/2.0",
+		Username:   "me@example.com",
+		AuthMethod: "oauth",
+		Token:      "env-override",
+	}
+
+	t.Setenv(secret.EnvToken, "env-override")
+
+	client, err := NewFrozenCloudClient(host)
+	if err != nil {
+		t.Fatalf("NewFrozenCloudClient error: %v", err)
+	}
+	req, err := client.HTTP().NewRequest(context.Background(), http.MethodGet, "/user", nil)
+	if err != nil {
+		t.Fatalf("NewRequest error: %v", err)
+	}
+	username, token, ok := req.BasicAuth()
+	if !ok || username != "me@example.com" || token != "env-override" {
+		t.Errorf("BasicAuth = (%q, %q, %t), want the env override as basic auth; Authorization = %q", username, token, ok, req.Header.Get("Authorization"))
 	}
 }
 
@@ -408,74 +434,6 @@ func TestOAuthTokenRefresherInvalidBlob(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "parse stored token") {
 		t.Errorf("error = %q, want 'parse stored token'", err)
-	}
-}
-
-func TestOAuthTokenRefresherSuccess(t *testing.T) {
-	// Mock token endpoint that returns a new token.
-	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{ // gitleaks:allow
-			"access_token":  "new-access",
-			"refresh_token": "new-refresh",
-			"expires_in":    7200,
-		})
-	}))
-	defer tokenSrv.Close()
-
-	t.Setenv("BKT_OAUTH_CLIENT_ID", "cid")         // gitleaks:allow
-	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "csecret") // gitleaks:allow
-	t.Setenv("BKT_ALLOW_INSECURE_STORE", "1")
-	t.Setenv("BKT_KEYRING_PASSPHRASE", "test-pass")
-	t.Setenv("KEYRING_BACKEND", "file")
-	fileDir := t.TempDir()
-	t.Setenv("KEYRING_FILE_DIR", fileDir)
-
-	// Store a valid OAuth token blob in the keyring.
-	tok := oauth.FromResponse("old-access", "old-refresh", -60)
-	blob, err := tok.Marshal()
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	store, err := secret.Open(secret.WithAllowFileFallback(true), secret.WithPassphrase("test-pass"), secret.WithFileDir(fileDir))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	if err := store.Set(secret.TokenKey("api.bitbucket.org"), blob); err != nil {
-		t.Fatalf("store.Set: %v", err)
-	}
-
-	host := &config.Host{
-		Kind:               "cloud",
-		BaseURL:            "https://api.bitbucket.org/2.0",
-		AuthMethod:         "oauth",
-		AllowInsecureStore: true,
-	}
-
-	// Build a refresher that uses our mock token endpoint.
-	// We can't easily override oauth.CloudTokenURL, so we test the
-	// sub-components instead. Here we directly call oauthTokenRefresher
-	// which uses the real CloudTokenURL. Instead, test the creds check
-	// and store interaction — the actual HTTP refresh is covered in
-	// pkg/oauth/flow_test.go (TestRefreshToken).
-	//
-	// For this test, verify the refresher reads the stored blob,
-	// then fails at the refresh step (since CloudTokenURL is real and
-	// our creds are fake), confirming the store-read path is covered.
-	refresher := oauthTokenRefresher("api.bitbucket.org", host)
-	_, err = refresher(context.Background())
-	// Expected: refresh fails because our fake creds can't auth against
-	// real Bitbucket, but the error should be "refresh failed" (not
-	// "read token" or "parse stored token"), proving we got past those.
-	if err == nil {
-		t.Fatal("expected error from refresh with fake creds")
-	}
-	if !strings.Contains(err.Error(), "refresh failed") {
-		t.Errorf("error = %q, want 'refresh failed'", err)
-	}
-	// Verify host.Token was NOT updated (refresh failed).
-	if host.Token == "new-access" {
-		t.Error("host.Token should not be updated on refresh failure")
 	}
 }
 

@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
@@ -37,7 +36,7 @@ context and does not work with Data Center.`,
   bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --workspace myteam --repo backend
 
   # Output as JSON
-  bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --output json`,
+  bkt status pipeline {c0ffee42-abcd-1234-ef56-789012345678} --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.UUID = args[0]
@@ -57,7 +56,7 @@ func runCloudPipelineStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *cloudS
 		return err
 	}
 
-	workspace, repo, host, err := resolveCloudStatusContext(cmd, f, opts.Workspace, opts.Repo)
+	workspace, repo, host, err := cmdutil.ResolveCloudRepo(f, cmd, opts.Workspace, opts.Repo)
 	if err != nil {
 		return err
 	}
@@ -114,22 +113,4 @@ func runCloudPipelineStatus(cmd *cobra.Command, f *cmdutil.Factory, opts *cloudS
 		}
 		return nil
 	})
-}
-
-func resolveCloudStatusContext(cmd *cobra.Command, f *cmdutil.Factory, workspaceOverride, repoOverride string) (string, string, *config.Host, error) {
-	_, ctxCfg, host, err := cmdutil.ResolveContext(f, cmd, cmdutil.FlagValue(cmd, "context"))
-	if err != nil {
-		return "", "", nil, err
-	}
-	if host.Kind != "cloud" {
-		return "", "", nil, fmt.Errorf("command supports Bitbucket Cloud contexts only")
-	}
-
-	workspace := cmdutil.FirstNonEmpty(workspaceOverride, ctxCfg.Workspace)
-	repo := cmdutil.FirstNonEmpty(repoOverride, ctxCfg.DefaultRepo)
-	if workspace == "" || repo == "" {
-		return "", "", nil, fmt.Errorf("context must supply workspace and repo; use --workspace/--repo if needed")
-	}
-
-	return workspace, repo, host, nil
 }

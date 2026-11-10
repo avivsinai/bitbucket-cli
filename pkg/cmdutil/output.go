@@ -71,16 +71,6 @@ func ResolveOutputSettings(cmd *cobra.Command) (OutputSettings, error) {
 	}, nil
 }
 
-// OutputFormat preserves backwards compatibility for callers needing only the
-// format value.
-func OutputFormat(cmd *cobra.Command) (string, error) {
-	settings, err := ResolveOutputSettings(cmd)
-	if err != nil {
-		return "", err
-	}
-	return settings.Format, nil
-}
-
 // WriteOutput writes structured output according to user preferences and runs
 // fallback when no structured output is requested.
 func WriteOutput(cmd *cobra.Command, w io.Writer, data any, fallback func() error) error {

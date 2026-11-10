@@ -40,6 +40,10 @@ func (p *system) Start() (io.WriteCloser, error) {
 	}
 
 	pagerCmd := strings.Fields(resolvePager())
+	if len(pagerCmd) == 0 {
+		// A blank $PAGER names no program: write straight to stdout.
+		return nopWriteCloser{Writer: p.ios.Out}, nil
+	}
 	cmd := exec.Command(pagerCmd[0], pagerCmd[1:]...)
 	cmd.Stdout = p.ios.Out
 	cmd.Stderr = p.ios.ErrOut

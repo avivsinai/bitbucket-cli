@@ -34,7 +34,10 @@ prds/
 !.agents/skills/**
 .agent-mail/
 .amqrc
-prds/
 
 # CI installs the pinned skild tooling here.
 .github/skild/node_modules/
+
+# Local run output and the `nix build` result symlink.
+*.log
+/result

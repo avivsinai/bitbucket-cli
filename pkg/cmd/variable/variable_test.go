@@ -308,3 +308,19 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+// `echo secret| bkt variable set TOKEN` on Windows pipes "secret\r\n"; the
+// stored value used to keep the "\r".
+func TestStdinValueDropsOneLineEnding(t *testing.T) {
+	for in, want := range map[string]string{
+		"secret\r\n": "secret",
+		"secret\n":   "secret",
+		"secret":     "secret",
+		"secret\r":   "secret\r",
+		"a\nb\n\n":   "a\nb\n",
+	} {
+		if got := stdinValue([]byte(in)); got != want {
+			t.Errorf("stdinValue(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

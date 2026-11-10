@@ -188,41 +188,30 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		defer cancel()
 
 		var prs []bbdc.PullRequest
-		if opts.Reviewer {
+		role, flag := "", ""
+		switch {
+		case opts.Reviewer:
+			role, flag = "REVIEWER", "--reviewer"
+		case opts.Mine:
+			role, flag = "AUTHOR", "--mine"
+		}
+		if role != "" {
 			if host.Username == "" {
-				return fmt.Errorf("--reviewer requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)")
+				return fmt.Errorf("%s requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)", flag)
 			}
-			// Apply the REVIEWER participant filter upstream (before the limit)
+			// Apply the participant filter upstream (before the limit)
 			// rather than filtering a limited page client-side.
 			prs, err = client.ListPullRequestsWithOptions(ctx, projectKey, repoSlug, bbdc.RepoPullRequestsOptions{
 				State:    opts.State,
-				Role:     "REVIEWER",
+				Role:     role,
 				Username: host.Username,
 				Limit:    opts.Limit,
 			})
-			if err != nil {
-				return err
-			}
 		} else {
 			prs, err = client.ListPullRequests(ctx, projectKey, repoSlug, opts.State, opts.Limit)
-			if err != nil {
-				return err
-			}
-
-			if opts.Mine {
-				if host.Username == "" {
-					return fmt.Errorf("--mine requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)")
-				}
-				filtered := prs[:0]
-				current := strings.ToLower(host.Username)
-				for _, pr := range prs {
-					author := strings.ToLower(cmdutil.FirstNonEmpty(pr.Author.User.Name, pr.Author.User.Slug))
-					if author == current {
-						filtered = append(filtered, pr)
-					}
-				}
-				prs = filtered
-			}
+		}
+		if err != nil {
+			return err
 		}
 
 		payload := map[string]any{
@@ -1034,7 +1023,7 @@ via the --draft flag.`,
   bkt pr create --title "Add OAuth2 support" --description "Implements RFC 6749"
 
   # Create with reviewers and close source branch on merge
-  bkt pr create -t "Fix login bug" --reviewer alice --reviewer bob --close-source
+  bkt pr create --title "Fix login bug" --reviewer alice --reviewer bob --close-source
 
   # Create a draft pull request
   bkt pr create --title "WIP: new feature" --draft
@@ -3289,11 +3278,15 @@ func executeStatusCheck(r *checksResult) error {
 			// Check if any builds are still pending
 			timedOutWithPending = !allBuildsComplete(statuses)
 		}
+		// A wait that timed out still reports the last statuses it saw.
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 	} else {
 		statuses, err = r.fetchFunc()
-	}
-	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
 	r.payload["statuses"] = statuses

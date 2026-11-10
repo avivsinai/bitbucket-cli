@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -96,8 +97,12 @@ func Load() (*Config, error) {
 	if cfg.Hosts == nil {
 		cfg.Hosts = make(map[string]*Host)
 	}
+	// An entry with no fields ("work:") decodes to a nil pointer; drop it so
+	// no caller has to guard against it.
+	maps.DeleteFunc(cfg.Contexts, func(_ string, ctx *Context) bool { return ctx == nil })
+	maps.DeleteFunc(cfg.Hosts, func(_ string, host *Host) bool { return host == nil })
 	for key, host := range cfg.Hosts {
-		if host != nil && host.Token != "" {
+		if host.Token != "" {
 			fmt.Fprintf(os.Stderr, "WARNING: host %q has a plaintext token in %s; rerun `bkt auth login` to move it into secure storage and remove the token field from config.yml\n", key, path)
 		}
 	}

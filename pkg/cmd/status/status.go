@@ -60,7 +60,7 @@ belong to any particular branch or pull request.`,
   bkt status commit 6f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a
 
   # Output as JSON
-  bkt status commit abc1234 --output json`,
+  bkt status commit abc1234 --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCommit(cmd, f, args[0])
@@ -130,7 +130,7 @@ contexts only.`,
   bkt status pr 42 --project MYPROJ --repo my-service
 
   # Output as JSON
-  bkt status pr 42 --output json`,
+  bkt status pr 42 --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])

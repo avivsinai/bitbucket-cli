@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -382,5 +383,27 @@ func TestPath(t *testing.T) {
 	cfg := &Config{path: "/tmp/test/config.yml"}
 	if got := cfg.Path(); got != "/tmp/test/config.yml" {
 		t.Fatalf("Path() = %q, want %q", got, "/tmp/test/config.yml")
+	}
+}
+
+// A hand-edited config with an empty entry ("contexts: {work: }") decodes to
+// a nil pointer; every command then panicked on the active context.
+func TestLoadTreatsEmptyContextAndHostEntriesAsMissing(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BKT_CONFIG_DIR", dir)
+	data := "active_context: work\ncontexts:\n  work:\nhosts:\n  main:\n"
+	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if ctx, err := cfg.Context("work"); !errors.Is(err, ErrContextNotFound) {
+		t.Fatalf("Context = %v, %v; want ErrContextNotFound", ctx, err)
+	}
+	if host, err := cfg.Host("main"); !errors.Is(err, ErrHostNotFound) {
+		t.Fatalf("Host = %v, %v; want ErrHostNotFound", host, err)
 	}
 }

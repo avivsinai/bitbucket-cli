@@ -11,10 +11,11 @@ import (
 )
 
 // These tests cover the default (no --dir) scan, which is what "bkt skill list"
-// and "bkt skill update" use in practice. Synthetic roots are passed in so no
-// real home directory is touched.
+// and "bkt skill update" use in practice. Synthetic roots are passed in and the
+// agent config-dir overrides are cleared, so no real home directory is touched.
 
 func TestBuildScanTargetsCoversAgentsAndScopes(t *testing.T) {
+	isolateSkillEnv(t)
 	gitRoot := filepath.Join("repo", "root")
 	homeDir := filepath.Join("home", "monalisa")
 
@@ -104,6 +105,7 @@ func TestBuildScanTargetsCoversAgentsAndScopes(t *testing.T) {
 }
 
 func TestBuildScanTargetsFilters(t *testing.T) {
+	isolateSkillEnv(t)
 	gitRoot := filepath.Join("repo", "root")
 	homeDir := filepath.Join("home", "monalisa")
 
@@ -178,6 +180,7 @@ func TestScanFilterForAgentHost(t *testing.T) {
 }
 
 func TestScanAllAgentsForUpdateFindsSkillsAcrossHosts(t *testing.T) {
+	isolateSkillEnv(t)
 	gitRoot := t.TempDir()
 	homeDir := t.TempDir()
 
@@ -217,5 +220,35 @@ func TestScanAllAgentsForUpdateFindsSkillsAcrossHosts(t *testing.T) {
 		if s.commit != "c1" {
 			t.Errorf("%s commit = %q", s.name, s.commit)
 		}
+	}
+}
+
+// "bkt skill update" inside a repository that authors skills under skills/
+// used to report each authored skill as installed without metadata, and
+// offered to replace it when run interactively.
+func TestScanAllAgentsForUpdateSkipsAuthoredSkills(t *testing.T) {
+	isolateSkillEnv(t)
+	gitRoot := t.TempDir()
+	homeDir := t.TempDir()
+
+	write := func(name, body string) {
+		t.Helper()
+		full := filepath.Join(gitRoot, "skills", name)
+		if err := os.MkdirAll(full, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(full, "SKILL.md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("authored", "---\nname: authored\ndescription: written in this repository\n---\n")
+	write("installed", "---\nname: installed\nmetadata:\n    bitbucket-repo: https://bitbucket.org/myteam/agent-skills\n    bitbucket-commit: c1\n---\n")
+
+	var names []string
+	for _, s := range scanAllAgentsForUpdate(gitRoot, homeDir) {
+		names = append(names, s.name)
+	}
+	if !slices.Equal(names, []string{"installed"}) {
+		t.Fatalf("skills to update = %v, want only [installed]", names)
 	}
 }

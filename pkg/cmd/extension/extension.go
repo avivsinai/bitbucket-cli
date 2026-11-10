@@ -28,6 +28,11 @@ func validateExtensionName(name string) error {
 	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
 		return fmt.Errorf("invalid extension name %q: must not contain path separators or '..'", name)
 	}
+	// "." names the extensions directory itself, and Windows drops trailing
+	// dots and spaces from a path segment, so ". " names it there too.
+	if strings.Trim(name, ". ") == "" {
+		return fmt.Errorf("invalid extension name %q: must not be only dots or spaces", name)
+	}
 	return nil
 }
 
@@ -171,6 +176,9 @@ stripped from the environment before the extension process starts.`,
 			return runExtensionExec(cmd, f, args[0], args[1:])
 		},
 	}
+	// Everything after the extension name belongs to the extension, flags
+	// included.
+	cmd.Flags().SetInterspersed(false)
 	return cmd
 }
 

@@ -6347,6 +6347,47 @@ func TestListRepositoryDCReviewerFiltersUpstreamBeforeLimit(t *testing.T) {
 	}
 }
 
+// --mine on a Data Center repository used to fetch the first --limit pull
+// requests and filter by author afterwards, so a user whose pull requests
+// were older than the newest --limit saw none of them.
+func TestListRepositoryDCMineFiltersUpstreamBeforeLimit(t *testing.T) {
+	var gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/pull-requests") {
+			gotQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values":     []bbdc.PullRequest{{ID: 7, Title: "Mine", State: "OPEN"}},
+				"isLastPage": true,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo1"}},
+		Hosts:         map[string]*config.Host{"main": {Kind: "dc", BaseURL: server.URL, Username: "testuser", Token: "t"}},
+	}
+	var out, errb strings.Builder
+	cmd := newListCmd(newReviewerTestFactory(cfg, &out, &errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"--mine", "--limit", "5"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"role.1=AUTHOR", "username.1=testuser", "limit=5"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Fatalf("upstream query %q missing %q", gotQuery, want)
+		}
+	}
+	if !strings.Contains(out.String(), "#7") {
+		t.Fatalf("output missing PR #7: %s", out.String())
+	}
+}
+
 func TestListRepositoryCloudReviewerMissingIdentityError(t *testing.T) {
 	origWd, _ := os.Getwd()
 	tmpDir := t.TempDir()

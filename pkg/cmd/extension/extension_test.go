@@ -27,6 +27,10 @@ func TestValidateExtensionName(t *testing.T) {
 		{name: "rejects slash", input: "demo/test", wantErr: `invalid extension name "demo/test": must not contain path separators or '..'`},
 		{name: "rejects backslash", input: `demo\test`, wantErr: `invalid extension name "demo\\test": must not contain path separators or '..'`},
 		{name: "rejects traversal", input: "../demo", wantErr: `invalid extension name "../demo": must not contain path separators or '..'`},
+		// "." resolves to the extensions directory itself; `bkt extension
+		// remove .` used to delete every installed extension.
+		{name: "rejects current directory", input: ".", wantErr: `invalid extension name ".": must not be only dots or spaces`},
+		{name: "rejects current directory with a trailing space", input: ". ", wantErr: `invalid extension name ". ": must not be only dots or spaces`},
 	}
 
 	for _, tt := range tests {
@@ -130,6 +134,20 @@ func TestRunExtensionExecFiltersSensitiveEnv(t *testing.T) {
 	got := strings.TrimSpace(stdout.String())
 	if got != "|||demo" {
 		t.Fatalf("stdout = %q, want %q", got, "|||demo")
+	}
+}
+
+// `bkt extension exec lint --fix`, the documented example, used to fail with
+// "unknown flag: --fix" because bkt parsed the extension's flags as its own.
+func TestExtensionExecForwardsFlagsAfterName(t *testing.T) {
+	f, _, _ := newExtensionTestFactory(t)
+	cmd := newExecCmd(f)
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"lint", "--fix", "--verbose"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `extension "lint" is not installed`) {
+		t.Fatalf("error = %v, want the flags forwarded and the missing extension reported", err)
 	}
 }
 
