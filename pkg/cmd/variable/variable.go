@@ -706,7 +706,11 @@ Lines starting with # are treated as comments.`,
 // stdinValue drops the one line ending that echo or a shell pipe appends,
 // LF or CRLF, and keeps the rest of the value as given.
 func stdinValue(data []byte) string {
-	return strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+	value := string(data)
+	if line, ok := strings.CutSuffix(value, "\n"); ok {
+		return strings.TrimSuffix(line, "\r")
+	}
+	return value
 }
 
 func runSet(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions, variableName string) error {

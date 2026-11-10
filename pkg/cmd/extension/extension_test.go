@@ -29,7 +29,8 @@ func TestValidateExtensionName(t *testing.T) {
 		{name: "rejects traversal", input: "../demo", wantErr: `invalid extension name "../demo": must not contain path separators or '..'`},
 		// "." resolves to the extensions directory itself; `bkt extension
 		// remove .` used to delete every installed extension.
-		{name: "rejects current directory", input: ".", wantErr: `invalid extension name ".": must not be '.'`},
+		{name: "rejects current directory", input: ".", wantErr: `invalid extension name ".": must not be only dots or spaces`},
+		{name: "rejects current directory with a trailing space", input: ". ", wantErr: `invalid extension name ". ": must not be only dots or spaces`},
 	}
 
 	for _, tt := range tests {

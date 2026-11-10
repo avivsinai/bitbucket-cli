@@ -316,6 +316,7 @@ func TestStdinValueDropsOneLineEnding(t *testing.T) {
 		"secret\r\n": "secret",
 		"secret\n":   "secret",
 		"secret":     "secret",
+		"secret\r":   "secret\r",
 		"a\nb\n\n":   "a\nb\n",
 	} {
 		if got := stdinValue([]byte(in)); got != want {
