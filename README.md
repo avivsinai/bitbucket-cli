@@ -125,6 +125,8 @@ export BKT_HOST=https://bitbucket.org BKT_TOKEN=<access-token> BKT_AUTH_METHOD=b
 bkt pr list
 ```
 
+When `BKT_HOST` is set, `BKT_TOKEN` is used for that host only. The pair wins over an active context that points at another host, and `bkt` refuses to send the token to a different host named with `--context` or `--host`.
+
 Resource access tokens belong to no user. Commands that need a user identity, such as `bkt pr list --mine` across repositories, still need a user API token or OAuth.
 
 In Bitbucket Pipelines, store `BKT_TOKEN` and `BKT_HOST` as secured [repository variables](https://support.atlassian.com/bitbucket-cloud/docs/variables-and-secrets/) and install a pinned release:

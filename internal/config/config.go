@@ -51,16 +51,23 @@ type Host struct {
 
 	// OAuthExpiresAt is runtime-only metadata loaded from an OAuth token blob.
 	OAuthExpiresAt time.Time `yaml:"-"`
+
+	// fileToken is a plaintext token that Load found in the config file.
+	fileToken string
 }
 
-// MarshalYAML strips the token field so credentials are never written to disk.
+// MarshalYAML never writes a token that bkt holds at run time (from the
+// keychain or BKT_TOKEN). It writes back only a plaintext token that was
+// already in the file, so a save does not destroy a credential the user has
+// not yet moved to secure storage. `bkt auth login` replaces the host entry
+// and with it the plaintext token.
 func (h *Host) MarshalYAML() (any, error) {
 	if h == nil {
 		return nil, nil
 	}
 	type alias Host
 	safe := alias(*h)
-	safe.Token = ""
+	safe.Token = h.fileToken
 	return safe, nil
 }
 
@@ -102,6 +109,7 @@ func Load() (*Config, error) {
 	maps.DeleteFunc(cfg.Contexts, func(_ string, ctx *Context) bool { return ctx == nil })
 	maps.DeleteFunc(cfg.Hosts, func(_ string, host *Host) bool { return host == nil })
 	for key, host := range cfg.Hosts {
+		host.fileToken = host.Token
 		if host.Token != "" {
 			fmt.Fprintf(os.Stderr, "WARNING: host %q has a plaintext token in %s; rerun `bkt auth login` to move it into secure storage and remove the token field from config.yml\n", key, path)
 		}

@@ -170,6 +170,17 @@ func New(opts Options) (*Client, error) {
 	return client, nil
 }
 
+// checkOrigin refuses an absolute URL that does not point at the configured
+// server. Every request carries the stored credentials, so a URL for another
+// host, port, or scheme would hand them to that server (or send them in
+// clear text over http).
+func (c *Client) checkOrigin(u *url.URL) error {
+	if strings.EqualFold(u.Scheme, c.baseURL.Scheme) && strings.EqualFold(u.Host, c.baseURL.Host) {
+		return nil
+	}
+	return fmt.Errorf("refusing to send credentials to %s://%s; requests go only to %s://%s", u.Scheme, u.Host, c.baseURL.Scheme, c.baseURL.Host)
+}
+
 // NewRequest builds an HTTP request relative to the base URL. Body values are
 // JSON encoded when non-nil.
 func (c *Client) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
@@ -184,6 +195,9 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 		rel, err = url.Parse(path)
 		if err != nil {
 			return nil, fmt.Errorf("parse request URL: %w", err)
+		}
+		if err := c.checkOrigin(rel); err != nil {
+			return nil, err
 		}
 	} else {
 		if !strings.HasPrefix(path, "/") {
@@ -911,6 +925,9 @@ func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, f
 		rel, err = url.Parse(path)
 		if err != nil {
 			return nil, fmt.Errorf("parse request URL: %w", err)
+		}
+		if err := c.checkOrigin(rel); err != nil {
+			return nil, err
 		}
 	} else {
 		if !strings.HasPrefix(path, "/") {

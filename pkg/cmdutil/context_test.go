@@ -1218,3 +1218,67 @@ func TestResolveHostMultipleHostsErrorWhenNoEnvHost(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// --- BKT_TOKEN is scoped to BKT_HOST ---
+
+// With an active context for host A and BKT_HOST=B plus BKT_TOKEN, bkt used
+// to send B's token to host A and ignore BKT_HOST.
+func TestResolveContextEnvHostWinsOverActiveContextOfAnotherHost(t *testing.T) {
+	t.Setenv(secret.EnvToken, "token-for-b")
+	t.Setenv(secret.EnvHost, "https://b.example.com")
+	t.Setenv(secret.EnvProject, "PROJB")
+
+	f := newTestFactory(&config.Config{
+		ActiveContext: "a",
+		Contexts:      map[string]*config.Context{"a": {Host: "a.example.com", ProjectKey: "PROJA"}},
+		Hosts:         map[string]*config.Host{"a.example.com": {Kind: "dc", BaseURL: "https://a.example.com"}},
+	})
+
+	_, ctx, host, err := ResolveContextStatic(f, "")
+	if err != nil {
+		t.Fatalf("ResolveContextStatic: %v", err)
+	}
+	if host.BaseURL != "https://b.example.com" || host.Token != "token-for-b" {
+		t.Fatalf("host = %s with token %q, want the BKT_HOST server with its token", host.BaseURL, host.Token)
+	}
+	if ctx.ProjectKey != "PROJB" {
+		t.Fatalf("project = %q, want PROJB from the environment", ctx.ProjectKey)
+	}
+}
+
+// An explicit --context for another host must not receive the token that the
+// environment scopes to BKT_HOST.
+func TestResolveContextRefusesEnvTokenForExplicitContextOfAnotherHost(t *testing.T) {
+	t.Setenv(secret.EnvToken, "token-for-b")
+	t.Setenv(secret.EnvHost, "https://b.example.com")
+
+	f := newTestFactory(&config.Config{
+		Contexts: map[string]*config.Context{"a": {Host: "a.example.com"}},
+		Hosts:    map[string]*config.Host{"a.example.com": {Kind: "dc", BaseURL: "https://a.example.com"}},
+	})
+
+	_, _, _, err := ResolveContextStatic(f, "a")
+	if err == nil || !strings.Contains(err.Error(), "BKT_TOKEN") || !strings.Contains(err.Error(), "b.example.com") {
+		t.Fatalf("error = %v, want a refusal that names BKT_TOKEN and b.example.com", err)
+	}
+}
+
+// The same rule for commands that resolve only a host.
+func TestResolveHostEnvHostWinsOverActiveContextOfAnotherHost(t *testing.T) {
+	t.Setenv(secret.EnvToken, "token-for-b")
+	t.Setenv(secret.EnvHost, "https://b.example.com")
+
+	f := newTestFactory(&config.Config{
+		ActiveContext: "a",
+		Contexts:      map[string]*config.Context{"a": {Host: "a.example.com"}},
+		Hosts:         map[string]*config.Host{"a.example.com": {Kind: "dc", BaseURL: "https://a.example.com"}},
+	})
+
+	_, host, err := ResolveHost(f, "", "")
+	if err != nil {
+		t.Fatalf("ResolveHost: %v", err)
+	}
+	if host.BaseURL != "https://b.example.com" || host.Token != "token-for-b" {
+		t.Fatalf("host = %s with token %q, want the BKT_HOST server with its token", host.BaseURL, host.Token)
+	}
+}

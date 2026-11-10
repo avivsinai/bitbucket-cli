@@ -81,6 +81,15 @@ func (s *CallbackServer) Close() {
 	_ = s.server.Shutdown(ctx)
 }
 
+// deliver hands the first callback result to Wait. Later callbacks (a page
+// reload, a duplicate request) are dropped so their handlers never block.
+func (s *CallbackServer) deliver(res callbackResult) {
+	select {
+	case s.result <- res:
+	default:
+	}
+}
+
 func (s *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -89,7 +98,7 @@ func (s *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 		if desc == "" {
 			desc = errParam
 		}
-		s.result <- callbackResult{err: errors.New(desc)}
+		s.deliver(callbackResult{err: errors.New(desc)})
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = fmt.Fprintf(w,
 			`<!DOCTYPE html><html><body><p>Authorization failed: %s. You may close this tab.</p></body></html>`,
@@ -103,16 +112,16 @@ func (s *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 
 	switch {
 	case code == "":
-		s.result <- callbackResult{err: errors.New("missing authorization code in callback")}
+		s.deliver(callbackResult{err: errors.New("missing authorization code in callback")})
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	case state == "":
-		s.result <- callbackResult{err: errors.New("missing state in callback; request may not be from Bitbucket")}
+		s.deliver(callbackResult{err: errors.New("missing state in callback; request may not be from Bitbucket")})
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	s.result <- callbackResult{code: code, state: state}
+	s.deliver(callbackResult{code: code, state: state})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = fmt.Fprintln(w,
 		`<!DOCTYPE html><html><body><p>Authorization successful! You may close this tab and return to the terminal.</p></body></html>`,

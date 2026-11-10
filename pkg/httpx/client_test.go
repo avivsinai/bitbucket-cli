@@ -1560,22 +1560,6 @@ func TestWithoutTokenRefresher401ReturnsError(t *testing.T) {
 	}
 }
 
-func TestNewRequestAbsoluteURL(t *testing.T) {
-	client, err := New(Options{BaseURL: "https://example.com"})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	req, err := client.NewRequest(context.Background(), http.MethodGet, "https://other.com/api/test", nil)
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
-
-	if got := req.URL.String(); got != "https://other.com/api/test" {
-		t.Fatalf("expected absolute URL to be preserved, got %s", got)
-	}
-}
-
 func TestConcurrent401RefreshCoalesced(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "Bearer new-token" {
@@ -1759,5 +1743,30 @@ func TestFollowerRetriesWhenLeaderContextCancelled(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&refreshCalls); got != 2 {
 		t.Fatalf("TokenRefresher called %d times, want 2 (failed leader + follower replacement)", got)
+	}
+}
+
+// `bkt api https://other.example.com/x` used to send the stored token to
+// other.example.com; an http:// URL to the same host sent it in clear text.
+func TestNewRequestRefusesAnotherOrigin(t *testing.T) {
+	client, err := New(Options{BaseURL: "https://bitbucket.example.com/context"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, target := range []string{
+		"https://other.example.com/rest/api/1.0/projects",
+		"http://bitbucket.example.com/rest/api/1.0/projects",
+		"https://bitbucket.example.com:8443/rest/api/1.0/projects",
+	} {
+		if _, err := client.NewRequest(context.Background(), http.MethodGet, target, nil); err == nil {
+			t.Errorf("NewRequest(%q) succeeded; want a refusal", target)
+		}
+	}
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "https://BITBUCKET.example.com/context/rest/api/1.0/projects?limit=1", nil)
+	if err != nil {
+		t.Fatalf("NewRequest for the configured origin: %v", err)
+	}
+	if got := req.URL.String(); got != "https://BITBUCKET.example.com/context/rest/api/1.0/projects?limit=1" {
+		t.Fatalf("URL = %q", got)
 	}
 }

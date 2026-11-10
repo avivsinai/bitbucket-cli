@@ -41,6 +41,9 @@ func resolveContext(f *Factory, override string, remoteDefaults bool) (string, *
 	contextName := override
 	if contextName == "" {
 		contextName = cfg.ActiveContext
+		if envTargetsAnotherHost(cfg, contextName) {
+			contextName = ""
+		}
 	}
 
 	if contextName == "" {
@@ -135,6 +138,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 			return "", nil, fmt.Errorf("--host %q: %w", hostIdentifier, envErr)
 		}
 		if envHost != nil {
+			if err := checkEnvTokenScope(envKey); err != nil {
+				return "", nil, err
+			}
 			return envKey, envHost, nil
 		}
 		return "", nil, fmt.Errorf("host %q not found; run `%s auth login` first", hostIdentifier, f.ExecutableName)
@@ -143,6 +149,9 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 	contextName := strings.TrimSpace(contextOverride)
 	if contextName == "" {
 		contextName = cfg.ActiveContext
+		if envTargetsAnotherHost(cfg, contextName) {
+			contextName = ""
+		}
 	}
 	if contextName != "" {
 		ctx, err := cfg.Context(contextName)
@@ -262,9 +271,13 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 		return fmt.Errorf("host %q not configured", hostKey)
 	}
 
-	// BKT_TOKEN applies to all hosts. For multi-host setups where each
-	// host needs a different token, use the keyring instead.
+	// BKT_TOKEN applies to every host unless BKT_HOST scopes it to one. For
+	// multi-host setups where each host needs a different token, use the
+	// keyring instead.
 	if envToken := secret.TokenFromEnv(); envToken != "" {
+		if err := checkEnvTokenScope(configHostKey(hostKey, host)); err != nil {
+			return err
+		}
 		host.Token = envToken
 		// Apply BKT_USERNAME and BKT_AUTH_METHOD so that OAuth-saved hosts
 		// (where Username is a Bitbucket ID, not an email) work correctly
@@ -363,20 +376,9 @@ func hostFromEnv(rawURL string) (string, *config.Host, error) {
 		return "", nil, nil
 	}
 
-	baseURL, err := NormalizeBaseURL(rawURL)
+	baseURL, isCloud, err := envBaseURL(rawURL)
 	if err != nil {
 		return "", nil, err
-	}
-
-	// Canonicalise Bitbucket Cloud base URLs to the API origin.
-	// Exact hostname matching avoids false positives for DC hosts whose names
-	// happen to contain or end with "bitbucket.org" (e.g. bitbucket.org.corp.com).
-	hostname := hostHostname(baseURL)
-	isCloud := hostname == "bitbucket.org" || hostname == "api.bitbucket.org"
-	if isCloud {
-		// Covers: https://bitbucket.org, https://api.bitbucket.org (bare, no /2.0),
-		// and https://api.bitbucket.org/2.0 (no-op rewrite).
-		baseURL = "https://api.bitbucket.org/2.0"
 	}
 
 	key, err := HostKeyFromURL(baseURL)
@@ -422,6 +424,87 @@ func hostFromEnv(rawURL string) (string, *config.Host, error) {
 		AuthMethod: authMethod,
 		Token:      token,
 	}, nil
+}
+
+// envBaseURL normalises a BKT_HOST value to the base URL bkt calls, and says
+// whether it names Bitbucket Cloud.
+func envBaseURL(rawURL string) (string, bool, error) {
+	baseURL, err := NormalizeBaseURL(rawURL)
+	if err != nil {
+		return "", false, err
+	}
+
+	// Canonicalise Bitbucket Cloud base URLs to the API origin.
+	// Exact hostname matching avoids false positives for DC hosts whose names
+	// happen to contain or end with "bitbucket.org" (e.g. bitbucket.org.corp.com).
+	hostname := hostHostname(baseURL)
+	isCloud := hostname == "bitbucket.org" || hostname == "api.bitbucket.org"
+	if isCloud {
+		// Covers: https://bitbucket.org, https://api.bitbucket.org (bare, no /2.0),
+		// and https://api.bitbucket.org/2.0 (no-op rewrite).
+		baseURL = "https://api.bitbucket.org/2.0"
+	}
+	return baseURL, isCloud, nil
+}
+
+// envHostKey returns the host key that BKT_HOST names, or "" when BKT_HOST is
+// unset. Unlike hostFromEnv it needs no token and checks no auth settings.
+func envHostKey() (string, error) {
+	rawURL := strings.TrimSpace(os.Getenv(secret.EnvHost))
+	if rawURL == "" {
+		return "", nil
+	}
+	baseURL, _, err := envBaseURL(rawURL)
+	if err != nil {
+		return "", err
+	}
+	return HostKeyFromURL(baseURL)
+}
+
+// configHostKey returns the key of the server a configured host points at.
+// Config keys are free text in hand-written files, so the base URL decides.
+func configHostKey(hostKey string, host *config.Host) string {
+	if host != nil {
+		if key, err := HostKeyFromURL(host.BaseURL); err == nil {
+			return key
+		}
+	}
+	return hostKey
+}
+
+// checkEnvTokenScope refuses to use BKT_TOKEN for targetKey when BKT_HOST
+// names a different server.
+func checkEnvTokenScope(targetKey string) error {
+	envKey, err := envHostKey()
+	if err != nil {
+		return fmt.Errorf("BKT_HOST: %w", err)
+	}
+	if envKey != "" && envKey != targetKey {
+		return fmt.Errorf("BKT_TOKEN is set for BKT_HOST (%s) and is not sent to %s; target %s, or unset BKT_HOST and BKT_TOKEN to use the stored credentials", envKey, targetKey, envKey)
+	}
+	return nil
+}
+
+// envTargetsAnotherHost reports whether BKT_HOST and BKT_TOKEN name a server
+// other than the one the given context uses. The environment then wins over
+// the context: BKT_TOKEN belongs to BKT_HOST and must not go anywhere else.
+func envTargetsAnotherHost(cfg *config.Config, contextName string) bool {
+	if contextName == "" || secret.TokenFromEnv() == "" {
+		return false
+	}
+	envKey, err := envHostKey()
+	if err != nil || envKey == "" {
+		return false
+	}
+	ctx, err := cfg.Context(contextName)
+	if err != nil {
+		return false
+	}
+	host, err := cfg.Host(ctx.Host)
+	if err != nil {
+		return false
+	}
+	return envKey != configHostKey(ctx.Host, host)
 }
 
 // contextFromEnv builds an ephemeral *config.Context from environment variables.

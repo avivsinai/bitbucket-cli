@@ -903,6 +903,11 @@ func detectedAuthMethod(hostKey string, host *config.Host, tokenSource string) s
 		if m := strings.TrimSpace(os.Getenv(secret.EnvAuthMethod)); m != "" {
 			return m
 		}
+		// Without BKT_AUTH_METHOD the saved method stays in force, except
+		// OAuth: an env token for an OAuth-saved host is sent as basic auth.
+		if host != nil && host.AuthMethod != "" && host.AuthMethod != "oauth" {
+			return host.AuthMethod
+		}
 		return "basic"
 	}
 	if host == nil {
