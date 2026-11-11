@@ -372,8 +372,9 @@ func runExtensionExec(cmd *cobra.Command, f *cmdutil.Factory, name string, args 
 
 	err = cmdExec.Run()
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		// Pass the extension's own exit code through without an extra message.
+	// Pass the extension's own exit code through without an extra message.
+	// A negative code means a signal ended it; that stays an ordinary error.
+	if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
 		return &cmdutil.ExitError{Code: exitErr.ExitCode()}
 	}
 	return err
