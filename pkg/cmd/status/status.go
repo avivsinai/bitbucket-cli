@@ -85,12 +85,7 @@ func runCommit(cmd *cobra.Command, f *cmdutil.Factory, sha string) error {
 		return fmt.Errorf("status commit currently supports Data Center contexts only")
 	}
 
-	client, err := bbdc.New(bbdc.Options{
-		BaseURL:    host.BaseURL,
-		Username:   host.Username,
-		Token:      host.Token,
-		AuthMethod: host.AuthMethod,
-	})
+	client, err := cmdutil.NewDCClient(host)
 	if err != nil {
 		return err
 	}
@@ -178,12 +173,7 @@ func runPullRequest(cmd *cobra.Command, f *cmdutil.Factory, prID int, opts *prOp
 		return fmt.Errorf("repository slug required; pass --repo or set the context default")
 	}
 
-	client, err := bbdc.New(bbdc.Options{
-		BaseURL:    host.BaseURL,
-		Username:   host.Username,
-		Token:      host.Token,
-		AuthMethod: host.AuthMethod,
-	})
+	client, err := cmdutil.NewDCClient(host)
 	if err != nil {
 		return err
 	}

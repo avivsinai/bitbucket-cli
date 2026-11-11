@@ -210,7 +210,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		Secured bool   `json:"secured"`
 	}
 
-	var summaries []variableSummary
+	summaries := []variableSummary{}
 	for _, v := range variables {
 		summaries = append(summaries, variableSummary{
 			UUID:    v.UUID,
@@ -1001,8 +1001,8 @@ func runSetFromEnvFile(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions)
 	}
 
 	// Validate all keys first
-	for key := range envVars {
-		if err := validateVariableKey(key); err != nil {
+	for _, e := range envVars {
+		if err := validateVariableKey(e.Key); err != nil {
 			return fmt.Errorf("invalid variable in env file: %w", err)
 		}
 	}
@@ -1053,7 +1053,20 @@ func runSetFromEnvFile(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions)
 	securedFlagChanged := cmd.Flags().Changed("secured")
 
 	var results []varResult
-	for key, value := range envVars {
+	// wrapFailure names the variables already written, so a failure says what
+	// state the scope was left in.
+	wrapFailure := func(err error) error {
+		if len(results) == 0 {
+			return err
+		}
+		names := make([]string, len(results))
+		for i, res := range results {
+			names[i] = res.Key
+		}
+		return fmt.Errorf("%w (already applied: %s)", err, strings.Join(names, ", "))
+	}
+	for _, entry := range envVars {
+		key, value := entry.Key, entry.Value
 		existing := existingByKey[key]
 		var action string
 		var secured bool
@@ -1086,7 +1099,7 @@ func runSetFromEnvFile(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions)
 				})
 			}
 			if err != nil {
-				return fmt.Errorf("failed to update variable %q: %w", key, err)
+				return wrapFailure(fmt.Errorf("failed to update variable %q: %w", key, err))
 			}
 			action = "updated"
 		} else {
@@ -1113,7 +1126,7 @@ func runSetFromEnvFile(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions)
 				})
 			}
 			if err != nil {
-				return fmt.Errorf("failed to create variable %q: %w", key, err)
+				return wrapFailure(fmt.Errorf("failed to create variable %q: %w", key, err))
 			}
 			action = "created"
 		}
@@ -1172,17 +1185,24 @@ func runSetFromEnvFile(cmd *cobra.Command, f *cmdutil.Factory, opts *setOptions)
 	})
 }
 
-// parseEnvFile reads a file and extracts KEY=VALUE pairs.
+// envEntry is one KEY=VALUE pair from an env file.
+type envEntry struct {
+	Key   string
+	Value string
+}
+
+// parseEnvFile reads a file and extracts KEY=VALUE pairs in file order.
 // Lines starting with # are treated as comments.
-// Empty lines are skipped.
-func parseEnvFile(path string) (map[string]string, error) {
+// Empty lines are skipped. A repeated key keeps its first position and its last value.
+func parseEnvFile(path string) ([]envEntry, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open env file: %w", err)
 	}
 	defer func() { _ = file.Close() }()
 
-	result := make(map[string]string)
+	var result []envEntry
+	index := make(map[string]int)
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
@@ -1216,7 +1236,12 @@ func parseEnvFile(path string) (map[string]string, error) {
 			return nil, fmt.Errorf("line %d: empty key", lineNum)
 		}
 
-		result[key] = value
+		if i, ok := index[key]; ok {
+			result[i].Value = value
+		} else {
+			index[key] = len(result)
+			result = append(result, envEntry{Key: key, Value: value})
+		}
 	}
 
 	if err := scanner.Err(); err != nil {

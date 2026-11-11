@@ -695,6 +695,17 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 					return err
 				}
 			}
+
+			if len(pr.Reviewers) > 0 {
+				if _, err := fmt.Fprintln(ios.Out, "\nReviewers:"); err != nil {
+					return err
+				}
+				for _, reviewer := range pr.Reviewers {
+					if _, err := fmt.Fprintf(ios.Out, "  %s\n", cmdutil.FirstNonEmpty(reviewer.Display, reviewer.Username)); err != nil {
+						return err
+					}
+				}
+			}
 			return nil
 		})
 
@@ -1216,6 +1227,14 @@ func runCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *createOptions) erro
 }
 
 func applyCreateDefaults(ctx context.Context, opts *createOptions, host *config.Host) error {
+	// Commits for the default title come from the branch the user named with
+	// --source when git can resolve it locally, otherwise from HEAD.
+	titleRef := "HEAD"
+	if src := strings.TrimSpace(opts.Source); src != "" {
+		if _, err := runGitOutput(ctx, "rev-parse", "--verify", "--quiet", src+"^{commit}"); err == nil {
+			titleRef = src
+		}
+	}
 	if strings.TrimSpace(opts.Source) == "" {
 		source, err := currentGitBranch(ctx)
 		if err != nil {
@@ -1242,7 +1261,7 @@ func applyCreateDefaults(ctx context.Context, opts *createOptions, host *config.
 				remoteName = rn
 			}
 		}
-		title, err := defaultGitPRTitle(ctx, opts.Target, remoteName)
+		title, err := defaultGitPRTitle(ctx, opts.Target, remoteName, titleRef)
 		if err != nil {
 			return fmt.Errorf("could not determine default --title from git history; pass --title explicitly: %w", err)
 		}
@@ -1291,18 +1310,18 @@ func defaultGitTargetBranch(ctx context.Context, host *config.Host) (branch stri
 	return branch, remoteName, nil
 }
 
-func defaultGitPRTitle(ctx context.Context, targetBranch, remoteName string) (string, error) {
+func defaultGitPRTitle(ctx context.Context, targetBranch, remoteName, sourceRef string) (string, error) {
 	baseRef, err := resolveGitBaseRef(ctx, targetBranch, remoteName)
 	if err != nil {
 		return "", err
 	}
 
-	mergeBase, err := runGitOutput(ctx, "merge-base", "HEAD", baseRef)
+	mergeBase, err := runGitOutput(ctx, "merge-base", sourceRef, baseRef)
 	if err != nil {
 		return "", err
 	}
 
-	out, err := runGitOutput(ctx, "log", "--reverse", "--format=%s", fmt.Sprintf("%s..HEAD", strings.TrimSpace(mergeBase)))
+	out, err := runGitOutput(ctx, "log", "--reverse", "--format=%s", fmt.Sprintf("%s..%s", strings.TrimSpace(mergeBase), sourceRef))
 	if err != nil {
 		return "", err
 	}
@@ -3035,7 +3054,7 @@ the source branch's latest commit. On Cloud, the source commit hash from the
 pull request is used.
 
 Exit codes in --wait mode: 0 = all passed, 1 = a build failed,
-8 = timed out with builds still pending.`,
+8 = timed out with builds still pending, 130 = interrupted.`,
 		Example: `  # Show current build status
   bkt pr checks 42
 

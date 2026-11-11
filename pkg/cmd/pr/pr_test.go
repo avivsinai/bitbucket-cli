@@ -5663,6 +5663,38 @@ func runGitPRTestOutput(t *testing.T, dir string, args ...string) string {
 	return string(output)
 }
 
+// `bkt pr create --source feature-x` run from another branch derived the
+// default title from HEAD's commits instead of feature-x's.
+func TestDefaultGitPRTitleUsesSourceRef(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	dir := t.TempDir()
+	runGitPRTest(t, dir, "init", "-b", "main")
+	runGitPRTest(t, dir, "config", "user.name", "Test User")
+	runGitPRTest(t, dir, "config", "user.email", "test@example.com")
+	writeTestFile(t, filepath.Join(dir, "README.md"), "base\n")
+	runGitPRTest(t, dir, "add", "README.md")
+	runGitPRTest(t, dir, "commit", "-m", "chore: base")
+
+	runGitPRTest(t, dir, "checkout", "-b", "feature-x")
+	writeTestFile(t, filepath.Join(dir, "x.txt"), "x\n")
+	runGitPRTest(t, dir, "add", "x.txt")
+	runGitPRTest(t, dir, "commit", "-m", "feat: from feature-x")
+
+	runGitPRTest(t, dir, "checkout", "-b", "other", "main")
+
+	withWorkingDir(t, dir, func() {
+		got, err := defaultGitPRTitle(context.Background(), "main", "", "feature-x")
+		if err != nil {
+			t.Fatalf("defaultGitPRTitle: %v", err)
+		}
+		if got != "feat: from feature-x" {
+			t.Fatalf("title = %q, want feature-x's commit subject", got)
+		}
+	})
+}
+
 func TestCommentPendingFlagDC(t *testing.T) {
 	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -110,7 +110,7 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 			UUID        string `json:"uuid"`
 		}
 
-		var summaries []reviewerSummary
+		summaries := []reviewerSummary{}
 		for _, u := range users {
 			summaries = append(summaries, reviewerSummary{
 				DisplayName: u.Display,
@@ -176,7 +176,7 @@ func runDefaultReviewersList(cmd *cobra.Command, f *cmdutil.Factory, opts *defau
 			ID          int    `json:"id"`
 		}
 
-		var summaries []reviewerSummary
+		summaries := []reviewerSummary{}
 		for _, u := range users {
 			summaries = append(summaries, reviewerSummary{
 				DisplayName: u.FullName,
