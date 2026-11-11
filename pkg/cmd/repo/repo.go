@@ -112,12 +112,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		}
 		projectKey = strings.ToUpper(projectKey)
 
-		client, err := bbdc.New(bbdc.Options{
-			BaseURL:    host.BaseURL,
-			Username:   host.Username,
-			Token:      host.Token,
-			AuthMethod: host.AuthMethod,
-		})
+		client, err := cmdutil.NewDCClient(host)
 		if err != nil {
 			return err
 		}
@@ -140,7 +135,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			Clone    []string `json:"clone_urls,omitempty"`
 		}
 
-		var summaries []repoSummary
+		summaries := []repoSummary{}
 		for _, repo := range repos {
 			summaries = append(summaries, repoSummary{
 				Project:  repo.Project.Key,
@@ -220,7 +215,7 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 			Clone     []string `json:"clone_urls,omitempty"`
 		}
 
-		var summaries []repoSummary
+		summaries := []repoSummary{}
 		for _, repo := range repos {
 			summaries = append(summaries, repoSummary{
 				Workspace: workspace,
@@ -352,12 +347,7 @@ func runView(cmd *cobra.Command, f *cmdutil.Factory, opts *viewOptions) error {
 			return fmt.Errorf("repository slug required; pass --repo or set the context default")
 		}
 
-		client, err := bbdc.New(bbdc.Options{
-			BaseURL:    host.BaseURL,
-			Username:   host.Username,
-			Token:      host.Token,
-			AuthMethod: host.AuthMethod,
-		})
+		client, err := cmdutil.NewDCClient(host)
 		if err != nil {
 			return err
 		}

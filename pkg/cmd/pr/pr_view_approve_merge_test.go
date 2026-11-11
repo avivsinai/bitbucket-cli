@@ -163,6 +163,32 @@ func TestPRViewCloudWeb(t *testing.T) {
 	}
 }
 
+// The help says `pr view` shows reviewers, but the Cloud output never listed them.
+func TestPRViewCloudShowsReviewers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repositories/myworkspace/my-repo/pullrequests/7" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":        7,
+				"title":     "Cloud PR",
+				"state":     "OPEN",
+				"reviewers": []map[string]any{{"display_name": "Rita Reviewer", "username": "rita"}},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := runCLI(t, cloudConfig(srv.URL), "pr", "view", "7")
+	if err != nil {
+		t.Fatalf("pr view error: %v (stderr=%s)", err, stderr)
+	}
+	if !strings.Contains(stdout, "Reviewers:\n  Rita Reviewer") {
+		t.Fatalf("stdout missing reviewer:\n%s", stdout)
+	}
+}
+
 func TestPRApproveDataCenter(t *testing.T) {
 	var approveCalled bool
 

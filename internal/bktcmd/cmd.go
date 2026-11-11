@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -38,25 +39,34 @@ func Main() int {
 	}
 	rootCmd.SetContext(ctx)
 
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		var exitErr *cmdutil.ExitError
-		if errors.As(err, &exitErr) {
-			if exitErr.Msg != "" {
-				_, _ = fmt.Fprintln(ios.ErrOut, exitErr.Msg)
-			}
-			return exitErr.Code
+	return exitCode(ctx, rootCmd.ExecuteContext(ctx), ios.ErrOut)
+}
+
+// exitCode maps the command result to a process exit code. A cancelled root
+// context means a signal (Ctrl-C, SIGTERM) interrupted the run, whatever the
+// command returned: exit 130 and print nothing.
+func exitCode(ctx context.Context, err error, errOut io.Writer) int {
+	if ctx.Err() != nil {
+		return 130
+	}
+	if err == nil {
+		return 0
+	}
+	var exitErr *cmdutil.ExitError
+	if errors.As(err, &exitErr) {
+		if exitErr.Msg != "" {
+			_, _ = fmt.Fprintln(errOut, exitErr.Msg)
 		}
-		// ErrPending: checks still pending (e.g., timeout hit) - exit code 8
-		if errors.Is(err, cmdutil.ErrPending) {
-			return 8
-		}
-		// ErrSilent: failure without message - exit code 1
-		if errors.Is(err, cmdutil.ErrSilent) {
-			return 1
-		}
-		_, _ = fmt.Fprintf(ios.ErrOut, "Error: %v\n", err)
+		return exitErr.Code
+	}
+	// ErrPending: checks still pending (e.g., timeout hit) - exit code 8
+	if errors.Is(err, cmdutil.ErrPending) {
+		return 8
+	}
+	// ErrSilent: failure without message - exit code 1
+	if errors.Is(err, cmdutil.ErrSilent) {
 		return 1
 	}
-
-	return 0
+	_, _ = fmt.Fprintf(errOut, "Error: %v\n", err)
+	return 1
 }

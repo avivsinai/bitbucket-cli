@@ -200,6 +200,7 @@ func runDownloadUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *downloadOpt
 	}
 
 	// Validate all files exist and are not directories before uploading anything
+	seen := make(map[string]string, len(files))
 	for _, filePath := range files {
 		info, err := os.Stat(filePath)
 		if err != nil {
@@ -211,6 +212,12 @@ func runDownloadUpload(cmd *cobra.Command, f *cmdutil.Factory, opts *downloadOpt
 		if info.IsDir() {
 			return fmt.Errorf("cannot upload directory: %s", filePath)
 		}
+		// Downloads are keyed by base name, so equal names would overwrite.
+		name := filepath.Base(filePath)
+		if prev, ok := seen[name]; ok {
+			return fmt.Errorf("duplicate file name %q: %s and %s would overwrite each other", name, prev, filePath)
+		}
+		seen[name] = filePath
 	}
 
 	settings, err := cmdutil.ResolveOutputSettings(cmd)

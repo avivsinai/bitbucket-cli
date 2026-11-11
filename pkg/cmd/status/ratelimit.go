@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -61,7 +62,7 @@ func runRateLimit(cmd *cobra.Command, f *cmdutil.Factory) error {
 			return err
 		}
 		rl := client.RateLimit()
-		return renderRateLimit(cmd, ios.Out, rl)
+		return renderRateLimit(cmd, ios.Out, host.BaseURL, rl)
 	case "cloud":
 		client, err := cmdutil.NewCloudClient(host)
 		if err != nil {
@@ -71,13 +72,13 @@ func runRateLimit(cmd *cobra.Command, f *cmdutil.Factory) error {
 			return err
 		}
 		rl := client.RateLimit()
-		return renderRateLimit(cmd, ios.Out, rl)
+		return renderRateLimit(cmd, ios.Out, host.BaseURL, rl)
 	default:
 		return fmt.Errorf("unsupported host kind %q", host.Kind)
 	}
 }
 
-func renderRateLimit(cmd *cobra.Command, out io.Writer, rl httpx.RateLimit) error {
+func renderRateLimit(cmd *cobra.Command, out io.Writer, baseURL string, rl httpx.RateLimit) error {
 	payload := map[string]any{
 		"limit":     rl.Limit,
 		"remaining": rl.Remaining,
@@ -86,22 +87,31 @@ func renderRateLimit(cmd *cobra.Command, out io.Writer, rl httpx.RateLimit) erro
 	}
 
 	return cmdutil.WriteOutput(cmd, out, payload, func() error {
-		if _, err := fmt.Fprintf(out, "Limit: %d\n", rl.Limit); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(out, "Remaining: %d\n", rl.Remaining); err != nil {
-			return err
-		}
-		if !rl.Reset.IsZero() {
-			if _, err := fmt.Fprintf(out, "Resets At: %s\n", rl.Reset.Format(time.RFC3339)); err != nil {
-				return err
-			}
-		}
-		if rl.Source != "" {
-			if _, err := fmt.Fprintf(out, "Source: %s\n", rl.Source); err != nil {
-				return err
-			}
-		}
-		return nil
+		return writeRateLimitText(out, baseURL, rl)
 	})
+}
+
+func writeRateLimitText(out io.Writer, baseURL string, rl httpx.RateLimit) error {
+	if rl.Source == "" {
+		// No headers: zero counters would read as an exhausted limit.
+		name := baseURL
+		if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+			name = u.Host
+		}
+		_, err := fmt.Fprintf(out, "No rate-limit headers returned by %s.\n", name)
+		return err
+	}
+	if _, err := fmt.Fprintf(out, "Limit: %d\n", rl.Limit); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(out, "Remaining: %d\n", rl.Remaining); err != nil {
+		return err
+	}
+	if !rl.Reset.IsZero() {
+		if _, err := fmt.Fprintf(out, "Resets At: %s\n", rl.Reset.Format(time.RFC3339)); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(out, "Source: %s\n", rl.Source)
+	return err
 }

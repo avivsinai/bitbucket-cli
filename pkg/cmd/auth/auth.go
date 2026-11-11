@@ -560,7 +560,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 
 	tokenSource := resolvedTokenSource()
 
-	var hosts []hostSummary
+	hosts := []hostSummary{}
 	for _, key := range hostKeys {
 		h := cfg.Hosts[key]
 		am := detectedAuthMethod(key, h, tokenSource)
@@ -584,7 +584,7 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 	}
 	sort.Strings(contextNames)
 
-	var contexts []contextSummary
+	contexts := []contextSummary{}
 	for _, name := range contextNames {
 		ctx := cfg.Contexts[name]
 		contexts = append(contexts, contextSummary{
