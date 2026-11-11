@@ -138,7 +138,7 @@ func ResolveHost(f *Factory, contextOverride, hostOverride string) (string, *con
 			return "", nil, fmt.Errorf("--host %q: %w", hostIdentifier, envErr)
 		}
 		if envHost != nil {
-			if err := checkEnvTokenScope(envKey); err != nil {
+			if err := checkEnvTokenScope(configHostKey(envKey, envHost)); err != nil {
 				return "", nil, err
 			}
 			return envKey, envHost, nil
@@ -458,18 +458,47 @@ func envHostKey() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return HostKeyFromURL(baseURL)
+	return serverKey(baseURL)
 }
 
 // configHostKey returns the key of the server a configured host points at.
 // Config keys are free text in hand-written files, so the base URL decides.
 func configHostKey(hostKey string, host *config.Host) string {
 	if host != nil {
-		if key, err := HostKeyFromURL(host.BaseURL); err == nil {
+		if key, err := serverKey(host.BaseURL); err == nil {
 			return key
+		}
+		// A Cloud host without a base URL is sent to the Cloud API.
+		if host.BaseURL == "" && host.Kind == "cloud" {
+			return "api.bitbucket.org"
 		}
 	}
 	return hostKey
+}
+
+// serverKey identifies the server a base URL points at: the lower-case host
+// name, plus the port when it is not the default port of the scheme. Two
+// spellings of one server compare equal.
+func serverKey(baseURL string) (string, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("invalid base URL %q", baseURL)
+	}
+	host := strings.ToLower(u.Hostname())
+	port := u.Port()
+	if port == "" || (port == "443" && u.Scheme == "https") || (port == "80" && u.Scheme == "http") {
+		return host, nil
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
+// EnvTokenAppliesTo reports whether BKT_TOKEN is the credential for the given
+// host: it is set, and BKT_HOST, when set, names that host's server.
+func EnvTokenAppliesTo(hostKey string, host *config.Host) bool {
+	return secret.TokenFromEnv() != "" && checkEnvTokenScope(configHostKey(hostKey, host)) == nil
 }
 
 // checkEnvTokenScope refuses to use BKT_TOKEN for targetKey when BKT_HOST

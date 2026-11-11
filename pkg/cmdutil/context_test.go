@@ -1282,3 +1282,38 @@ func TestResolveHostEnvHostWinsOverActiveContextOfAnotherHost(t *testing.T) {
 		t.Fatalf("host = %s with token %q, want the BKT_HOST server with its token", host.BaseURL, host.Token)
 	}
 }
+
+// The same server written with another letter case, an explicit default
+// port, or (for Cloud) no base URL at all is not "another host": the active
+// context and its defaults stay in force.
+func TestResolveContextKeepsActiveContextWhenEnvHostIsTheSameServer(t *testing.T) {
+	tests := []struct {
+		name, envHost string
+		host          config.Host
+	}{
+		{"letter case", "https://bitbucket.corp.com", config.Host{Kind: "dc", BaseURL: "https://Bitbucket.Corp.com"}},
+		{"default port", "https://bitbucket.corp.com:443", config.Host{Kind: "dc", BaseURL: "https://bitbucket.corp.com"}},
+		{"cloud without base URL", "https://bitbucket.org", config.Host{Kind: "cloud", Username: "me@example.com"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(secret.EnvToken, "env-token")
+			t.Setenv(secret.EnvHost, tt.envHost)
+			t.Setenv(secret.EnvUsername, "")
+			host := tt.host
+			f := newTestFactory(&config.Config{
+				ActiveContext: "work",
+				Contexts:      map[string]*config.Context{"work": {Host: "main", ProjectKey: "PROJ", Workspace: "ws"}},
+				Hosts:         map[string]*config.Host{"main": &host},
+			})
+
+			name, ctx, _, err := ResolveContextStatic(f, "")
+			if err != nil {
+				t.Fatalf("ResolveContextStatic: %v", err)
+			}
+			if name != "work" || ctx.ProjectKey != "PROJ" {
+				t.Fatalf("context = %q (project %q), want the active context work", name, ctx.ProjectKey)
+			}
+		})
+	}
+}

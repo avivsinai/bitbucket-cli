@@ -558,11 +558,10 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 	}
 	sort.Strings(hostKeys)
 
-	tokenSource := resolvedTokenSource()
-
 	var hosts []hostSummary
 	for _, key := range hostKeys {
 		h := cfg.Hosts[key]
+		tokenSource := resolvedTokenSource(key, h)
 		am := detectedAuthMethod(key, h, tokenSource)
 		hs := hostSummary{
 			Key:         key,
@@ -888,11 +887,12 @@ func isTerminal(in io.Reader) bool {
 	return ok && term.IsTerminal(int(file.Fd()))
 }
 
-// resolvedTokenSource returns the active token resolution strategy.
-// When BKT_TOKEN is set it applies globally to all hosts; otherwise
-// the strategy is keyring-based (actual token presence is not checked).
-func resolvedTokenSource() string {
-	if secret.TokenFromEnv() != "" {
+// resolvedTokenSource returns the token resolution strategy for a host.
+// BKT_TOKEN applies to every host, or only to the BKT_HOST server when
+// BKT_HOST is set; otherwise the strategy is keyring-based (actual token
+// presence is not checked).
+func resolvedTokenSource(hostKey string, host *config.Host) string {
+	if cmdutil.EnvTokenAppliesTo(hostKey, host) {
 		return secret.EnvToken
 	}
 	return "keyring"

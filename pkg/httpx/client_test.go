@@ -1757,16 +1757,22 @@ func TestNewRequestRefusesAnotherOrigin(t *testing.T) {
 		"https://other.example.com/rest/api/1.0/projects",
 		"http://bitbucket.example.com/rest/api/1.0/projects",
 		"https://bitbucket.example.com:8443/rest/api/1.0/projects",
+		"//other.example.com/rest/api/1.0/projects",
 	} {
 		if _, err := client.NewRequest(context.Background(), http.MethodGet, target, nil); err == nil {
 			t.Errorf("NewRequest(%q) succeeded; want a refusal", target)
 		}
 	}
-	req, err := client.NewRequest(context.Background(), http.MethodGet, "https://BITBUCKET.example.com/context/rest/api/1.0/projects?limit=1", nil)
-	if err != nil {
-		t.Fatalf("NewRequest for the configured origin: %v", err)
-	}
-	if got := req.URL.String(); got != "https://BITBUCKET.example.com/context/rest/api/1.0/projects?limit=1" {
-		t.Fatalf("URL = %q", got)
+	for _, target := range []string{
+		"https://BITBUCKET.example.com/context/rest/api/1.0/projects?limit=1",
+		"https://bitbucket.example.com:443/context/rest/api/1.0/projects?limit=1",
+	} {
+		req, err := client.NewRequest(context.Background(), http.MethodGet, target, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%q) for the configured origin: %v", target, err)
+		}
+		if got := req.URL.String(); got != target {
+			t.Fatalf("URL = %q, want %q", got, target)
+		}
 	}
 }
