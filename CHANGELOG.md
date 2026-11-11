@@ -24,6 +24,38 @@ All notable changes to this project will be documented here. The format follows
   seconds instead of waiting forever while they hold the refresh lock.
 - `bkt auth status` under `BKT_TOKEN` shows the saved auth method (for example
   `bearer`) when `BKT_AUTH_METHOD` is unset. It used to print `basic`.
+- `bkt skill install` and `bkt skill update` keep the body of a SKILL.md whose
+  frontmatter is empty (`---` then `---`). Before, text up to the next `---`
+  rule was lost or a second frontmatter block was written.
+- `bkt skill update monalisa/triage` accepts the `namespace/name` shown by
+  `skill list`. It used to fail with "none of the specified skills are installed".
+- `bkt skill update` reports `! <name>: not found in <repo>` and exits non-zero
+  for a skill that no longer exists in its repository. It used to print
+  "All skills are up to date." and exit 0.
+- A 429 or 503 with a `Retry-After` longer than the request deadline returns
+  the HTTP error at once. It used to wait and report "context deadline exceeded".
+- Docs name the per-OS config directory (macOS and Windows differ from
+  `~/.config/bkt`); the security issue link points at the security policy.
+- Ctrl-C or SIGTERM makes bkt exit 130 with no error text. `pipeline run --wait`
+  and `pr checks --wait` used to exit 0, and other commands printed "Error:
+  context canceled" and exited 1.
+- `bkt extension exec` exits with the extension's own exit code and no extra
+  message. It used to print "Error: exit status N" and exit 1.
+- `bkt pipeline run --var LIST=a,b` keeps the comma in the value. It used to
+  fail with `invalid variable "b"`.
+- `bkt status rate-limit` prints "No rate-limit headers returned by HOST." when
+  the server sends none. It used to print "Limit: 0 / Remaining: 0".
+- Data Center `status commit`, `status pr`, `repo list` and `repo view` retry
+  transient failures like the other commands. They used to make one attempt.
+- `bkt pr create --source BRANCH` builds the default title from BRANCH's
+  commits. It used to read the current HEAD.
+- Bitbucket Cloud `bkt pr view` lists reviewers, as the Data Center view does.
+- `--json` prints `[]` for empty hosts, contexts, repositories, default
+  reviewers and variables. It used to print `null`.
+- `bkt repo downloads upload` rejects two files with the same base name before
+  uploading. The second used to silently replace the first.
+- `bkt variable set --env-file` applies variables in file order, and a failure
+  names the variables already applied.
 - `bkt pr checks` without `--wait` reports a timed-out status request as an
   error. It used to print "No builds found." and exit 0.
 - Data Center `bkt pr list --mine` on a repository asks Bitbucket for the

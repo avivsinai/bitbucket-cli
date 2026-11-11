@@ -767,6 +767,12 @@ func (c *Client) backoff(ctx context.Context, attempts int, resp *http.Response)
 
 	delay := c.retryDelay(attempts, resp)
 
+	// Waiting past the deadline only turns the real cause into
+	// "context deadline exceeded"; let the caller report the response instead.
+	if deadline, ok := ctx.Deadline(); ok && time.Now().Add(delay).After(deadline) {
+		return false, nil
+	}
+
 	if delay <= 0 {
 		select {
 		case <-ctx.Done():

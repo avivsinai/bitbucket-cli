@@ -48,7 +48,7 @@ cmd/bkt/          CLI entry point
 cmd/docgen/       generates skills/bkt/rules from command help
 internal/bktcmd/  Main() wiring (factory + root command)
 internal/build/   version metadata (set via ldflags)
-internal/config/  contexts and hosts in $XDG_CONFIG_HOME/bkt
+internal/config/  contexts and hosts in the bkt config directory
 internal/remote/  git remote parsing
 internal/secret/  OS keychain and encrypted file store
 pkg/cmd/          Cobra commands (auth, repo, pr, ...)

@@ -100,7 +100,7 @@ Create the Personal Access Token under **Profile picture → Manage account → 
 
 ### Credential storage
 
-Tokens live in the OS keychain: macOS Keychain, Windows Credential Manager, or Secret Service/KWallet on Linux. Host metadata lives in `$XDG_CONFIG_HOME/bkt/config.yml` and never contains a token.
+Tokens live in the OS keychain: macOS Keychain, Windows Credential Manager, or Secret Service/KWallet on Linux. Host metadata lives in `config.yml` in the bkt config directory (`~/Library/Application Support/bkt` on macOS, `%AppData%\bkt` on Windows, `$XDG_CONFIG_HOME/bkt` or `~/.config/bkt` on Linux) and never contains a token.
 
 - **No keychain** (containers, minimal Linux): pass `--allow-insecure-store` or set `BKT_ALLOW_INSECURE_STORE=1` to use an encrypted file instead.
 - **Slow unlock prompts:** raise `BKT_KEYRING_TIMEOUT`, for example `BKT_KEYRING_TIMEOUT=2m`.
@@ -149,7 +149,7 @@ pipelines:
 | `BKT_USERNAME` | Username for basic auth. Required for Cloud user API tokens. |
 | `BKT_AUTH_METHOD` | `basic` or `bearer`. Data Center defaults to `bearer` without `BKT_USERNAME`; Cloud defaults to `basic`. |
 | `BKT_PROJECT` / `BKT_WORKSPACE` / `BKT_REPO` | Default Data Center project, Cloud workspace, and repository. |
-| `BKT_CONFIG_DIR` | Config directory (default `$XDG_CONFIG_HOME/bkt`). |
+| `BKT_CONFIG_DIR` | Config directory (default: the per-OS location above). |
 | `BKT_OAUTH_CLIENT_ID` / `BKT_OAUTH_CLIENT_SECRET` | Your own Bitbucket Cloud OAuth consumer for `--web`; set both. |
 | `BKT_ALLOW_INSECURE_STORE` | `1` allows the encrypted file store when no keychain exists. |
 | `BKT_KEYRING_TIMEOUT` | Keychain operation timeout, for example `2m`. |

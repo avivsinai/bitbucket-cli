@@ -370,7 +370,14 @@ func runExtensionExec(cmd *cobra.Command, f *cmdutil.Factory, name string, args 
 		fmt.Sprintf("BKT_EXTENSION_NAME=%s", name),
 	)
 
-	return cmdExec.Run()
+	err = cmdExec.Run()
+	var exitErr *exec.ExitError
+	// Pass the extension's own exit code through without an extra message.
+	// A negative code means a signal ended it; that stays an ordinary error.
+	if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
+		return &cmdutil.ExitError{Code: exitErr.ExitCode()}
+	}
+	return err
 }
 
 func extensionRoot(f *cmdutil.Factory) (string, error) {

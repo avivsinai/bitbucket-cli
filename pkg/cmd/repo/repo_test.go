@@ -378,6 +378,27 @@ func TestRepoCreateRejectsHostNoOpFlags(t *testing.T) {
 	}
 }
 
+// An empty project used to print `"repositories": null` with --json.
+func TestRepoListJSONEmptyIsArray(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"isLastPage": true, "values": []any{}})
+	}))
+	t.Cleanup(server.Close)
+
+	stdout := &strings.Builder{}
+	cmd := newListCmd(repoTestFactory(dcRepoConfig(server.URL), stdout))
+	cmd.SetContext(context.Background())
+	cmd.PersistentFlags().Bool("json", false, "")
+	cmd.SetArgs([]string{"--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("repo list --json: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"repositories": []`) {
+		t.Fatalf("expected empty array, got %s", stdout.String())
+	}
+}
+
 func TestRepoListDataCenterMarksArchivedRows(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/rest/api/1.0/projects/PROJ/repos" {
@@ -584,5 +605,51 @@ func TestDownloadUploadReportsEarlierURLsWhenLaterFileFails(t *testing.T) {
 	}
 	if want := "https://bitbucket.org/ws/repo/downloads/first.png"; !strings.Contains(stdout.String(), want) {
 		t.Fatalf("stdout = %q, want URL of the uploaded file %s", stdout.String(), want)
+	}
+}
+
+// `upload before/shot.png after/shot.png` silently replaced the first file
+// with the second because downloads are keyed by base name.
+func TestDownloadUploadRejectsDuplicateBaseNames(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusCreated)
+	}))
+	t.Cleanup(server.Close)
+
+	dir := t.TempDir()
+	var paths []string
+	for _, sub := range []string{"before", "after"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		p := filepath.Join(dir, sub, "shot.png")
+		if err := os.WriteFile(p, []byte("png"), 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		paths = append(paths, p)
+	}
+
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {Host: "main", Workspace: "ws", DefaultRepo: "repo"},
+		},
+		Hosts: map[string]*config.Host{
+			"main": {Kind: "cloud", BaseURL: server.URL, Token: "test-token"},
+		},
+	}
+	cmd := newDownloadUploadCmd(repoTestFactory(cfg, &strings.Builder{}))
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs(paths)
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `duplicate file name "shot.png"`) {
+		t.Fatalf("expected duplicate name error, got %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("expected no HTTP requests, got %d", requests)
 	}
 }
