@@ -61,6 +61,8 @@ bkt pr list
 
 When `BKT_HOST` matches a host already in `config.yml` in the bkt config directory, the saved entry is used as the base (preserving fields like `username` and `auth_method`). `BKT_TOKEN` always overrides the stored token. `BKT_USERNAME` and `BKT_AUTH_METHOD`, when set, override the saved values.
 
+When `BKT_HOST` is set, `BKT_TOKEN` is used for that host only: the pair wins over an active context that points at another host, and `bkt` refuses to send the token to a different host named with `--context` or `--host`.
+
 Cloud resource access tokens are not associated with a user. Commands that
 require authenticated-user identity, such as cross-repository
 `bkt pr list --mine`, still require user API-token or OAuth credentials.

@@ -13,7 +13,12 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
+
+// httpClient makes the token and user-info calls. The refresh call runs while
+// a cross-process lock is held, so a stalled endpoint must not hang it.
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 // FlowOptions configures the OAuth authorization code flow.
 type FlowOptions struct {
@@ -169,7 +174,7 @@ func exchangeCode(ctx context.Context, opts FlowOptions, code, redirectURI, code
 }
 
 func doTokenRequest(req *http.Request) (*Token, error) {
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("token request: %w", err)
 	}
@@ -217,7 +222,7 @@ func fetchUsername(ctx context.Context, accessToken, userInfoURL string) (string
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", "", err
 	}

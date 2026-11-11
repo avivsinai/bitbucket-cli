@@ -62,5 +62,5 @@ This is the master agent instruction file for this repository. Keep repository p
 
 ## Security & Configuration Tips
 
-- Never commit real credentials; the CLI reads tokens from `$XDG_CONFIG_HOME/bkt/config.yml`.
+- Never commit real credentials. Tokens live in the OS keychain (or come from `BKT_TOKEN`); `config.yml` in the bkt config directory holds host metadata only.
 - Use environment overrides such as `BKT_CONFIG_DIR` for sandbox testing without touching primary config.

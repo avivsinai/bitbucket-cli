@@ -1218,3 +1218,102 @@ func TestResolveHostMultipleHostsErrorWhenNoEnvHost(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// --- BKT_TOKEN is scoped to BKT_HOST ---
+
+// With an active context for host A and BKT_HOST=B plus BKT_TOKEN, bkt used
+// to send B's token to host A and ignore BKT_HOST.
+func TestResolveContextEnvHostWinsOverActiveContextOfAnotherHost(t *testing.T) {
+	t.Setenv(secret.EnvToken, "token-for-b")
+	t.Setenv(secret.EnvHost, "https://b.example.com")
+	t.Setenv(secret.EnvProject, "PROJB")
+
+	f := newTestFactory(&config.Config{
+		ActiveContext: "a",
+		Contexts:      map[string]*config.Context{"a": {Host: "a.example.com", ProjectKey: "PROJA"}},
+		Hosts:         map[string]*config.Host{"a.example.com": {Kind: "dc", BaseURL: "https://a.example.com"}},
+	})
+
+	_, ctx, host, err := ResolveContextStatic(f, "")
+	if err != nil {
+		t.Fatalf("ResolveContextStatic: %v", err)
+	}
+	if host.BaseURL != "https://b.example.com" || host.Token != "token-for-b" {
+		t.Fatalf("host = %s with token %q, want the BKT_HOST server with its token", host.BaseURL, host.Token)
+	}
+	if ctx.ProjectKey != "PROJB" {
+		t.Fatalf("project = %q, want PROJB from the environment", ctx.ProjectKey)
+	}
+}
+
+// An explicit --context for another host must not receive the token that the
+// environment scopes to BKT_HOST.
+func TestResolveContextRefusesEnvTokenForExplicitContextOfAnotherHost(t *testing.T) {
+	t.Setenv(secret.EnvToken, "token-for-b")
+	t.Setenv(secret.EnvHost, "https://b.example.com")
+
+	f := newTestFactory(&config.Config{
+		Contexts: map[string]*config.Context{"a": {Host: "a.example.com"}},
+		Hosts:    map[string]*config.Host{"a.example.com": {Kind: "dc", BaseURL: "https://a.example.com"}},
+	})
+
+	_, _, _, err := ResolveContextStatic(f, "a")
+	if err == nil || !strings.Contains(err.Error(), "BKT_TOKEN") || !strings.Contains(err.Error(), "b.example.com") {
+		t.Fatalf("error = %v, want a refusal that names BKT_TOKEN and b.example.com", err)
+	}
+}
+
+// The same rule for commands that resolve only a host.
+func TestResolveHostEnvHostWinsOverActiveContextOfAnotherHost(t *testing.T) {
+	t.Setenv(secret.EnvToken, "token-for-b")
+	t.Setenv(secret.EnvHost, "https://b.example.com")
+
+	f := newTestFactory(&config.Config{
+		ActiveContext: "a",
+		Contexts:      map[string]*config.Context{"a": {Host: "a.example.com"}},
+		Hosts:         map[string]*config.Host{"a.example.com": {Kind: "dc", BaseURL: "https://a.example.com"}},
+	})
+
+	_, host, err := ResolveHost(f, "", "")
+	if err != nil {
+		t.Fatalf("ResolveHost: %v", err)
+	}
+	if host.BaseURL != "https://b.example.com" || host.Token != "token-for-b" {
+		t.Fatalf("host = %s with token %q, want the BKT_HOST server with its token", host.BaseURL, host.Token)
+	}
+}
+
+// The same server written with another letter case, an explicit default
+// port, or (for Cloud) no base URL at all is not "another host": the active
+// context and its defaults stay in force.
+func TestResolveContextKeepsActiveContextWhenEnvHostIsTheSameServer(t *testing.T) {
+	tests := []struct {
+		name, envHost string
+		host          config.Host
+	}{
+		{"letter case", "https://bitbucket.corp.com", config.Host{Kind: "dc", BaseURL: "https://Bitbucket.Corp.com"}},
+		{"default port", "https://bitbucket.corp.com:443", config.Host{Kind: "dc", BaseURL: "https://bitbucket.corp.com"}},
+		{"cloud without base URL", "https://bitbucket.org", config.Host{Kind: "cloud", Username: "me@example.com"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(secret.EnvToken, "env-token")
+			t.Setenv(secret.EnvHost, tt.envHost)
+			t.Setenv(secret.EnvUsername, "")
+			host := tt.host
+			f := newTestFactory(&config.Config{
+				ActiveContext: "work",
+				Contexts:      map[string]*config.Context{"work": {Host: "main", ProjectKey: "PROJ", Workspace: "ws"}},
+				Hosts:         map[string]*config.Host{"main": &host},
+			})
+
+			name, ctx, _, err := ResolveContextStatic(f, "")
+			if err != nil {
+				t.Fatalf("ResolveContextStatic: %v", err)
+			}
+			if name != "work" || ctx.ProjectKey != "PROJ" {
+				t.Fatalf("context = %q (project %q), want the active context work", name, ctx.ProjectKey)
+			}
+		})
+	}
+}

@@ -170,6 +170,33 @@ func New(opts Options) (*Client, error) {
 	return client, nil
 }
 
+// checkOrigin refuses a URL that does not point at the configured server.
+// Every request carries the stored credentials, so a URL for another host,
+// port, or scheme would hand them to that server (or send them in clear
+// text over http).
+func (c *Client) checkOrigin(u *url.URL) error {
+	if strings.EqualFold(u.Scheme, c.baseURL.Scheme) &&
+		strings.EqualFold(u.Hostname(), c.baseURL.Hostname()) &&
+		effectivePort(u) == effectivePort(c.baseURL) {
+		return nil
+	}
+	return fmt.Errorf("refusing to send credentials to %s; requests go only to %s://%s", strings.TrimPrefix(u.Scheme+"://"+u.Host, ":"), c.baseURL.Scheme, c.baseURL.Host)
+}
+
+// effectivePort returns the URL's port, or the default port of its scheme.
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
+}
+
 // NewRequest builds an HTTP request relative to the base URL. Body values are
 // JSON encoded when non-nil.
 func (c *Client) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
@@ -192,6 +219,14 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 		rel, err = url.Parse(path)
 		if err != nil {
 			return nil, fmt.Errorf("parse request path: %w", err)
+		}
+	}
+
+	// A reference that names its own server, including the protocol-relative
+	// form "//host/path", must point at the configured one.
+	if rel.Scheme != "" || rel.Host != "" {
+		if err := c.checkOrigin(rel); err != nil {
+			return nil, err
 		}
 	}
 
@@ -925,6 +960,14 @@ func (c *Client) NewMultipartRequest(ctx context.Context, method, path string, f
 		rel, err = url.Parse(path)
 		if err != nil {
 			return nil, fmt.Errorf("parse request path: %w", err)
+		}
+	}
+
+	// A reference that names its own server, including the protocol-relative
+	// form "//host/path", must point at the configured one.
+	if rel.Scheme != "" || rel.Host != "" {
+		if err := c.checkOrigin(rel); err != nil {
+			return nil, err
 		}
 	}
 

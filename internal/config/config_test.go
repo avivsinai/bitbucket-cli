@@ -407,3 +407,33 @@ func TestLoadTreatsEmptyContextAndHostEntriesAsMissing(t *testing.T) {
 		t.Fatalf("Host = %v, %v; want ErrHostNotFound", host, err)
 	}
 }
+
+// A config written by an old bkt can hold a plaintext token. Any save, for
+// example `bkt context create`, used to delete it before the user had moved
+// it to the keychain, so the next command had no credentials.
+func TestSaveKeepsPlaintextTokenThatWasReadFromTheFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BKT_CONFIG_DIR", dir)
+	path := filepath.Join(dir, "config.yml")
+	data := "hosts:\n  main:\n    kind: dc\n    base_url: https://bitbucket.example.com\n    token: legacy\n"
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cfg.SetContext("work", &Context{Host: "main"})
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	reloaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load after Save: %v", err)
+	}
+	if got := reloaded.Hosts["main"].Token; got != "legacy" {
+		t.Fatalf("token after save = %q, want the token that was in the file", got)
+	}
+}

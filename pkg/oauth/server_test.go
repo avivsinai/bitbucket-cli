@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -141,5 +142,29 @@ func TestCallbackServerContextCancellation(t *testing.T) {
 	_, _, err = srv.Wait(ctx)
 	if err == nil {
 		t.Fatal("expected error on cancelled context")
+	}
+}
+
+// A reloaded or duplicated callback used to block its handler forever once
+// one result was waiting, and Close then waited out its full timeout.
+func TestHandleCallbackDoesNotBlockOnRepeatedCallbacks(t *testing.T) {
+	s := &CallbackServer{result: make(chan callbackResult, 1)}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 3 {
+			req := httptest.NewRequest(http.MethodGet, "/callback?code=first&state=s", nil)
+			s.handleCallback(httptest.NewRecorder(), req)
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a repeated callback blocked its handler")
+	}
+	code, _, err := s.Wait(context.Background())
+	if err != nil || code != "first" {
+		t.Fatalf("Wait = %q, %v; want the first callback", code, err)
 	}
 }

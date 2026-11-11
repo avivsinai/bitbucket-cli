@@ -1115,3 +1115,13 @@ func newAuthTestFactory(cfg *config.Config) (*cmdutil.Factory, *strings.Builder,
 	}
 	return f, &stdout, &stderr
 }
+
+// With BKT_TOKEN set, `auth status` used to print "auth: basic" for a host
+// saved with bearer auth, although requests use Bearer.
+func TestDetectedAuthMethodUnderEnvTokenKeepsSavedBearer(t *testing.T) {
+	t.Setenv(secret.EnvAuthMethod, "")
+	host := &config.Host{Kind: "dc", BaseURL: "https://bitbucket.example.com", AuthMethod: "bearer"}
+	if got := detectedAuthMethod("bitbucket.example.com", host, secret.EnvToken); got != "bearer" {
+		t.Fatalf("auth method = %q, want bearer", got)
+	}
+}

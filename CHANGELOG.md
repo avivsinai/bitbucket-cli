@@ -5,7 +5,25 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Security
+- `BKT_TOKEN` is no longer sent to a host other than `BKT_HOST`. With an active
+  context for another host, `bkt` used to ignore `BKT_HOST` and send the token
+  to the context's host. The `BKT_HOST` + `BKT_TOKEN` pair now wins over the
+  active context, and an explicit `--context` or `--host` for another host is
+  refused.
+- `bkt api` and every other request refuse an absolute URL for another host,
+  port, or scheme. `bkt api https://other.example.com/x` used to send the
+  stored token to that host.
+
 ### Fixed
+- A config save (for example `bkt context create`) no longer deletes a legacy
+  plaintext token from `config.yml` before `bkt auth login` has moved it to the
+  keychain.
+- The browser login no longer hangs for two seconds, or leaks a handler, when
+  the callback page is reloaded; token and user-info calls time out after 30
+  seconds instead of waiting forever while they hold the refresh lock.
+- `bkt auth status` under `BKT_TOKEN` shows the saved auth method (for example
+  `bearer`) when `BKT_AUTH_METHOD` is unset. It used to print `basic`.
 - `bkt skill install` and `bkt skill update` keep the body of a SKILL.md whose
   frontmatter is empty (`---` then `---`). Before, text up to the next `---`
   rule was lost or a second frontmatter block was written.
