@@ -8,7 +8,7 @@ implementation details.
 - bkt never stores plaintext credentials under version control. Tokens are
   stored in the OS keychain (macOS Keychain Access, Windows Credential Manager,
   Linux Secret Service) or an encrypted local file backend. Host metadata lives
-  in `$XDG_CONFIG_HOME/bkt/config.yml` with permissions `0600`. The `BKT_TOKEN`
+  in `config.yml` in the bkt config directory with permissions `0600`. The `BKT_TOKEN`
   environment variable provides runtime-only injection for CI/headless use.
 - bkt's Bitbucket Cloud OAuth consumer key and secret are in source
   (`pkg/oauth/cloud.go`). A secret shipped inside a native app cannot stay

@@ -6,6 +6,18 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 ### Fixed
+- `bkt skill install` and `bkt skill update` keep the body of a SKILL.md whose
+  frontmatter is empty (`---` then `---`). Before, text up to the next `---`
+  rule was lost or a second frontmatter block was written.
+- `bkt skill update monalisa/triage` accepts the `namespace/name` shown by
+  `skill list`. It used to fail with "none of the specified skills are installed".
+- `bkt skill update` reports `! <name>: not found in <repo>` and exits non-zero
+  for a skill that no longer exists in its repository. It used to print
+  "All skills are up to date." and exit 0.
+- A 429 or 503 with a `Retry-After` longer than the request deadline returns
+  the HTTP error at once. It used to wait and report "context deadline exceeded".
+- Docs name the per-OS config directory (macOS and Windows differ from
+  `~/.config/bkt`); the security issue link points at the security policy.
 - Ctrl-C or SIGTERM makes bkt exit 130 with no error text. `pipeline run --wait`
   and `pr checks --wait` used to exit 0, and other commands printed "Error:
   context canceled" and exited 1.

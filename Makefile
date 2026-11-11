@@ -39,7 +39,7 @@ LDFLAGS := -s -w \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.commitFromLdflags=$(COMMIT) \
 	-X github.com/avivsinai/bitbucket-cli/internal/build.dateFromLdflags=$(BUILD_DATE)
 
-.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills sync-skills check-generated-skill release-local generate-skill nix-update-vendor-hash require-bash
+.PHONY: build fmt lint test tidy sbom release snapshot clean check-skills sync-skills check-generated-skill generate-skill nix-update-vendor-hash require-bash
 
 build: $(BIN)
 
@@ -97,9 +97,6 @@ else
 	fi
 endif
 	syft dir:. -o cyclonedx-json=sbom.cdx.json
-
-release-local:
-	goreleaser release --clean
 
 snapshot:
 ifeq ($(OS),Windows_NT)

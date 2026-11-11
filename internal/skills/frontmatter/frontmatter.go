@@ -55,9 +55,16 @@ func Parse(content string) (*ParseResult, error) {
 	}
 
 	rest := strings.TrimLeft(trimmed[len(delimiter):], "\r\n")
-	before, after, ok := strings.Cut(rest, "\n"+delimiter)
-	if !ok {
-		return &ParseResult{Body: content}, nil
+	var before, after string
+	if strings.HasPrefix(rest, delimiter) {
+		// Empty frontmatter: the closing delimiter directly follows the opening one.
+		after = rest[len(delimiter):]
+	} else {
+		var ok bool
+		before, after, ok = strings.Cut(rest, "\n"+delimiter)
+		if !ok {
+			return &ParseResult{Body: content}, nil
+		}
 	}
 
 	var rawYAML map[string]any

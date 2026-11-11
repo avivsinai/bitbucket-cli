@@ -38,6 +38,13 @@ for path in [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]:
     if actual != version:
         mismatches.append((path, actual))
 
+flake = pathlib.Path("flake.nix")
+if flake.exists():
+    flake_match = re.search(r'(?m)^\s*version = "([^"]*)";', flake.read_text())
+    actual = flake_match.group(1) if flake_match else "<missing version>"
+    if actual != version:
+        mismatches.append(("flake.nix", actual))
+
 changelog = pathlib.Path("CHANGELOG.md")
 if not changelog.exists():
     mismatches.append(("CHANGELOG.md", "<missing>"))

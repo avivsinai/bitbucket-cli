@@ -59,7 +59,7 @@ bkt pr list
 
 ## Saved-host behaviour
 
-When `BKT_HOST` matches a host already in `~/.config/bkt/config.yml`, the saved entry is used as the base (preserving fields like `username` and `auth_method`). `BKT_TOKEN` always overrides the stored token. `BKT_USERNAME` and `BKT_AUTH_METHOD`, when set, override the saved values.
+When `BKT_HOST` matches a host already in `config.yml` in the bkt config directory, the saved entry is used as the base (preserving fields like `username` and `auth_method`). `BKT_TOKEN` always overrides the stored token. `BKT_USERNAME` and `BKT_AUTH_METHOD`, when set, override the saved values.
 
 Cloud resource access tokens are not associated with a user. Commands that
 require authenticated-user identity, such as cross-repository
