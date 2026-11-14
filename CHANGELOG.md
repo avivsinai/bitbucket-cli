@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.39.0] - 2026-11-14
 ### Security
 - `BKT_TOKEN` is no longer sent to a host other than `BKT_HOST`. With an active
   context for another host, `bkt` used to ignore `BKT_HOST` and send the token
@@ -92,6 +94,7 @@ All notable changes to this project will be documented here. The format follows
   `pr create` uses `--title`, the Cloud `context create` examples use
   `--host api.bitbucket.org`, and the `api` example drops a `--workspace` flag
   that does not exist.
+
 
 ## [0.38.1] - 2026-11-09
 ### Fixed
@@ -974,7 +977,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.1...v0.39.0
 [0.38.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.36.0...v0.37.0
