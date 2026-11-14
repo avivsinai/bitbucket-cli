@@ -124,7 +124,7 @@ shows it).`,
 	cmd.Flags().StringVar(&opts.Kind, "kind", opts.Kind, "Bitbucket deployment kind (dc or cloud)")
 	cmd.Flags().StringVar(&opts.Username, "username", "", "Username (DC: PAT owner, Cloud: Atlassian email for API tokens)")
 	cmd.Flags().StringVar(&opts.Token, "token", "", "Authentication token (DC: PAT, Cloud: API token). WARNING: visible in process list and shell history; prefer the interactive prompt")
-	cmd.Flags().StringVar(&opts.AuthMethod, "auth-method", "basic", "Authentication method: basic (username+token) or bearer (token-only)")
+	cmd.Flags().StringVar(&opts.AuthMethod, "auth-method", "", "Authentication method: bearer (token-only; Data Center default) or basic (username+token; Cloud default)")
 	cmd.Flags().BoolVar(&opts.AllowInsecureStore, "allow-insecure-store", false, "Allow encrypted fallback secret storage when no OS keychain is available")
 	cmd.Flags().BoolVar(&opts.AllowHTTP, "allow-http", false, "Allow http:// URLs for login even though credentials will be sent in plaintext")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Authenticate via OAuth in the browser (Cloud only)")
@@ -182,9 +182,16 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 		kind = "cloud"
 	}
 
+	// Data Center defaults to bearer: a server can answer 401 even with
+	// correct credentials (for example to a path outside a REST plugin), and
+	// under basic auth each 401 can count as a failed password login until the
+	// account is locked. A bearer token is never checked as a password.
 	authMethod := strings.ToLower(strings.TrimSpace(opts.AuthMethod))
 	if authMethod == "" {
 		authMethod = "basic"
+		if kind == "dc" {
+			authMethod = "bearer"
+		}
 	}
 	if authMethod != "basic" && authMethod != "bearer" {
 		return fmt.Errorf("unsupported auth method %q; use \"basic\" or \"bearer\"", authMethod)
@@ -240,15 +247,21 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			}
 		}
 
-		if authMethod != "bearer" {
-			if opts.Username == "" {
-				if !isTerminal(ios.In) {
-					return fmt.Errorf("username is required when not running in a TTY")
+		// Bearer does not need a username, but pr list --mine and --reviewer
+		// do, so an interactive login still asks for it.
+		if opts.Username == "" {
+			switch {
+			case isTerminal(ios.In):
+				label := "Username (use x-token-auth for project/repo tokens)"
+				if authMethod == "bearer" {
+					label = "Username (the token's owner; Enter to skip)"
 				}
-				opts.Username, err = promptString(reader, ios.Out, "Username (use x-token-auth for project/repo tokens)")
+				opts.Username, err = promptString(reader, ios.Out, label)
 				if err != nil {
 					return err
 				}
+			case authMethod != "bearer":
+				return fmt.Errorf("username is required when not running in a TTY")
 			}
 		}
 

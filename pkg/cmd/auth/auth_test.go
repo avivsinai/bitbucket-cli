@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -176,8 +175,9 @@ func TestRunLoginWarnsOnTokenFlag(t *testing.T) {
 	f, _, stderr := newAuthTestFactory(cfg)
 
 	err := runLogin(&cobra.Command{}, f, &loginOptions{
-		Host:  "https://bitbucket.example.com",
-		Token: "secret-token",
+		Host:       "https://bitbucket.example.com",
+		Token:      "secret-token",
+		AuthMethod: "basic",
 	})
 	if err == nil {
 		t.Fatal("expected error")
@@ -205,7 +205,7 @@ func TestRunLoginWarnsOnAllowHTTP(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if err.Error() != "username is required when not running in a TTY" {
+	if err.Error() != "token is required when not running in a TTY" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -707,7 +707,7 @@ func TestRunLoginDCWebTokenNonTTY(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "username is required") {
+	if !strings.Contains(err.Error(), "token is required") {
 		t.Errorf("error = %q", err)
 	}
 	if strings.Contains(stdout.String(), "Opening") {
@@ -846,9 +846,10 @@ func TestRunLoginDCFullFlow(t *testing.T) {
 
 func TestRunLoginDCWithTokenReadsStdin(t *testing.T) {
 	// A script pipes the PAT instead of passing --token, which ps shows.
+	// With no --auth-method, a Data Center login stores bearer and sends it.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/rest/api/1.0/users/admin" && r.Header.Get("Authorization") == "Basic "+base64.StdEncoding.EncodeToString([]byte("admin:piped-pat")) {
+		if r.URL.Path == "/rest/api/1.0/users/admin" && r.Header.Get("Authorization") == "Bearer piped-pat" {
 			_ = json.NewEncoder(w).Encode(map[string]any{"name": "admin", "displayName": "Admin User", "slug": "admin"})
 			return
 		}
@@ -880,6 +881,13 @@ func TestRunLoginDCWithTokenReadsStdin(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Logged in") {
 		t.Errorf("expected success message, got:\n%s", stdout.String())
+	}
+	hostKey, err := cmdutil.HostKeyFromURL(srv.URL)
+	if err != nil {
+		t.Fatalf("HostKeyFromURL: %v", err)
+	}
+	if host := cfg.Hosts[hostKey]; host == nil || host.AuthMethod != "bearer" || host.Username != "admin" {
+		t.Errorf("stored host = %+v, want bearer auth for admin", host)
 	}
 }
 

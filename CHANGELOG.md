@@ -14,6 +14,15 @@ All notable changes to this project will be documented here. The format follows
 - `bkt api` and every other request refuse an absolute URL for another host,
   port, or scheme. `bkt api https://other.example.com/x` used to send the
   stored token to that host.
+- `bkt auth login` for a Data Center host now uses bearer auth unless
+  `--auth-method basic` is given. A Data Center server can answer 401 to a path
+  outside a REST plugin even with correct credentials, and under basic auth
+  such answers can count as failed password logins until the account is
+  locked. An existing basic host keeps working; `bkt auth doctor` names the
+  command that switches it to a bearer token.
+- `bkt api` on a Data Center host refuses a path that is not ASCII or not of the
+  form `/rest/<name>/<version>/...` (for example `/rest/api.lookup/projects`),
+  and sends no request.
 
 ### Fixed
 - A config save (for example `bkt context create`) no longer deletes a legacy
