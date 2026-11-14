@@ -150,6 +150,7 @@ func runDoctor(cmd *cobra.Command, f *cmdutil.Factory, opts *doctorOptions) erro
 	}
 
 	report.Diagnosis, report.NextSteps = diagnose(report, cfg)
+	report.NextSteps = append(report.NextSteps, basicAuthSteps(cfg, hostKeys)...)
 	report.Elapsed = time.Since(start).Round(time.Millisecond)
 
 	return cmdutil.WriteOutput(cmd, ios.Out, report, func() error {
@@ -360,6 +361,21 @@ func diagnose(r doctorReport, cfg *config.Config) (string, []string) {
 	}
 
 	return "Keychain wiring looks healthy.", nil
+}
+
+// basicAuthSteps names the fix for each Data Center host that still sends
+// basic auth, where a 401 can count as a failed password login (see the
+// bearer default in runLogin).
+func basicAuthSteps(cfg *config.Config, hostKeys []string) []string {
+	var steps []string
+	for _, key := range hostKeys {
+		host, ok := cfg.Hosts[key]
+		if !ok || host.Kind != "dc" || (host.AuthMethod != "" && host.AuthMethod != "basic") {
+			continue
+		}
+		steps = append(steps, fmt.Sprintf("%s uses basic auth, so a 401 can count as a failed password login and lock the account. Run `bkt auth login %s --web-token` to switch to a bearer token.", key, host.BaseURL))
+	}
+	return steps
 }
 
 func writeDoctorText(out io.Writer, r doctorReport, f *cmdutil.Factory) error {

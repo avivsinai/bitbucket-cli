@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -86,6 +88,12 @@ func runAPI(cmd *cobra.Command, f *cmdutil.Factory, opts *apiOptions, path strin
 		return err
 	}
 
+	if host.Kind == "dc" {
+		if err := checkDCRESTPath(path, host.BaseURL); err != nil {
+			return err
+		}
+	}
+
 	httpClient, err := cmdutil.NewHTTPClient(host)
 	if err != nil {
 		return err
@@ -160,6 +168,37 @@ func runAPI(cmd *cobra.Command, f *cmdutil.Factory, opts *apiOptions, path strin
 		_, err := ios.Out.Write(buf.Bytes())
 		return err
 	})
+}
+
+var dcRESTVersion = regexp.MustCompile(`^(latest|[0-9]+(\.[0-9]+)*)$`)
+
+// checkDCRESTPath refuses, before any request, a path that is not a Data
+// Center REST path (/rest/<name>/<version>/...). A server can answer 401 to a
+// path outside a REST plugin even with correct credentials, and under basic
+// auth such answers can count as failed password logins until the account is
+// locked. Non-ASCII text must be percent-encoded.
+func checkDCRESTPath(raw, baseURL string) error {
+	refuse := fmt.Errorf("bkt api: %q is not a Bitbucket Data Center REST path (/rest/<name>/<version>/...); no request was sent", raw)
+	for _, r := range raw {
+		if r < 0x21 || r > 0x7e {
+			return refuse
+		}
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return refuse
+	}
+	p := "/" + strings.TrimPrefix(u.Path, "/")
+	if base, err := url.Parse(baseURL); err == nil {
+		if bp := strings.TrimSuffix(base.Path, "/"); bp != "" && strings.HasPrefix(p, bp+"/") {
+			p = strings.TrimPrefix(p, bp)
+		}
+	}
+	parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
+	if len(parts) < 3 || parts[0] != "rest" || parts[1] == "" || !dcRESTVersion.MatchString(parts[2]) {
+		return refuse
+	}
+	return nil
 }
 
 func parseKeyValue(input string) (string, string, error) {

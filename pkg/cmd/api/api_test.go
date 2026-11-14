@@ -197,3 +197,34 @@ func TestAPICommandStreamsJSONWithoutFlags(t *testing.T) {
 		t.Fatalf("expected raw JSON to be streamed, got %q", output)
 	}
 }
+
+// A Data Center server can answer 401 to a path outside a REST plugin even
+// with correct credentials; under basic auth such answers can count as failed
+// password logins. These malformed paths are refused before any request.
+func TestAPICommandRefusesMalformedDCPathWithoutRequest(t *testing.T) {
+	requests := 0
+	factory, cleanup := newFactoryWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		requests++
+	})
+	defer cleanup()
+
+	for _, path := range []string{
+		"/rest/api.lookup/projects",
+		"/rest/api/projects/projects",
+		"/rest/api/1.项目/projects",
+	} {
+		cmd := NewCmdAPI(factory)
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+		cmd.PersistentFlags().String("context", "", "")
+		cmd.SetArgs([]string{path})
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "no request was sent") {
+			t.Errorf("%s: err = %v, want refusal", path, err)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("server got %d requests, want 0", requests)
+	}
+}
