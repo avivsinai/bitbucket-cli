@@ -11,7 +11,7 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         # Kept in sync with the released version by scripts/release.sh.
-        version = "0.38.1";
+        version = "0.39.0";
 
         bkt = pkgs.buildGoModule {
           pname = "bkt";
