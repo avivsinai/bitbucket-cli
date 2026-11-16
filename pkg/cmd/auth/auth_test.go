@@ -1239,3 +1239,29 @@ func TestLoginHostKey(t *testing.T) {
 		})
 	}
 }
+
+func TestRunStatusNamesAliases(t *testing.T) {
+	t.Setenv(secret.EnvToken, "")
+
+	cloud := "https://api.bitbucket.org/2.0"
+	cfg := &config.Config{
+		Hosts: map[string]*config.Host{
+			"api.bitbucket.org": {Kind: "cloud", BaseURL: cloud, Username: "a"},
+			"team-b":            {Kind: "cloud", BaseURL: cloud, Username: "b"},
+		},
+		Contexts: make(map[string]*config.Context),
+	}
+	f, stdout, _ := newAuthTestFactory(cfg)
+
+	if err := runStatus(&cobra.Command{}, f); err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "  team-b: "+cloud+" (cloud)\n") {
+		t.Errorf("expected the alias named, got:\n%s", output)
+	}
+	if !strings.Contains(output, "  "+cloud+" (cloud)\n") {
+		t.Errorf("expected the server's own entry unchanged, got:\n%s", output)
+	}
+}
