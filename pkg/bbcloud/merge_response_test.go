@@ -138,6 +138,63 @@ func TestMergeSubmissionDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
+func TestMergePollingRevalidatedCachedStatus(t *testing.T) {
+	for _, primed := range []bool{true, false} {
+		t.Run(fmt.Sprintf("cached=%t", primed), func(t *testing.T) {
+			var posts, polls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost {
+					posts.Add(1)
+					w.Header().Set("Location", r.URL.Path+"/task-status/revalidated")
+					w.WriteHeader(http.StatusAccepted)
+					return
+				}
+				poll := polls.Add(1)
+				if primed && poll == 1 {
+					if got := r.Header.Get("If-None-Match"); got != "" {
+						t.Errorf("first poll If-None-Match = %q", got)
+					}
+					w.Header().Set("ETag", `"pending-v1"`)
+					_, _ = fmt.Fprint(w, `{"task_status":"PENDING"}`)
+					return
+				}
+				if primed && r.Header.Get("If-None-Match") != `"pending-v1"` {
+					t.Errorf("conditional poll If-None-Match = %q", r.Header.Get("If-None-Match"))
+				}
+				if !primed || poll == 2 {
+					w.WriteHeader(http.StatusNotModified)
+					return
+				}
+				w.Header().Set("ETag", `"success-v2"`)
+				_, _ = fmt.Fprint(w, `{"task_status":"SUCCESS"}`)
+			}))
+			t.Cleanup(server.Close)
+			client, err := bbcloud.New(bbcloud.Options{
+				BaseURL: server.URL + "/2.0", EnableCache: true,
+				Retry: httpx.RetryPolicy{MaxAttempts: 1}, MergePollInterval: time.Millisecond,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = client.MergePullRequest(context.Background(), "ws", "repo", 1, "", "", false)
+			wantPolls := int32(3)
+			if primed {
+				if err != nil {
+					t.Fatalf("revalidated PENDING should continue to SUCCESS: %v", err)
+				}
+			} else {
+				wantPolls = 1
+				if err == nil || !strings.Contains(err.Error(), "completion is unknown") {
+					t.Fatalf("304 without a cache entry must remain uncertain: %v", err)
+				}
+			}
+			if posts.Load() != 1 || polls.Load() != wantPolls {
+				t.Fatalf("merge POSTs = %d, polls = %d; want 1, %d", posts.Load(), polls.Load(), wantPolls)
+			}
+		})
+	}
+}
+
 func TestMergePollingUncertainty(t *testing.T) {
 	for _, tt := range []struct {
 		name, body                  string

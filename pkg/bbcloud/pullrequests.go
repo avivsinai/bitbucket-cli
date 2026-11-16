@@ -817,7 +817,8 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 			}
 			return uncertainMergeTask(prID, taskID, err)
 		}
-		if response.StatusCode != http.StatusOK {
+		// A successful 304 has already restored status from the HTTP cache.
+		if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNotModified {
 			return uncertainMergeTask(prID, taskID, fmt.Errorf("unexpected HTTP %d polling the merge task", response.StatusCode))
 		}
 		if status.Error != nil && status.Error.Message != "" {
