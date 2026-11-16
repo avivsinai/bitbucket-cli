@@ -88,7 +88,7 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 		opts.AuthMethod = "bearer"
 	}
 	if enableOAuthRefresh && keyringOAuth {
-		hostKey, err := HostKeyFromURL(host.BaseURL)
+		hostKey, err := credentialKey(host)
 		if err != nil {
 			return nil, fmt.Errorf("resolve host key: %w", err)
 		}
@@ -96,6 +96,16 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 	}
 
 	return bbcloud.New(opts)
+}
+
+// credentialKey returns the key that a host's token is stored under: its own
+// config key, which may be an alias (the base URL names the server, not the
+// account), or the server's key for a host that did not come from the config.
+func credentialKey(host *config.Host) (string, error) {
+	if key := host.Key(); key != "" {
+		return key, nil
+	}
+	return HostKeyFromURL(host.BaseURL)
 }
 
 // oauthTokenRefresher returns a function that refreshes the OAuth token and

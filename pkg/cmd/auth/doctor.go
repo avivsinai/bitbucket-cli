@@ -373,7 +373,7 @@ func basicAuthSteps(cfg *config.Config, hostKeys []string) []string {
 		if !ok || host.Kind != "dc" || (host.AuthMethod != "" && host.AuthMethod != "basic") {
 			continue
 		}
-		steps = append(steps, fmt.Sprintf("%s uses basic auth, so a 401 can count as a failed password login and lock the account. Run `bkt auth login %s --web-token` to switch to a bearer token.", key, host.BaseURL))
+		steps = append(steps, fmt.Sprintf("%s uses basic auth, so a 401 can count as a failed password login and lock the account. Run `bkt auth login %s --web-token` to switch to a bearer token.", key, cmdutil.LoginTarget(key, host)))
 	}
 	return steps
 }

@@ -69,6 +69,7 @@ type loginOptions struct {
 	Web                bool
 	WebToken           bool
 	WithToken          bool
+	Alias              string
 }
 
 func newLoginCmd(f *cmdutil.Factory) *cobra.Command {
@@ -97,7 +98,13 @@ Credentials are verified against the remote host before being stored. If no
 OS keychain is available, pass --allow-insecure-store to use encrypted file
 fallback. In non-interactive environments, provide --username and pipe the
 token on stdin with --with-token (--token also works, but the process list
-shows it).`,
+shows it).
+
+Credentials are stored per host, keyed by the server's host name. To use
+several accounts on one server, for example two Bitbucket Cloud accounts,
+log in again with --alias: the second account gets a host entry and keychain
+item of its own under that name, and a context selects it with
+` + "`bkt context create <name> --host <alias>`" + `.`,
 		Example: `  # Login to Bitbucket Cloud via OAuth
   bkt auth login https://bitbucket.org --kind cloud --web
 
@@ -111,7 +118,11 @@ shows it).`,
   bkt auth login https://bitbucket.example.com --web-token
 
   # Non-interactive login with flags (CI pipelines)
-  bkt auth login https://bitbucket.example.com --username admin --with-token < pat.txt`,
+  bkt auth login https://bitbucket.example.com --username admin --with-token < pat.txt
+
+  # A second Bitbucket Cloud account, used by its own context
+  bkt auth login https://bitbucket.org --kind cloud --web --alias team-b
+  bkt context create team-b --host team-b --workspace team-b-workspace`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -130,6 +141,7 @@ shows it).`,
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "Authenticate via OAuth in the browser (Cloud only)")
 	cmd.Flags().BoolVar(&opts.WebToken, "web-token", false, "Open browser to create an API token, then prompt for credentials")
 	cmd.Flags().BoolVar(&opts.WithToken, "with-token", false, "Read the token from standard input")
+	cmd.Flags().StringVar(&opts.Alias, "alias", "", "Store the credentials under this host name instead of the server's, to log in to one server with several accounts")
 
 	return cmd
 }
@@ -224,7 +236,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 
 	switch kind {
 	case "dc":
-		hostKey, err = cmdutil.HostKeyFromURL(baseURL)
+		hostKey, err = loginHostKey(cfg, opts.Alias, baseURL)
 		if err != nil {
 			return err
 		}
@@ -339,7 +351,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			apiURL = "https://api.bitbucket.org/2.0"
 		}
 
-		hostKey, err = cmdutil.HostKeyFromURL(apiURL)
+		hostKey, err = loginHostKey(cfg, opts.Alias, apiURL)
 		if err != nil {
 			return err
 		}
@@ -507,6 +519,42 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 	}
 
 	return nil
+}
+
+// loginHostKey returns the config key that a login stores its host entry and
+// token under: the server's own key, or the alias when one is given. An alias
+// may not take over an entry that points at another server.
+func loginHostKey(cfg *config.Config, alias, baseURL string) (string, error) {
+	serverKey, err := cmdutil.HostKeyFromURL(baseURL)
+	if err != nil {
+		return "", err
+	}
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		return serverKey, nil
+	}
+	if !validAlias(alias) {
+		return "", fmt.Errorf("invalid --alias %q: use letters, digits, '.', '_' or '-'", alias)
+	}
+	if existing, ok := cfg.Hosts[alias]; ok && existing != nil && existing.BaseURL != "" {
+		existingKey, err := cmdutil.HostKeyFromURL(existing.BaseURL)
+		if err == nil && existingKey != serverKey {
+			return "", fmt.Errorf("--alias %q already names a host for %s; choose another alias or run `bkt auth logout --host %s` first", alias, existing.BaseURL, alias)
+		}
+	}
+	return alias, nil
+}
+
+func validAlias(alias string) bool {
+	for _, r := range alias {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '_' || r == '-':
+		default:
+			return false
+		}
+	}
+	return alias != ""
 }
 
 func newStatusCmd(f *cmdutil.Factory) *cobra.Command {

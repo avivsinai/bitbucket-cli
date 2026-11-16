@@ -1133,3 +1133,109 @@ func TestDetectedAuthMethodUnderEnvTokenKeepsSavedBearer(t *testing.T) {
 		t.Fatalf("auth method = %q, want bearer", got)
 	}
 }
+
+func TestRunLoginCloudAliasKeepsServerHost(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/user") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"username":     "shared",
+				"display_name": "Shared Account",
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	setupFileKeyring(t)
+	t.Setenv(secret.EnvToken, "")
+	t.Setenv("BKT_CONFIG_DIR", t.TempDir())
+
+	serverKey, err := cmdutil.HostKeyFromURL(srv.URL)
+	if err != nil {
+		t.Fatalf("HostKeyFromURL: %v", err)
+	}
+	existing := &config.Host{Kind: "cloud", BaseURL: srv.URL, Username: "me", AuthMethod: "oauth"}
+	cfg := &config.Config{
+		Hosts:    map[string]*config.Host{serverKey: existing},
+		Contexts: make(map[string]*config.Context),
+	}
+	f, _, _ := newAuthTestFactory(cfg)
+
+	err = runLogin(newTestCmd(), f, &loginOptions{
+		Host:               srv.URL,
+		Kind:               "cloud",
+		Username:           "shared@example.com",
+		Token:              "shared-token",
+		AllowHTTP:          true,
+		AllowInsecureStore: true,
+		Alias:              "team-b",
+	})
+	if err != nil {
+		t.Fatalf("runLogin: %v", err)
+	}
+
+	if cfg.Hosts[serverKey] != existing || existing.Username != "me" {
+		t.Errorf("login with --alias changed the server's own host entry: %+v", cfg.Hosts[serverKey])
+	}
+	alias := cfg.Hosts["team-b"]
+	if alias == nil {
+		t.Fatal("expected host team-b to be configured")
+	}
+	if alias.BaseURL != srv.URL || alias.Username != "shared@example.com" || alias.AuthMethod != "basic" {
+		t.Errorf("alias host = %+v", alias)
+	}
+
+	store, err := secret.Open(secret.WithAllowFileFallback(true))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if got, err := store.Get(secret.TokenKey("team-b")); err != nil || got != "shared-token" {
+		t.Errorf("token under alias = %q, %v; want shared-token", got, err)
+	}
+	if _, err := store.Get(secret.TokenKey(serverKey)); err == nil {
+		t.Error("login with --alias wrote a token under the server's key")
+	}
+}
+
+func TestLoginHostKey(t *testing.T) {
+	cfg := &config.Config{Hosts: map[string]*config.Host{
+		"team-b": {Kind: "cloud", BaseURL: "https://api.bitbucket.org/2.0"},
+		"dc-alt": {Kind: "dc", BaseURL: "https://bb.example.com"},
+	}}
+	cloud := "https://api.bitbucket.org/2.0"
+
+	tests := []struct {
+		name    string
+		alias   string
+		baseURL string
+		want    string
+		wantErr string
+	}{
+		{"no alias", "", cloud, "api.bitbucket.org", ""},
+		{"new alias", "team-c", cloud, "team-c", ""},
+		{"same server again", "team-b", cloud, "team-b", ""},
+		{"alias of another server", "dc-alt", cloud, "", "already names a host"},
+		{"slash", "team/b", cloud, "", "invalid --alias"},
+		{"space", "team b", cloud, "", "invalid --alias"},
+		{"blank", "  ", cloud, "api.bitbucket.org", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := loginHostKey(cfg, tt.alias, tt.baseURL)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("loginHostKey: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("loginHostKey = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
