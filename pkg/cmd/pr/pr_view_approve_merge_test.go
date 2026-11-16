@@ -369,6 +369,25 @@ func TestPRMergeCloud(t *testing.T) {
 	}
 }
 
+func TestPRMergeCloudAcceptedWithoutTaskDoesNotReportMerged(t *testing.T) {
+	var posts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts++
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`""`))
+	}))
+	t.Cleanup(srv.Close)
+	stdout, _, err := runCLI(t, cloudConfig(srv.URL), "pr", "merge", "42")
+	if err == nil || !strings.Contains(err.Error(), "accepted (HTTP 202)") || !strings.Contains(err.Error(), "completion is unknown") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(stdout, "Merged pull request") || posts != 1 {
+		t.Fatalf("stdout = %q, merge POSTs = %d", stdout, posts)
+	}
+}
+
 func runCLIWithBrowser(t *testing.T, cfg *config.Config, b browser.Browser, args ...string) (string, string, error) {
 	t.Helper()
 

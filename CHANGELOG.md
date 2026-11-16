@@ -6,6 +6,13 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [Unreleased]
+### Fixed
+- Cloud pull request merges follow the task-status URL in HTTP 202's Location
+  header, including responses with an empty or string body. Accepted work without
+  valid tracking information reports unknown completion instead of "Merged".
+- HTTP requests refuse redirects to another origin, including merge-status polling.
+
 ## [0.39.0] - 2026-11-14
 ### Security
 - `BKT_TOKEN` is no longer sent to a host other than `BKT_HOST`. With an active
