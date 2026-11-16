@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.40.0] - 2026-11-16
 ### Added
 - `bkt auth login --alias <name>` stores a login under its own host entry and
   keychain item, so one server can be used with several accounts, for example
@@ -25,6 +27,7 @@ All notable changes to this project will be documented here. The format follows
   responses and inconclusive polling preserve uncertainty about completion.
 - Conditional merge-task polling honors the cached status after HTTP 304
   revalidation and continues until the task completes.
+
 
 ## [0.39.0] - 2026-11-14
 ### Security
@@ -997,7 +1000,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.39.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.1...v0.39.0
 [0.38.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.37.0...v0.38.0
