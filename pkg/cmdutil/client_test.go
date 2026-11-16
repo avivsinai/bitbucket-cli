@@ -286,7 +286,7 @@ func TestOAuthTokenRefresherRejectsUnknownConsumer(t *testing.T) {
 	if strings.Contains(err.Error(), "auth logout") {
 		t.Errorf("error = %q, should not recommend logout", err)
 	}
-	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web") {
+	if !strings.Contains(err.Error(), "bkt auth login https://api.bitbucket.org/2.0 --kind cloud --web") {
 		t.Errorf("error = %q, want re-login command", err)
 	}
 }

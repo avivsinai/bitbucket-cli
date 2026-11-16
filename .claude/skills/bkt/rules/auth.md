@@ -93,6 +93,8 @@ several accounts on one server, for example two Bitbucket Cloud accounts,
 log in again with --alias: the second account gets a host entry and keychain
 item of its own under that name, and a context selects it with
 `bkt context create <name> --host <alias>`.
+Alias names share the OS keychain namespace across config directories;
+use distinct aliases even when BKT_CONFIG_DIR differs.
 
 ### Usage
 

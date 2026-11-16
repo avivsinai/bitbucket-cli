@@ -142,7 +142,7 @@ func oauthTokenRefresher(hostKey string, host *config.Host) func(ctx context.Con
 			}
 			clients, err := oauth.CloudClientsFor(tok)
 			if err != nil {
-				return fmt.Errorf("refresh OAuth token for %s: %w", hostKey, err)
+				return fmt.Errorf("refresh OAuth token for %s (re-login with `bkt auth login %s --kind cloud --web`): %w", hostKey, LoginTarget(hostKey, host), err)
 			}
 
 			var newTok *oauth.Token
@@ -158,7 +158,7 @@ func oauthTokenRefresher(hostKey string, host *config.Host) func(ctx context.Con
 				}
 			}
 			if err != nil {
-				return fmt.Errorf("refresh failed (re-login with `bkt auth login --web`): %w", err)
+				return fmt.Errorf("refresh failed (re-login with `bkt auth login %s --kind cloud --web`): %w", LoginTarget(hostKey, host), err)
 			}
 
 			blob, err := newTok.Marshal()

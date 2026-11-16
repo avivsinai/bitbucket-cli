@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"runtime"
@@ -104,7 +105,9 @@ Credentials are stored per host, keyed by the server's host name. To use
 several accounts on one server, for example two Bitbucket Cloud accounts,
 log in again with --alias: the second account gets a host entry and keychain
 item of its own under that name, and a context selects it with
-` + "`bkt context create <name> --host <alias>`" + `.`,
+` + "`bkt context create <name> --host <alias>`" + `.
+Alias names share the OS keychain namespace across config directories;
+use distinct aliases even when BKT_CONFIG_DIR differs.`,
 		Example: `  # Login to Bitbucket Cloud via OAuth
   bkt auth login https://bitbucket.org --kind cloud --web
 
@@ -236,7 +239,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 
 	switch kind {
 	case "dc":
-		hostKey, err = loginHostKey(cfg, opts.Alias, baseURL)
+		hostKey, err = loginHostKey(cfg, opts.Alias, baseURL, kind)
 		if err != nil {
 			return err
 		}
@@ -351,7 +354,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			apiURL = "https://api.bitbucket.org/2.0"
 		}
 
-		hostKey, err = loginHostKey(cfg, opts.Alias, apiURL)
+		hostKey, err = loginHostKey(cfg, opts.Alias, apiURL, kind)
 		if err != nil {
 			return err
 		}
@@ -524,25 +527,57 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 // loginHostKey returns the config key that a login stores its host entry and
 // token under: the server's own key, or the alias when one is given. An alias
 // may not take over an entry that points at another server.
-func loginHostKey(cfg *config.Config, alias, baseURL string) (string, error) {
+func loginHostKey(cfg *config.Config, alias, baseURL, kind string) (string, error) {
 	serverKey, err := cmdutil.HostKeyFromURL(baseURL)
 	if err != nil {
 		return "", err
 	}
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
-		return serverKey, nil
-	}
-	if !validAlias(alias) {
+		alias = serverKey
+	} else if !validAlias(alias) {
 		return "", fmt.Errorf("invalid --alias %q: use letters, digits, '.', '_' or '-'", alias)
 	}
-	if existing, ok := cfg.Hosts[alias]; ok && existing != nil && existing.BaseURL != "" {
-		existingKey, err := cmdutil.HostKeyFromURL(existing.BaseURL)
-		if err == nil && existingKey != serverKey {
-			return "", fmt.Errorf("--alias %q already names a host for %s; choose another alias or run `bkt auth logout --host %s` first", alias, existing.BaseURL, alias)
+	endpoint, err := loginEndpoint(baseURL)
+	if err != nil {
+		return "", err
+	}
+	if existing, ok := cfg.Hosts[alias]; ok {
+		if existing == nil {
+			return "", fmt.Errorf("host key %q already names a host with invalid configuration; choose another alias", alias)
+		}
+		existingEndpoint, parseErr := loginEndpoint(existing.BaseURL)
+		if parseErr != nil || existingEndpoint != endpoint || existing.Kind != kind {
+			return "", fmt.Errorf("host key %q already names a host for %s; choose another alias or run `bkt auth logout --host %s` first", alias, existing.BaseURL, alias)
 		}
 	}
 	return alias, nil
+}
+
+// The deployment path is part of the identity: one origin may serve multiple
+// Data Center installations. Normalize harmless spelling differences only.
+func loginEndpoint(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u == nil || u.Hostname() == "" || u.User != nil ||
+		(u.Scheme != "https" && u.Scheme != "http") || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("invalid login base URL %q", raw)
+	}
+	host, port := strings.ToLower(u.Hostname()), u.Port()
+	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		port = ""
+	}
+	if port != "" {
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	u.Host = host
+	u.RawPath = strings.TrimRight(u.EscapedPath(), "/")
+	u.Path, err = url.PathUnescape(u.RawPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid login base URL %q: %w", raw, err)
+	}
+	return u.String(), nil
 }
 
 func validAlias(alias string) bool {

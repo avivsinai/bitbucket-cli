@@ -12,6 +12,8 @@ All notable changes to this project will be documented here. The format follows
   `bkt context create <name> --host <alias>`.
 
 ### Fixed
+- Host aliases reject collisions with other deployments before credential
+  verification or storage, and OAuth recovery hints retain the selected alias.
 - The OAuth token of a host entry whose key is not the server's own host name
   is refreshed from that entry's keychain item. It used to be refreshed from
   the server's item, so such an entry switched to the other account's token
