@@ -6,6 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `bkt auth status` names each host alias in front of its base URL, so
+  accounts on the same server can be told apart. Thanks to Kristof Lemmens
+  (@kristoflemmens) for the implementation.
+
 ## [0.40.0] - 2026-11-16
 ### Added
 - `bkt auth login --alias <name>` stores a login under its own host entry and

@@ -1239,3 +1239,113 @@ func TestLoginHostKey(t *testing.T) {
 		})
 	}
 }
+
+func TestRunStatusNamesAliases(t *testing.T) {
+	t.Setenv(secret.EnvToken, "")
+
+	cloud := "https://api.bitbucket.org/2.0"
+	cfg := &config.Config{
+		Hosts: map[string]*config.Host{
+			"api.bitbucket.org": {Kind: "cloud", BaseURL: cloud, Username: "a", AuthMethod: "basic"},
+			"team-b":            {Kind: "cloud", BaseURL: cloud, Username: "b", AuthMethod: "basic"},
+		},
+		Contexts: make(map[string]*config.Context),
+	}
+	f, stdout, _ := newAuthTestFactory(cfg)
+
+	if err := runStatus(&cobra.Command{}, f); err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "  team-b: "+cloud+" (cloud)\n") {
+		t.Errorf("expected the alias named, got:\n%s", output)
+	}
+	if !strings.Contains(output, "  "+cloud+" (cloud)\n") {
+		t.Errorf("expected the server's own entry unchanged, got:\n%s", output)
+	}
+}
+
+func TestRunStatusMultipleAliases(t *testing.T) {
+	t.Setenv(secret.EnvToken, "")
+
+	cloud := "https://api.bitbucket.org/2.0"
+	for _, tt := range []struct {
+		name          string
+		withCanonical bool
+	}{
+		{name: "aliases only"},
+		{name: "with canonical hosts", withCanonical: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Hosts: map[string]*config.Host{
+					"team-a": {Kind: "cloud", BaseURL: cloud, Username: "shared", AuthMethod: "basic"},
+					"team-b": {Kind: "cloud", BaseURL: cloud, Username: "shared", AuthMethod: "basic"},
+				},
+				Contexts: make(map[string]*config.Context),
+			}
+			want := "  team-a: " + cloud + " (cloud)\n  team-b: " + cloud + " (cloud)"
+			if tt.withCanonical {
+				cfg.Hosts["api.bitbucket.org"] = &config.Host{Kind: "cloud", BaseURL: cloud, AuthMethod: "basic"}
+				cfg.Hosts["bitbucket.example.com:8443"] = &config.Host{
+					Kind: "dc", BaseURL: "https://bitbucket.example.com:8443/bitbucket", AuthMethod: "bearer",
+				}
+				want = "  " + cloud + " (cloud)\n  https://bitbucket.example.com:8443/bitbucket (dc)\n" + want
+			}
+			f, stdout, _ := newAuthTestFactory(cfg)
+			if err := runStatus(&cobra.Command{}, f); err != nil {
+				t.Fatalf("runStatus returned error: %v", err)
+			}
+
+			var headers []string
+			for _, line := range strings.Split(stdout.String(), "\n") {
+				if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") {
+					headers = append(headers, line)
+				}
+			}
+			if got := strings.Join(headers, "\n"); got != want {
+				t.Errorf("host headers =\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+}
+
+func TestRunStatusAliasesJSON(t *testing.T) {
+	t.Setenv(secret.EnvToken, "")
+
+	cloud := "https://api.bitbucket.org/2.0"
+	cfg := &config.Config{
+		Hosts: map[string]*config.Host{
+			"api.bitbucket.org": {Kind: "cloud", BaseURL: cloud, AuthMethod: "basic"},
+			"team-a":            {Kind: "cloud", BaseURL: cloud, AuthMethod: "basic"},
+			"team-b":            {Kind: "cloud", BaseURL: cloud, AuthMethod: "basic"},
+		},
+		Contexts: make(map[string]*config.Context),
+	}
+	f, stdout, _ := newAuthTestFactory(cfg)
+	cmd := &cobra.Command{}
+	cmd.PersistentFlags().Bool("json", true, "")
+	if err := runStatus(cmd, f); err != nil {
+		t.Fatalf("runStatus returned error: %v", err)
+	}
+
+	var payload struct {
+		Hosts []struct {
+			Key     string `json:"key"`
+			BaseURL string `json:"base_url"`
+		}
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
+		t.Fatalf("decode status JSON: %v", err)
+	}
+	wantKeys := []string{"api.bitbucket.org", "team-a", "team-b"}
+	if len(payload.Hosts) != len(wantKeys) {
+		t.Fatalf("got %d hosts, want %d", len(payload.Hosts), len(wantKeys))
+	}
+	for i, host := range payload.Hosts {
+		if host.Key != wantKeys[i] || host.BaseURL != cloud {
+			t.Errorf("host %d = %+v, want key %q and unprefixed base_url %q", i, host, wantKeys[i], cloud)
+		}
+	}
+}

@@ -714,7 +714,11 @@ func runStatus(cmd *cobra.Command, f *cmdutil.Factory) error {
 			return err
 		}
 		for _, h := range hosts {
-			if _, err := fmt.Fprintf(ios.Out, "  %s (%s)\n", h.BaseURL, h.Kind); err != nil {
+			label := h.BaseURL
+			if cmdutil.IsHostAlias(h.Key, cfg.Hosts[h.Key]) {
+				label = h.Key + ": " + h.BaseURL
+			}
+			if _, err := fmt.Fprintf(ios.Out, "  %s (%s)\n", label, h.Kind); err != nil {
 				return err
 			}
 			if h.Username != "" {
