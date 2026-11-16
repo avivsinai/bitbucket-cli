@@ -9,15 +9,22 @@ All notable changes to this project will be documented here. The format follows
 - `bkt auth login --alias <name>` stores a login under its own host entry and
   keychain item, so one server can be used with several accounts, for example
   two Bitbucket Cloud accounts. A context selects the account with
-  `bkt context create <name> --host <alias>`.
+  `bkt context create <name> --host <alias>`. Thanks to Kristof Lemmens
+  (@kristoflemmens) for the original implementation.
 
 ### Fixed
 - Host aliases reject collisions with other deployments before credential
   verification or storage, and OAuth recovery hints retain the selected alias.
 - The OAuth token of a host entry whose key is not the server's own host name
-  is refreshed from that entry's keychain item. It used to be refreshed from
-  the server's item, so such an entry switched to the other account's token
-  once its own token expired.
+  is refreshed from that entry's keychain item. It used to read the server's
+  item after a 401, so an aliased context could select another stored account.
+- Cloud pull request merges follow the task-status URL in HTTP 202's Location
+  header, including responses with an empty or string body. Accepted work without
+  valid tracking information reports unknown completion instead of "Merged".
+- Merge submission and task polling refuse redirects. Invalid synchronous
+  responses and inconclusive polling preserve uncertainty about completion.
+- Conditional merge-task polling honors the cached status after HTTP 304
+  revalidation and continues until the task completes.
 
 ## [0.39.0] - 2026-11-14
 ### Security

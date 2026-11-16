@@ -166,6 +166,15 @@ func New(opts Options) (*Client, error) {
 	client.retry = policy
 	client.tokenRefresher = opts.TokenRefresher
 	client.requestHook = opts.RequestHook
+	client.httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if via[0].Context().Value(noRedirectsKey{}) == true {
+			return http.ErrUseLastResponse
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	}
 
 	return client, nil
 }
@@ -389,8 +398,39 @@ func (c *Client) applyRequestHook(req *http.Request) {
 	}
 }
 
+// Response records the last HTTP response received by DoWithResponse. Its body
+// has already been consumed and closed, just as with Do.
+type Response struct {
+	StatusCode int
+	Header     http.Header
+}
+
+type noRedirectsKey struct{}
+
+// WithoutRedirects keeps the original response when an endpoint must not
+// redirect. Cancellation and deadlines of ctx are preserved.
+func WithoutRedirects(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noRedirectsKey{}, true)
+}
+
 // Do executes the HTTP request and decodes the response into v when provided.
 func (c *Client) Do(req *http.Request, v any) error {
+	return c.do(req, v, nil)
+}
+
+// DoWithResponse also returns status and headers, including on HTTP or decoding
+// errors. It uses the same retry, OAuth refresh, and cancellation path as Do.
+// The response is nil if no HTTP response was received.
+func (c *Client) DoWithResponse(req *http.Request, v any) (*Response, error) {
+	var response Response
+	err := c.do(req, v, &response)
+	if response.StatusCode == 0 {
+		return nil, err
+	}
+	return &response, err
+}
+
+func (c *Client) do(req *http.Request, v any, response *Response) error {
 	if req == nil {
 		return fmt.Errorf("request is nil")
 	}
@@ -435,6 +475,9 @@ func (c *Client) Do(req *http.Request, v any) error {
 			continue
 		}
 
+		if response != nil {
+			*response = Response{StatusCode: resp.StatusCode, Header: resp.Header.Clone()}
+		}
 		c.updateRateLimit(resp)
 		if err := c.applyAdaptiveThrottle(req.Context()); err != nil {
 			_ = resp.Body.Close()

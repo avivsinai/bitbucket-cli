@@ -1,14 +1,18 @@
 package bbcloud
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 )
 
 // RepositoryRef identifies a repository inside a pull request's source or
@@ -670,11 +674,14 @@ func mergeStrategySet(strategies []string) map[string]bool {
 type mergeTaskStatus struct {
 	TaskID string `json:"task_id"`
 	Status string `json:"task_status"`
+	Error  *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 }
 
 // MergePullRequest merges the given pull request.
-// The Bitbucket Cloud API may return 202 for long-running merges with a task_id
-// that must be polled until completion.
+// A 202 response is accepted work, not a completed merge. Poll its Location
+// (or a legacy task_id body) until completion before reporting success.
 func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug string, id int, message, strategy string, closeSource bool) error {
 	if workspace == "" || repoSlug == "" {
 		return fmt.Errorf("workspace and repository slug are required")
@@ -698,21 +705,81 @@ func (c *Client) MergePullRequest(ctx context.Context, workspace, repoSlug strin
 		url.PathEscape(repoSlug),
 		id,
 	)
-	req, err := c.http.NewRequest(ctx, "POST", path, body)
+	req, err := c.http.NewRequest(httpx.WithoutRedirects(ctx), "POST", path, body)
 	if err != nil {
 		return err
 	}
 
-	var result mergeTaskStatus
-	if err := c.http.Do(req, &result); err != nil {
+	var raw bytes.Buffer
+	response, err := c.http.DoWithResponse(req, &raw)
+	if err != nil {
+		if response != nil && response.StatusCode == http.StatusAccepted {
+			return fmt.Errorf("merge request for pull request #%d was accepted (HTTP 202), but completion is unknown; check the pull request before retrying: %w", id, err)
+		}
 		return err
 	}
-
-	if result.TaskID != "" {
-		return c.pollMergeTask(ctx, workspace, repoSlug, id, result.TaskID)
+	if response.StatusCode == http.StatusOK {
+		if len(bytes.TrimSpace(raw.Bytes())) != 0 {
+			var merged struct {
+				ID    int    `json:"id"`
+				State string `json:"state"`
+			}
+			if err := json.Unmarshal(raw.Bytes(), &merged); err != nil {
+				return fmt.Errorf("HTTP 200 response for pull request #%d did not confirm a completed merge; completion is unknown; check the pull request before retrying: %w", id, err)
+			}
+			if merged.ID != id || merged.State != "MERGED" {
+				return fmt.Errorf("HTTP 200 response for pull request #%d did not confirm a completed merge of this pull request; completion is unknown; check the pull request before retrying", id)
+			}
+		}
+		return nil
+	}
+	if response.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("unexpected HTTP %d merging pull request #%d", response.StatusCode, id)
 	}
 
-	return nil
+	var taskID string
+	if location := response.Header.Get("Location"); location != "" {
+		taskID, err = c.mergeTaskFromLocation(ctx, req.URL, location)
+	} else {
+		var result mergeTaskStatus
+		if len(bytes.TrimSpace(raw.Bytes())) > 0 {
+			err = json.Unmarshal(raw.Bytes(), &result)
+		}
+		taskID = result.TaskID
+	}
+	if err != nil || !validMergeTaskID(taskID) {
+		return fmt.Errorf("merge request for pull request #%d was accepted (HTTP 202), but no valid merge task could be found; completion is unknown and the merge may still be pending; check the pull request before retrying", id)
+	}
+	return c.pollMergeTask(ctx, workspace, repoSlug, id, taskID)
+}
+
+// Only accept a task for this PR on the configured origin. Resolve relative
+// Location values against the merge request, keeping any /2.0 base path.
+func (c *Client) mergeTaskFromLocation(ctx context.Context, mergeURL *url.URL, location string) (string, error) {
+	ref, err := url.Parse(strings.TrimSpace(location))
+	if err != nil {
+		return "", err
+	}
+	target := mergeURL.ResolveReference(ref)
+	if target.User != nil || target.RawQuery != "" || target.Fragment != "" {
+		return "", fmt.Errorf("invalid merge task URL")
+	}
+	if _, err := c.http.NewRequest(ctx, http.MethodGet, target.String(), nil); err != nil {
+		return "", err
+	}
+	prefix := mergeURL.Path + "/task-status/"
+	if !strings.HasPrefix(target.Path, prefix) {
+		return "", fmt.Errorf("merge task URL does not belong to this pull request")
+	}
+	taskID := strings.TrimPrefix(target.Path, prefix)
+	if !validMergeTaskID(taskID) {
+		return "", fmt.Errorf("invalid merge task ID")
+	}
+	return taskID, nil
+}
+
+func validMergeTaskID(taskID string) bool {
+	return strings.TrimSpace(taskID) != "" && taskID != "." && taskID != ".." && !strings.ContainsAny(taskID, "/\\")
 }
 
 // maxMergePollAttempts is the upper bound on polling iterations for async merges.
@@ -732,32 +799,48 @@ func (c *Client) pollMergeTask(ctx context.Context, workspace, repoSlug string, 
 	for attempt := 0; attempt < maxMergePollAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("merge task %s for pull request #%d may still be running; polling timed out: %w", taskID, prID, ctx.Err())
+			return uncertainMergeTask(prID, taskID, ctx.Err())
 		case <-time.After(c.mergePollInterval):
 		}
 
 		req, err := c.http.NewRequest(ctx, "GET", path, nil)
 		if err != nil {
-			return err
+			return uncertainMergeTask(prID, taskID, err)
 		}
 
+		req = req.WithContext(httpx.WithoutRedirects(ctx))
 		var status mergeTaskStatus
-		if err := c.http.Do(req, &status); err != nil {
+		response, err := c.http.DoWithResponse(req, &status)
+		if err != nil {
 			if ctx.Err() != nil {
-				return fmt.Errorf("merge task %s for pull request #%d may still be running; polling timed out: %w", taskID, prID, ctx.Err())
+				return uncertainMergeTask(prID, taskID, ctx.Err())
 			}
-			return fmt.Errorf("polling merge task %s for pull request #%d: %w", taskID, prID, err)
+			return uncertainMergeTask(prID, taskID, err)
+		}
+		// A successful 304 has already restored status from the HTTP cache.
+		if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNotModified {
+			return uncertainMergeTask(prID, taskID, fmt.Errorf("unexpected HTTP %d polling the merge task", response.StatusCode))
+		}
+		if status.Error != nil && status.Error.Message != "" {
+			return fmt.Errorf("merge task %s for pull request #%d failed: %s", taskID, prID, status.Error.Message)
 		}
 
 		if status.Status == "SUCCESS" {
 			return nil
 		}
-		if status.Status != "PENDING" {
+		if status.Status == "FAILED" {
 			return fmt.Errorf("merge task %s for pull request #%d failed with status: %s", taskID, prID, status.Status)
+		}
+		if status.Status != "PENDING" {
+			return uncertainMergeTask(prID, taskID, fmt.Errorf("unexpected merge task status %q", status.Status))
 		}
 	}
 
-	return fmt.Errorf("merge task %s for pull request #%d may still be running; did not complete after %d poll attempts", taskID, prID, maxMergePollAttempts)
+	return uncertainMergeTask(prID, taskID, fmt.Errorf("did not complete after %d poll attempts", maxMergePollAttempts))
+}
+
+func uncertainMergeTask(prID int, taskID string, cause error) error {
+	return fmt.Errorf("merge task %s for pull request #%d was accepted (HTTP 202) and may still be running; it may still complete; completion is unknown; check the pull request before retrying: %w", taskID, prID, cause)
 }
 
 // PullRequestComment models a comment on a Bitbucket Cloud pull request.
