@@ -6,10 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.40.1] - 2026-11-16
 ### Added
 - `bkt auth status` names each host alias in front of its base URL, so
   accounts on the same server can be told apart. Thanks to Kristof Lemmens
   (@kristoflemmens) for the implementation.
+
 
 ## [0.40.0] - 2026-11-16
 ### Added
@@ -1005,7 +1007,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.0...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.1...HEAD
+[0.40.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.0...v0.40.1
 [0.40.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.1...v0.39.0
 [0.38.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.0...v0.38.1
