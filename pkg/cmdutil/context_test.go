@@ -1317,3 +1317,26 @@ func TestResolveContextKeepsActiveContextWhenEnvHostIsTheSameServer(t *testing.T
 		})
 	}
 }
+
+func TestLoginTarget(t *testing.T) {
+	cloud := "https://api.bitbucket.org/2.0"
+	tests := []struct {
+		name string
+		key  string
+		host *config.Host
+		want string
+	}{
+		{"server key", "api.bitbucket.org", &config.Host{BaseURL: cloud}, cloud},
+		{"alias", "team-b", &config.Host{BaseURL: cloud}, cloud + " --alias team-b"},
+		{"dc with port", "bb.example.com:7990", &config.Host{BaseURL: "https://bb.example.com:7990"}, "https://bb.example.com:7990"},
+		{"no base url", "team-b", &config.Host{}, "team-b"},
+		{"nil host", "team-b", nil, "team-b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := LoginTarget(tt.key, tt.host); got != tt.want {
+				t.Errorf("LoginTarget = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

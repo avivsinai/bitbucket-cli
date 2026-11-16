@@ -289,7 +289,7 @@ var runCmd = func(ctx context.Context, name string, args ...string) (string, err
 }
 
 func diagnose(r doctorReport, cfg *config.Config) (string, []string) {
-	if runtime.GOOS != "darwin" {
+	if r.Platform != "darwin" {
 		if len(cfg.Hosts) == 0 {
 			return "No hosts configured.", []string{"Run `bkt auth login <host>` to add one."}
 		}
@@ -301,6 +301,7 @@ func diagnose(r doctorReport, cfg *config.Config) (string, []string) {
 	}
 
 	steps := []string{}
+	loginSteps := keychainLoginSteps(r.Hosts, cfg)
 
 	if r.Signature == "" {
 		steps = append(steps, "Install bkt from an official release so the binary is signed.")
@@ -312,8 +313,8 @@ func diagnose(r doctorReport, cfg *config.Config) (string, []string) {
 			"Every rebuild (including every `brew upgrade bitbucket-cli`) changes the cdhash, " +
 			"which invalidates any Keychain \"Always Allow\" the user has granted — " +
 			"so macOS keeps re-prompting."
+		steps = append(steps, loginSteps...)
 		steps = append(steps,
-			"Re-run `bkt auth login` to recreate the stored Keychain item against the current binary's DR.",
 			"For scripts/CI, set BKT_TOKEN=<token> to bypass the keychain.",
 			"Long-term: upgrade to a release that pins the Designated Requirement (see issue #181).",
 		)
@@ -334,12 +335,9 @@ func diagnose(r doctorReport, cfg *config.Config) (string, []string) {
 	if probeInconclusive {
 		// Don't claim absence when the probe itself failed.
 		return "Could not verify whether Keychain items exist for one or more hosts " +
-				"(see probe warnings). If prompts persist, re-run `bkt auth login` to " +
-				"recreate the item with the current binary's DR.",
-			[]string{
-				"Check that the login keychain is unlocked and `/usr/bin/security` is on PATH.",
-				"Re-run `bkt auth login <host>` to recreate any affected item.",
-			}
+				"(see probe warnings). If prompts persist, follow the host-specific login steps to " +
+				"recreate each item with the current binary's DR.",
+			append([]string{"Check that the login keychain is unlocked and `/usr/bin/security` is on PATH."}, loginSteps...)
 	}
 
 	if r.StableDR && hasStaleItem {
@@ -348,19 +346,37 @@ func diagnose(r doctorReport, cfg *config.Config) (string, []string) {
 		return "Binary has a stable Designated Requirement. " +
 				"If Keychain still prompts, the stored item was likely created by an older bkt " +
 				"version with a different DR.",
-			[]string{
-				"Re-run `bkt auth login` once to recreate the Keychain item with the current DR.",
-				"Subsequent invocations should not prompt.",
-			}
+			append(loginSteps, "Subsequent invocations should not prompt.")
 	}
 
 	if r.StableDR && !hasStaleItem {
 		return "Binary has a stable Designated Requirement and no stored Keychain item was found. " +
-				"A fresh `bkt auth login` should produce a persistent Keychain entry.",
-			nil
+				"A fresh login should produce a persistent Keychain entry.",
+			loginSteps
 	}
 
 	return "Keychain wiring looks healthy.", nil
+}
+
+func keychainLoginSteps(probes []hostProbe, cfg *config.Config) []string {
+	if len(probes) == 0 {
+		for _, key := range chooseHostKeys(cfg, "") {
+			probes = append(probes, hostProbe{Key: key})
+		}
+	}
+	var steps []string
+	for _, probe := range probes {
+		host := cfg.Hosts[probe.Key]
+		target := cmdutil.LoginTarget(probe.Key, host)
+		if host != nil && host.Kind == "cloud" {
+			target += " --kind cloud"
+			if host.AuthMethod == "oauth" {
+				target += " --web"
+			}
+		}
+		steps = append(steps, fmt.Sprintf("Re-run `bkt auth login %s` to recreate the Keychain item for %s with the current binary's DR.", target, probe.Key))
+	}
+	return steps
 }
 
 // basicAuthSteps names the fix for each Data Center host that still sends
@@ -373,7 +389,7 @@ func basicAuthSteps(cfg *config.Config, hostKeys []string) []string {
 		if !ok || host.Kind != "dc" || (host.AuthMethod != "" && host.AuthMethod != "basic") {
 			continue
 		}
-		steps = append(steps, fmt.Sprintf("%s uses basic auth, so a 401 can count as a failed password login and lock the account. Run `bkt auth login %s --web-token` to switch to a bearer token.", key, host.BaseURL))
+		steps = append(steps, fmt.Sprintf("%s uses basic auth, so a 401 can count as a failed password login and lock the account. Run `bkt auth login %s --web-token` to switch to a bearer token.", key, cmdutil.LoginTarget(key, host)))
 	}
 	return steps
 }

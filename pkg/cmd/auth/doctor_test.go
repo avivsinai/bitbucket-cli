@@ -357,6 +357,38 @@ func TestChooseHostKeys(t *testing.T) {
 	}
 }
 
+func TestDarwinDiagnosisLoginStepsRetainSelectedAlias(t *testing.T) {
+	for _, tt := range []struct {
+		name, designatedReq, probeError string
+		stableDR, stored                bool
+	}{
+		{name: "cdhash", designatedReq: `cdhash H"abc123"`},
+		{name: "inconclusive", stableDR: true, probeError: "fixture probe failure"},
+		{name: "stored", stableDR: true, stored: true},
+		{name: "fresh", stableDR: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{Hosts: map[string]*config.Host{
+				"team-a": {Kind: "cloud", BaseURL: "https://api.bitbucket.org/2.0", AuthMethod: "oauth"},
+				"team-b": {Kind: "cloud", BaseURL: "https://api.bitbucket.org/2.0", AuthMethod: "oauth"},
+			}}
+			report := doctorReport{
+				Platform: "darwin", Signature: "adhoc", DesignatedReq: tt.designatedReq, StableDR: tt.stableDR,
+				Hosts: []hostProbe{{Key: "team-b", ItemStored: tt.stored, ProbeError: tt.probeError}},
+			}
+			_, steps := diagnose(report, cfg)
+			joined := strings.Join(steps, "\n")
+			command := "`bkt auth login https://api.bitbucket.org/2.0 --alias team-b --kind cloud --web`"
+			if !strings.Contains(joined, command) {
+				t.Fatalf("next steps omit the selected OAuth identity: %s", joined)
+			}
+			if strings.Contains(joined, "--alias team-a") || strings.Contains(joined, "`bkt auth login`") || strings.Contains(joined, "<host>") {
+				t.Fatalf("next steps suggest another or unspecified identity: %s", joined)
+			}
+		})
+	}
+}
+
 func TestDescribeBackend(t *testing.T) {
 	got := describeBackend()
 	switch runtime.GOOS {
