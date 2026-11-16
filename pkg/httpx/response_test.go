@@ -68,3 +68,29 @@ func TestDoWithResponseErrorMetadata(t *testing.T) {
 		t.Fatalf("nil request: response = %+v, error = %v", response, err)
 	}
 }
+
+func TestOrdinaryDownloadRedirectsRemainSupported(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "download fixture")
+	}))
+	t.Cleanup(target.Close)
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/artifact", http.StatusFound)
+	}))
+	t.Cleanup(source.Close)
+	client, err := New(Options{BaseURL: source.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/download", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	if err := client.Do(req, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.String() != "download fixture" {
+		t.Fatalf("download = %q", body.String())
+	}
+}

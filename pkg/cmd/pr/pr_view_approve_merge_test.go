@@ -340,7 +340,7 @@ func TestPRMergeCloud(t *testing.T) {
 			}
 			_ = json.NewDecoder(r.Body).Decode(&mergeBody)
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "state": "MERGED"})
 			return
 		}
 
@@ -369,22 +369,33 @@ func TestPRMergeCloud(t *testing.T) {
 	}
 }
 
-func TestPRMergeCloudAcceptedWithoutTaskDoesNotReportMerged(t *testing.T) {
-	var posts int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			posts++
-		}
-		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`""`))
-	}))
-	t.Cleanup(srv.Close)
-	stdout, _, err := runCLI(t, cloudConfig(srv.URL), "pr", "merge", "42")
-	if err == nil || !strings.Contains(err.Error(), "accepted (HTTP 202)") || !strings.Contains(err.Error(), "completion is unknown") {
-		t.Fatalf("error = %v", err)
-	}
-	if strings.Contains(stdout, "Merged pull request") || posts != 1 {
-		t.Fatalf("stdout = %q, merge POSTs = %d", stdout, posts)
+func TestPRMergeCloudUnconfirmedDoesNotReportMerged(t *testing.T) {
+	for _, tt := range []struct {
+		name, body string
+		status     int
+	}{
+		{"accepted without task", `""`, http.StatusAccepted},
+		{"synchronous HTML", `<html>Sign in</html>`, http.StatusOK},
+		{"synchronous open PR", `{"id":42,"state":"OPEN"}`, http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var posts int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost {
+					posts++
+				}
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(srv.Close)
+			stdout, _, err := runCLI(t, cloudConfig(srv.URL), "pr", "merge", "42")
+			if err == nil || !strings.Contains(err.Error(), "completion is unknown") {
+				t.Fatalf("error = %v", err)
+			}
+			if strings.Contains(stdout, "Merged pull request") || posts != 1 {
+				t.Fatalf("stdout = %q, merge POSTs = %d", stdout, posts)
+			}
+		})
 	}
 }
 

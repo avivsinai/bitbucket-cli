@@ -173,7 +173,7 @@ func New(opts Options) (*Client, error) {
 		if len(via) >= 10 {
 			return fmt.Errorf("stopped after 10 redirects")
 		}
-		return client.checkOrigin(req.URL)
+		return nil
 	}
 
 	return client, nil
