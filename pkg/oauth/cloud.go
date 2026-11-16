@@ -69,7 +69,7 @@ func CloudClientsFor(tok *Token) ([]CloudClient, error) {
 		clients = append(clients, builtIn)
 	}
 	if len(clients) == 0 {
-		return nil, fmt.Errorf("this OAuth token was issued to consumer %s; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to that consumer, or run `bkt auth login https://bitbucket.org --kind cloud --web` again", tok.ClientID)
+		return nil, fmt.Errorf("this OAuth token was issued to consumer %s; set BKT_OAUTH_CLIENT_ID and BKT_OAUTH_CLIENT_SECRET to that consumer, or authenticate this host again", tok.ClientID)
 	}
 	return clients, nil
 }

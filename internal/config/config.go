@@ -54,6 +54,21 @@ type Host struct {
 
 	// fileToken is a plaintext token that Load found in the config file.
 	fileToken string
+
+	// key is the name of this entry under hosts: in config.yml. It is usually
+	// the server's host name, but can be any alias, so that one server can
+	// have several entries with their own credentials.
+	key string
+}
+
+// Key returns the name of this host entry in the configuration (the key under
+// which its credentials are stored), or "" for a host that did not come from
+// the configuration, such as one built from BKT_HOST.
+func (h *Host) Key() string {
+	if h == nil {
+		return ""
+	}
+	return h.key
 }
 
 // MarshalYAML never writes a token that bkt holds at run time (from the
@@ -109,6 +124,7 @@ func Load() (*Config, error) {
 	maps.DeleteFunc(cfg.Contexts, func(_ string, ctx *Context) bool { return ctx == nil })
 	maps.DeleteFunc(cfg.Hosts, func(_ string, host *Host) bool { return host == nil })
 	for key, host := range cfg.Hosts {
+		host.key = key
 		host.fileToken = host.Token
 		if host.Token != "" {
 			fmt.Fprintf(os.Stderr, "WARNING: host %q has a plaintext token in %s; rerun `bkt auth login` to move it into secure storage and remove the token field from config.yml\n", key, path)
@@ -241,6 +257,9 @@ func (c *Config) SetHost(key string, host *Host) {
 
 	if c.Hosts == nil {
 		c.Hosts = make(map[string]*Host)
+	}
+	if host != nil {
+		host.key = key
 	}
 	c.Hosts[key] = host
 }

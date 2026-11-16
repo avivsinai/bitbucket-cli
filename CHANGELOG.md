@@ -5,6 +5,19 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `bkt auth login --alias <name>` stores a login under its own host entry and
+  keychain item, so one server can be used with several accounts, for example
+  two Bitbucket Cloud accounts. A context selects the account with
+  `bkt context create <name> --host <alias>`.
+
+### Fixed
+- Host aliases reject collisions with other deployments before credential
+  verification or storage, and OAuth recovery hints retain the selected alias.
+- The OAuth token of a host entry whose key is not the server's own host name
+  is refreshed from that entry's keychain item. It used to be refreshed from
+  the server's item, so such an entry switched to the other account's token
+  once its own token expired.
 
 ## [0.39.0] - 2026-11-14
 ### Security

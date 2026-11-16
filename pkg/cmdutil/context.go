@@ -266,6 +266,30 @@ func mergeEnvHost(executable, key string, base config.Host) (*config.Host, error
 	return &h, nil
 }
 
+// IsHostAlias reports whether a configured host is stored under a key other
+// than its server's own key, so that one server can have several entries with
+// their own credentials.
+func IsHostAlias(hostKey string, host *config.Host) bool {
+	if host == nil || host.BaseURL == "" {
+		return false
+	}
+	key, err := HostKeyFromURL(host.BaseURL)
+	return err == nil && key != hostKey
+}
+
+// LoginTarget returns the arguments to `bkt auth login` that store the
+// credentials of a configured host again: its base URL, and --alias when the
+// host is an alias.
+func LoginTarget(hostKey string, host *config.Host) string {
+	if host == nil || host.BaseURL == "" {
+		return hostKey
+	}
+	if IsHostAlias(hostKey, host) {
+		return host.BaseURL + " --alias " + hostKey
+	}
+	return host.BaseURL
+}
+
 func loadHostToken(executable, hostKey string, host *config.Host) error {
 	if host == nil {
 		return fmt.Errorf("host %q not configured", hostKey)
@@ -307,7 +331,7 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 	store, err := secret.Open(opts...)
 	if err != nil {
 		if secret.IsNoKeyringError(err) {
-			return fmt.Errorf("no OS keychain backend available for host %q; rerun `%s auth login %s --allow-insecure-store` or set BKT_ALLOW_INSECURE_STORE=1: %w", hostKey, executable, hostKey, err)
+			return fmt.Errorf("no OS keychain backend available for host %q; rerun `%s auth login %s --allow-insecure-store` or set BKT_ALLOW_INSECURE_STORE=1: %w", hostKey, executable, LoginTarget(hostKey, host), err)
 		}
 		return err
 	}
@@ -315,11 +339,7 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 	token, err := store.Get(secret.TokenKey(hostKey))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			target := host.BaseURL
-			if target == "" {
-				target = hostKey
-			}
-			return fmt.Errorf("credentials for host %q not found; run `%s auth login %s`", hostKey, executable, target)
+			return fmt.Errorf("credentials for host %q not found; run `%s auth login %s`", hostKey, executable, LoginTarget(hostKey, host))
 		}
 		return err
 	}
@@ -349,7 +369,7 @@ func loadHostToken(executable, hostKey string, host *config.Host) error {
 		return nil
 	}
 	if strings.HasPrefix(strings.TrimSpace(token), "{") {
-		return fmt.Errorf("stored credential for host %q looks like JSON but is not a valid OAuth token; run `%s auth login %s` to replace it", hostKey, executable, hostKey)
+		return fmt.Errorf("stored credential for host %q looks like JSON but is not a valid OAuth token; run `%s auth login %s` to replace it", hostKey, executable, LoginTarget(hostKey, host))
 	}
 
 	host.Token = token

@@ -286,7 +286,7 @@ func TestOAuthTokenRefresherRejectsUnknownConsumer(t *testing.T) {
 	if strings.Contains(err.Error(), "auth logout") {
 		t.Errorf("error = %q, should not recommend logout", err)
 	}
-	if !strings.Contains(err.Error(), "bkt auth login https://bitbucket.org --kind cloud --web") {
+	if !strings.Contains(err.Error(), "bkt auth login https://api.bitbucket.org/2.0 --kind cloud --web") {
 		t.Errorf("error = %q, want re-login command", err)
 	}
 }
@@ -480,5 +480,80 @@ func TestNewHTTPClientNil(t *testing.T) {
 	_, err := NewHTTPClient(nil)
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestCredentialKey(t *testing.T) {
+	cfg := &config.Config{Hosts: map[string]*config.Host{}}
+	alias := &config.Host{Kind: "cloud", BaseURL: "https://api.bitbucket.org/2.0", AuthMethod: "oauth"}
+	cfg.SetHost("team-b", alias)
+
+	tests := []struct {
+		name string
+		host *config.Host
+		want string
+	}{
+		{"alias from config", alias, "team-b"},
+		{"host not from config", &config.Host{Kind: "cloud", BaseURL: "https://api.bitbucket.org/2.0"}, "api.bitbucket.org"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := credentialKey(tt.host)
+			if err != nil {
+				t.Fatalf("credentialKey: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("credentialKey = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOAuthTokenRefresherAliasUsesOwnKeyringItem(t *testing.T) {
+	t.Setenv("BKT_OAUTH_CLIENT_ID", "")
+	t.Setenv("BKT_OAUTH_CLIENT_SECRET", "")
+	t.Setenv("BKT_ALLOW_INSECURE_STORE", "1")
+	t.Setenv("BKT_KEYRING_PASSPHRASE", "test-pass")
+	t.Setenv("KEYRING_BACKEND", "file")
+	fileDir := t.TempDir()
+	t.Setenv("KEYRING_FILE_DIR", fileDir)
+
+	store, err := secret.Open(secret.WithAllowFileFallback(true), secret.WithPassphrase("test-pass"), secret.WithFileDir(fileDir))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	for key, access := range map[string]string{
+		"api.bitbucket.org": "account-a-access",
+		"team-b":            "account-b-access",
+	} {
+		blob, err := oauth.FromResponse(access, access+"-refresh", 7200).Marshal()
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := store.Set(secret.TokenKey(key), blob); err != nil {
+			t.Fatalf("store.Set(%s): %v", key, err)
+		}
+	}
+
+	cfg := &config.Config{Hosts: map[string]*config.Host{}}
+	host := &config.Host{
+		Kind:               "cloud",
+		BaseURL:            "https://api.bitbucket.org/2.0",
+		AuthMethod:         "oauth",
+		Token:              "old-access",
+		AllowInsecureStore: true,
+	}
+	cfg.SetHost("team-b", host)
+
+	key, err := credentialKey(host)
+	if err != nil {
+		t.Fatalf("credentialKey: %v", err)
+	}
+	got, err := oauthTokenRefresher(key, host)(context.Background())
+	if err != nil {
+		t.Fatalf("refresher: %v", err)
+	}
+	if got != "account-b-access" {
+		t.Errorf("token = %q, want the alias's own token account-b-access", got)
 	}
 }
