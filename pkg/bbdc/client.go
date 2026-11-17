@@ -185,9 +185,10 @@ func (c *Client) CurrentUser(ctx context.Context, userSlug string) (*User, error
 // slug, login name, or email address. REST paths address users by slug, but
 // the login name (used for basic auth and the username.N participant filter)
 // differs from the slug whenever it contains characters such as "@"
-// ("jane@corp.example" has slug "jane_corp.example"). When the slug lookup
-// misses, search all pages for an exact login name or slug, falling back to
-// an email address only when it identifies a single user.
+// ("jane@corp.example" has slug "jane_corp.example"). Unless the direct hit
+// also matches the login name, search all pages and reject identifiers that
+// match the login name and slug of different users. An email address is used
+// only when no login or slug matches and it identifies a single user.
 func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
@@ -195,14 +196,16 @@ func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, err
 	}
 
 	user, err := c.CurrentUser(ctx, identifier)
-	if err == nil {
+	if err == nil && strings.EqualFold(user.Name, identifier) {
 		return user, nil
 	}
 	var httpErr *httpx.HTTPError
-	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusNotFound {
+	if err != nil && (!errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusNotFound) {
 		return nil, err
 	}
 
+	var loginMatch *User
+	slugMatch := user
 	var emailMatch *User
 	ambiguousEmail := false
 	for start := 0; ; {
@@ -217,8 +220,11 @@ func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, err
 		}
 		for i := range resp.Values {
 			candidate := &resp.Values[i]
-			if strings.EqualFold(candidate.Name, identifier) || strings.EqualFold(candidate.Slug, identifier) {
-				return candidate, nil
+			if strings.EqualFold(candidate.Name, identifier) {
+				loginMatch = candidate
+			}
+			if strings.EqualFold(candidate.Slug, identifier) {
+				slugMatch = candidate
 			}
 			if candidate.Matches(identifier) {
 				if emailMatch != nil && emailMatch.ID != candidate.ID {
@@ -234,6 +240,15 @@ func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, err
 			return nil, fmt.Errorf("user search returned a non-advancing nextPageStart %d", resp.NextPageStart)
 		}
 		start = resp.NextPageStart
+	}
+	if loginMatch != nil {
+		if slugMatch != nil && loginMatch.ID != slugMatch.ID {
+			return nil, fmt.Errorf("user identifier %q is ambiguous: matches the login name and slug of different users", identifier)
+		}
+		return loginMatch, nil
+	}
+	if slugMatch != nil {
+		return slugMatch, nil
 	}
 	if ambiguousEmail {
 		return nil, fmt.Errorf("multiple users match email address %q; use a login name or user slug", identifier)

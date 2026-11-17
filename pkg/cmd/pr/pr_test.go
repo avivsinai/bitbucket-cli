@@ -6475,6 +6475,8 @@ func dcSlugUserHandler(t *testing.T, gotQuery *string, prs []bbdc.PullRequest) h
 		switch {
 		case r.URL.Path == "/rest/api/1.0/users/jane_corp.example":
 			_ = json.NewEncoder(w).Encode(bbdc.User{Name: "jane@corp.example", Slug: "jane_corp.example", ID: 42})
+		case r.URL.Path == "/rest/api/1.0/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{"values": []bbdc.User{}, "isLastPage": true})
 		case strings.HasSuffix(r.URL.Path, "/pull-requests"):
 			*gotQuery = r.URL.RawQuery
 			_ = json.NewEncoder(w).Encode(map[string]any{"values": prs, "isLastPage": true})
@@ -6529,5 +6531,36 @@ func TestListRepositoryDCReviewerSendsLoginNameWhenSlugStored(t *testing.T) {
 	}
 	if want := "username.1=" + url.QueryEscape("jane@corp.example"); !strings.Contains(gotQuery, want) {
 		t.Fatalf("upstream query %q missing %q", gotQuery, want)
+	}
+}
+
+func TestListRepositoryDCRejectsLoginSlugCollision(t *testing.T) {
+	for _, flag := range []string{"--mine", "--reviewer"} {
+		t.Run(flag, func(t *testing.T) {
+			var listRequests int
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/rest/api/1.0/users/jane_corp.example":
+					_ = json.NewEncoder(w).Encode(bbdc.User{Name: "jane@corp.example", Slug: "jane_corp.example", ID: 1})
+				case "/rest/api/1.0/users":
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"values": []bbdc.User{{Name: "jane_corp.example", Slug: "jane_corp.example-2", ID: 2}}, "isLastPage": true,
+					})
+				default:
+					listRequests++
+					_ = json.NewEncoder(w).Encode(map[string]any{"values": []bbdc.PullRequest{}, "isLastPage": true})
+				}
+			})
+			var out, errb strings.Builder
+			cmd := newSlugUserListCmd(t, handler, &out, &errb)
+			cmd.SetArgs([]string{flag})
+			if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+				t.Fatalf("list error = %v, want ambiguity error", err)
+			}
+			if listRequests != 0 {
+				t.Fatalf("sent %d pull request queries for an ambiguous identity", listRequests)
+			}
+		})
 	}
 }

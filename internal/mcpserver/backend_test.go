@@ -84,6 +84,11 @@ func TestDCBackendAppliesRepositoryRoleFiltersUpstream(t *testing.T) {
 					_ = json.NewEncoder(w).Encode(map[string]any{"name": "alice@corp.example", "slug": "alice_corp.example", "id": 7})
 					return
 				}
+				if r.URL.Path == "/rest/api/1.0/users" {
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(map[string]any{"values": []bbdc.User{}, "isLastPage": true})
+					return
+				}
 				if r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/api/pull-requests" {
 					t.Fatalf("path = %q", r.URL.Path)
 				}
@@ -114,6 +119,39 @@ func TestDCBackendAppliesRepositoryRoleFiltersUpstream(t *testing.T) {
 			}
 			if len(items) != 1 || !hasMore {
 				t.Fatalf("items=%#v hasMore=%v, want one item and continuation", items, hasMore)
+			}
+		})
+	}
+}
+
+func TestDCBackendRejectsLoginSlugCollision(t *testing.T) {
+	for _, role := range []string{"AUTHOR", "REVIEWER"} {
+		t.Run(role, func(t *testing.T) {
+			var listRequests int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/rest/api/1.0/users/alice_corp.example":
+					_ = json.NewEncoder(w).Encode(bbdc.User{Name: "alice@corp.example", Slug: "alice_corp.example", ID: 1})
+				case "/rest/api/1.0/users":
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"values": []bbdc.User{{Name: "alice_corp.example", Slug: "alice_corp.example-2", ID: 2}}, "isLastPage": true,
+					})
+				default:
+					listRequests++
+					_ = json.NewEncoder(w).Encode(map[string]any{"values": []bbdc.PullRequest{}, "isLastPage": true})
+				}
+			}))
+			t.Cleanup(server.Close)
+			client, err := bbdc.New(bbdc.Options{BaseURL: server.URL, AuthMethod: "bearer", Token: "token"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = (&dcBackend{client: client, username: "alice_corp.example"}).listPullRequests(
+				context.Background(), RepositoryRef{Scope: "PROJ", Slug: "api"}, "OPEN", role, 7,
+			)
+			if err == nil || !strings.Contains(err.Error(), "ambiguous") || listRequests != 0 {
+				t.Fatalf("error = %v, PR queries = %d, want ambiguity error before listing", err, listRequests)
 			}
 		})
 	}

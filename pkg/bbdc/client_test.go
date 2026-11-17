@@ -562,11 +562,78 @@ func TestResolveUserDirectLookup(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(User{Name: "jane@corp.example", Slug: "jane_corp.example", ID: 2})
+		_ = json.NewEncoder(w).Encode(User{Name: "jane_corp.example", Slug: "jane_corp.example", ID: 2})
 	})
 	user, err := newTestClient(t, handler).ResolveUser(context.Background(), " jane_corp.example ")
 	if err != nil || user.ID != 2 || calls != 1 {
 		t.Fatalf("user = %+v, err = %v, calls = %d", user, err, calls)
+	}
+}
+
+func TestResolveUserRejectsLoginSlugCollision(t *testing.T) {
+	const identifier = "jane_corp.example"
+	slugUser := User{Name: "jane@corp.example", Slug: identifier, ID: 1}
+	loginUser := User{Name: identifier, Slug: identifier + "-2", ID: 2}
+	tests := []struct {
+		name   string
+		direct bool
+		pages  [][]User
+		wantID int
+	}{
+		{name: "direct slug and exact login", direct: true, pages: [][]User{{slugUser, loginUser}}},
+		{name: "direct slug and login on later page", direct: true, pages: [][]User{{slugUser}, {loginUser}}},
+		{name: "search slug before login", pages: [][]User{{slugUser, loginUser}}},
+		{name: "search slug before later login", pages: [][]User{{slugUser}, {loginUser}}},
+		{name: "search login before slug", pages: [][]User{{loginUser, slugUser}}},
+		{name: "search login before later slug", pages: [][]User{{loginUser}, {slugUser}}},
+		{name: "direct slug without exact login", direct: true, pages: [][]User{{}}, wantID: 1},
+		{name: "search slug without exact login", pages: [][]User{{slugUser}}, wantID: 1},
+		{name: "login and slug identify same user", pages: [][]User{{{Name: identifier, Slug: identifier, ID: 2}}}, wantID: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var searches int
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/rest/api/1.0/users/" + identifier:
+					if tt.direct {
+						_ = json.NewEncoder(w).Encode(slugUser)
+					} else {
+						http.NotFound(w, r)
+					}
+				case "/rest/api/1.0/users":
+					page := searches
+					searches++
+					if page >= len(tt.pages) {
+						t.Error("unexpected extra search request")
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					query := r.URL.Query()
+					if query.Get("filter") != identifier || (page == 0 && query.Get("start") != "0") || (page == 1 && query.Get("start") != "17") {
+						t.Errorf("page %d query = %q", page, r.URL.RawQuery)
+					}
+					_ = json.NewEncoder(w).Encode(paged[User]{
+						Values: tt.pages[page], IsLastPage: page == len(tt.pages)-1, NextPageStart: 17,
+					})
+				default:
+					t.Errorf("unexpected path: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			})
+			user, err := newTestClient(t, handler).ResolveUser(context.Background(), identifier)
+			if tt.wantID == 0 {
+				if err == nil || !strings.Contains(err.Error(), "ambiguous") || user != nil {
+					t.Fatalf("user = %+v, err = %v, want ambiguity error", user, err)
+				}
+			} else if err != nil || user.ID != tt.wantID {
+				t.Fatalf("user = %+v, err = %v, want ID %d", user, err, tt.wantID)
+			}
+			if searches != len(tt.pages) {
+				t.Errorf("searches = %d, want %d", searches, len(tt.pages))
+			}
+		})
 	}
 }
 
@@ -593,16 +660,25 @@ func TestResolveUserSearchDoesNotRepeatPage(t *testing.T) {
 }
 
 func TestResolveUserReturnsSearchError(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/rest/api/1.0/users" {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		http.NotFound(w, r)
-	})
-	_, err := newTestClient(t, handler).ResolveUser(context.Background(), "jane")
-	var httpErr *httpx.HTTPError
-	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusForbidden {
-		t.Fatalf("err = %v, want search's 403 HTTPError", err)
+	for name, directSlug := range map[string]bool{"direct not found": false, "direct slug": true} {
+		t.Run(name, func(t *testing.T) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/rest/api/1.0/users" {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				if directSlug {
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(User{Name: "jane@corp.example", Slug: "jane", ID: 1})
+					return
+				}
+				http.NotFound(w, r)
+			})
+			_, err := newTestClient(t, handler).ResolveUser(context.Background(), "jane")
+			var httpErr *httpx.HTTPError
+			if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusForbidden {
+				t.Fatalf("err = %v, want search's 403 HTTPError", err)
+			}
+		})
 	}
 }

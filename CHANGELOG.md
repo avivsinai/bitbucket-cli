@@ -10,8 +10,8 @@ All notable changes to this project will be documented here. The format follows
   repo role filter now resolve the current user, so accounts whose login name
   differs from their slug (for example `jane@corp.example` →
   `jane_corp.example`) authenticate and filter correctly.
-- Data Center user resolution searches all result pages, prefers exact login
-  names over email matches, and rejects ambiguous shared-email matches.
+- Data Center user resolution searches all result pages and rejects ambiguous
+  login/slug collisions and shared-email matches.
 
 ## [0.40.1] - 2026-11-16
 ### Added
