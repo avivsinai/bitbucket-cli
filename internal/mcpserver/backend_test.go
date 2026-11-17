@@ -78,11 +78,17 @@ func TestDCBackendAppliesRepositoryRoleFiltersUpstream(t *testing.T) {
 	for _, role := range []string{"AUTHOR", "REVIEWER"} {
 		t.Run(strings.ToLower(role), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/rest/api/1.0/users/alice_corp.example" {
+					// The stored identifier is the slug; the filter needs the login name.
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(map[string]any{"name": "alice@corp.example", "slug": "alice_corp.example", "id": 7})
+					return
+				}
 				if r.URL.Path != "/rest/api/1.0/projects/PROJ/repos/api/pull-requests" {
 					t.Fatalf("path = %q", r.URL.Path)
 				}
 				query := r.URL.Query()
-				if query.Get("state") != "OPEN" || query.Get("role.1") != role || query.Get("username.1") != "alice" || query.Get("limit") != "7" {
+				if query.Get("state") != "OPEN" || query.Get("role.1") != role || query.Get("username.1") != "alice@corp.example" || query.Get("limit") != "7" {
 					t.Fatalf("query = %q", r.URL.RawQuery)
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -100,7 +106,7 @@ func TestDCBackendAppliesRepositoryRoleFiltersUpstream(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			items, hasMore, err := (&dcBackend{client: client, username: "alice"}).listPullRequests(
+			items, hasMore, err := (&dcBackend{client: client, username: "alice_corp.example"}).listPullRequests(
 				context.Background(), RepositoryRef{Scope: "PROJ", Slug: "api"}, "OPEN", role, 7,
 			)
 			if err != nil {

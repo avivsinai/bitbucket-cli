@@ -3,6 +3,7 @@ package bbdc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -392,5 +393,93 @@ func TestClientSendsBasicAuth(t *testing.T) {
 	_, err = client.CurrentUser(context.Background(), "admin")
 	if err != nil {
 		t.Fatalf("CurrentUser: %v", err)
+	}
+}
+
+func TestResolveUserFallsBackToSearchForLoginName(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/1.0/users/jane@corp.example":
+			http.NotFound(w, r)
+		case "/rest/api/1.0/users":
+			if got := r.URL.Query().Get("filter"); got != "jane@corp.example" {
+				t.Errorf("filter = %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values": []User{
+					{Name: "jane@corp.example.old", Slug: "jane_corp.example.old", ID: 1},
+					{Name: "jane@corp.example", Slug: "jane_corp.example", ID: 2},
+				},
+				"isLastPage": true,
+			})
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	})
+
+	user, err := newTestClient(t, handler).ResolveUser(context.Background(), "jane@corp.example")
+	if err != nil {
+		t.Fatalf("ResolveUser: %v", err)
+	}
+	if user.ID != 2 || user.Slug != "jane_corp.example" {
+		t.Fatalf("unexpected user: %+v", user)
+	}
+}
+
+func TestResolveUserReturnsNotFoundWithoutExactMatch(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rest/api/1.0/users" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"values":     []User{{Name: "janet", Slug: "janet", ID: 3}},
+				"isLastPage": true,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	_, err := newTestClient(t, handler).ResolveUser(context.Background(), "jane")
+	var httpErr *httpx.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("err = %v, want 404 HTTPError", err)
+	}
+}
+
+func TestResolveUserDoesNotSearchOnUnauthorized(t *testing.T) {
+	var calls int
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	_, err := newTestClient(t, handler).ResolveUser(context.Background(), "jane")
+	var httpErr *httpx.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("err = %v, want 401 HTTPError", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
+func TestUserMatches(t *testing.T) {
+	user := User{Name: "jane@corp.example", Slug: "jane_corp.example", Email: "Jane.Doe@corp.example"}
+	tests := []struct {
+		identifier string
+		want       bool
+	}{
+		{"jane@corp.example", true},
+		{"JANE_CORP.EXAMPLE", true},
+		{"jane.doe@corp.example", true},
+		{" jane@corp.example ", true},
+		{"jane", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := user.Matches(tt.identifier); got != tt.want {
+			t.Errorf("Matches(%q) = %v, want %v", tt.identifier, got, tt.want)
+		}
 	}
 }

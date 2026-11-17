@@ -5,6 +5,11 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Data Center: `bkt auth login`, `bkt pr list --mine`/`--reviewer` and the MCP
+  repo role filter now resolve the current user, so accounts whose login name
+  differs from their slug (for example `jane@corp.example` →
+  `jane_corp.example`) authenticate and filter correctly.
 
 ## [0.40.1] - 2026-11-16
 ### Added

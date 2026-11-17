@@ -2,6 +2,7 @@ package bbdc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -178,6 +179,58 @@ func (c *Client) CurrentUser(ctx context.Context, userSlug string) (*User, error
 		return nil, err
 	}
 	return &user, nil
+}
+
+// ResolveUser finds the user matching identifier, which may be the user's
+// slug, login name, or email address. REST paths address users by slug, but
+// the login name (used for basic auth and the username.N participant filter)
+// differs from the slug whenever it contains characters such as "@"
+// ("jane@corp.example" has slug "jane_corp.example"). When the slug lookup
+// misses, fall back to the user search endpoint and match exactly.
+func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil, fmt.Errorf("user identifier is required")
+	}
+
+	user, err := c.CurrentUser(ctx, identifier)
+	if err == nil {
+		return user, nil
+	}
+	var httpErr *httpx.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusNotFound {
+		return nil, err
+	}
+
+	req, reqErr := c.http.NewRequest(ctx, "GET", "/rest/api/1.0/users?limit=100&filter="+url.QueryEscape(identifier), nil)
+	if reqErr != nil {
+		return nil, reqErr
+	}
+	var resp paged[User]
+	if doErr := c.http.Do(req, &resp); doErr != nil {
+		return nil, doErr
+	}
+	for i := range resp.Values {
+		if resp.Values[i].Matches(identifier) {
+			return &resp.Values[i], nil
+		}
+	}
+	return nil, err
+}
+
+// Matches reports whether identifier is this user's login name, slug, or
+// email address, ignoring case.
+func (u User) Matches(identifier string) bool {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return false
+	}
+	for _, candidate := range []string{u.Name, u.Slug, u.Email} {
+		if candidate != "" && strings.EqualFold(candidate, identifier) {
+			return true
+		}
+	}
+	return false
 }
 
 // ListRepositories enumerates repositories for a project, handling pagination.

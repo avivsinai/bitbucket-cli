@@ -3,9 +3,11 @@ package auth
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"runtime"
@@ -322,8 +324,12 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			}
 			displayName = "bearer token"
 		} else {
-			user, userErr := client.CurrentUser(ctx, opts.Username)
+			user, userErr := client.ResolveUser(ctx, opts.Username)
 			if userErr != nil {
+				var httpErr *httpx.HTTPError
+				if authMethod != "bearer" && errors.As(userErr, &httpErr) && httpErr.StatusCode == http.StatusUnauthorized {
+					return fmt.Errorf("verify credentials: %w (basic auth needs your login name, which can differ from your user slug; or use --auth-method bearer)", userErr)
+				}
 				return fmt.Errorf("verify credentials: %w", userErr)
 			}
 			displayName = cmdutil.FirstNonEmpty(user.FullName, user.Name, opts.Username)

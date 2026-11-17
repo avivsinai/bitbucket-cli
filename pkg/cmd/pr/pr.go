@@ -187,24 +187,35 @@ func runList(cmd *cobra.Command, f *cmdutil.Factory, opts *listOptions) error {
 		ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 		defer cancel()
 
-		var prs []bbdc.PullRequest
-		role, flag := "", ""
-		switch {
-		case opts.Reviewer:
-			role, flag = "REVIEWER", "--reviewer"
-		case opts.Mine:
-			role, flag = "AUTHOR", "--mine"
-		}
-		if role != "" {
+		var me *bbdc.User
+		if opts.Mine || opts.Reviewer {
+			flag := "--mine"
+			if opts.Reviewer {
+				flag = "--reviewer"
+			}
 			if host.Username == "" {
 				return fmt.Errorf("%s requires a username; bearer-only logins must re-authenticate with --username or use the dashboard endpoint (omit --project and --repo)", flag)
+			}
+			// The stored username may be a slug, login name, or email; the
+			// participant filter and author matching need the canonical user.
+			me, err = client.ResolveUser(ctx, host.Username)
+			if err != nil {
+				return fmt.Errorf("resolve current Bitbucket user %q: %w", host.Username, err)
+			}
+		}
+
+		var prs []bbdc.PullRequest
+		if opts.Reviewer || opts.Mine {
+			role := "AUTHOR"
+			if opts.Reviewer {
+				role = "REVIEWER"
 			}
 			// Apply the participant filter upstream (before the limit)
 			// rather than filtering a limited page client-side.
 			prs, err = client.ListPullRequestsWithOptions(ctx, projectKey, repoSlug, bbdc.RepoPullRequestsOptions{
 				State:    opts.State,
 				Role:     role,
-				Username: host.Username,
+				Username: me.Name,
 				Limit:    opts.Limit,
 			})
 		} else {

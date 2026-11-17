@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/avivsinai/bitbucket-cli/internal/config"
 	"github.com/avivsinai/bitbucket-cli/pkg/bbcloud"
@@ -6341,6 +6344,10 @@ func TestListRepositoryDCReviewerFiltersUpstreamBeforeLimit(t *testing.T) {
 	var gotQuery string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/rest/api/1.0/users/testuser" {
+			_ = json.NewEncoder(w).Encode(bbdc.User{Name: "testuser", Slug: "testuser", ID: 1})
+			return
+		}
 		if strings.Contains(r.URL.Path, "/pull-requests") {
 			gotQuery = r.URL.RawQuery
 			// The server applies the participant filter, so it returns only the
@@ -6386,6 +6393,10 @@ func TestListRepositoryDCMineFiltersUpstreamBeforeLimit(t *testing.T) {
 	var gotQuery string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/rest/api/1.0/users/testuser" {
+			_ = json.NewEncoder(w).Encode(bbdc.User{Name: "testuser", Slug: "testuser", ID: 1})
+			return
+		}
 		if strings.Contains(r.URL.Path, "/pull-requests") {
 			gotQuery = r.URL.RawQuery
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -6452,5 +6463,71 @@ func TestListRepositoryCloudReviewerMissingIdentityError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "--mine") {
 		t.Fatalf("reviewer error must not reference --mine: %v", err)
+	}
+}
+
+// dcSlugUserHandler serves a Data Center user whose login name ("jane@corp.example")
+// differs from its slug ("jane_corp.example"), recording the pull request query.
+func dcSlugUserHandler(t *testing.T, gotQuery *string, prs []bbdc.PullRequest) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/rest/api/1.0/users/jane_corp.example":
+			_ = json.NewEncoder(w).Encode(bbdc.User{Name: "jane@corp.example", Slug: "jane_corp.example", ID: 42})
+		case strings.HasSuffix(r.URL.Path, "/pull-requests"):
+			*gotQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode(map[string]any{"values": prs, "isLastPage": true})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+func newSlugUserListCmd(t *testing.T, handler http.Handler, out, errb *strings.Builder) *cobra.Command {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	cfg := &config.Config{
+		ActiveContext: "default",
+		Contexts:      map[string]*config.Context{"default": {Host: "main", ProjectKey: "PROJ", DefaultRepo: "repo1"}},
+		Hosts:         map[string]*config.Host{"main": {Kind: "dc", BaseURL: server.URL, Username: "jane_corp.example", AuthMethod: "bearer", Token: "t"}},
+	}
+	cmd := newListCmd(newReviewerTestFactory(cfg, out, errb))
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	return cmd
+}
+
+func TestListRepositoryDCMineSendsLoginNameWhenSlugStored(t *testing.T) {
+	var gotQuery string
+	var mine bbdc.PullRequest
+	mine.ID, mine.Title, mine.State = 1, "Mine", "OPEN"
+
+	var out, errb strings.Builder
+	cmd := newSlugUserListCmd(t, dcSlugUserHandler(t, &gotQuery, []bbdc.PullRequest{mine}), &out, &errb)
+	cmd.SetArgs([]string{"--mine"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"role.1=AUTHOR", "username.1=" + url.QueryEscape("jane@corp.example")} {
+		if !strings.Contains(gotQuery, want) {
+			t.Fatalf("upstream query %q missing %q", gotQuery, want)
+		}
+	}
+	if !strings.Contains(out.String(), "#1") {
+		t.Fatalf("output = %q, want PR #1", out.String())
+	}
+}
+
+func TestListRepositoryDCReviewerSendsLoginNameWhenSlugStored(t *testing.T) {
+	var gotQuery string
+	var out, errb strings.Builder
+	cmd := newSlugUserListCmd(t, dcSlugUserHandler(t, &gotQuery, nil), &out, &errb)
+	cmd.SetArgs([]string{"--reviewer"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := "username.1=" + url.QueryEscape("jane@corp.example"); !strings.Contains(gotQuery, want) {
+		t.Fatalf("upstream query %q missing %q", gotQuery, want)
 	}
 }

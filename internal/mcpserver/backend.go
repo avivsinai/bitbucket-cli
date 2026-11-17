@@ -302,8 +302,14 @@ func (b *dcBackend) listPullRequests(ctx context.Context, locator RepositoryRef,
 	}
 	opts := bbdc.RepoPullRequestsOptions{State: state, Limit: limit}
 	if role != "ALL" {
+		// The participant filter needs the login name, which can differ
+		// from the stored identifier (slug or email).
+		user, err := b.client.ResolveUser(ctx, b.username)
+		if err != nil {
+			return nil, false, err
+		}
 		opts.Role = role
-		opts.Username = b.username
+		opts.Username = user.Name
 	}
 	page, err := b.client.ListRepoPullRequestsPage(ctx, locator.Scope, locator.Slug, opts)
 	if err != nil {
