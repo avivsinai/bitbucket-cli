@@ -2,6 +2,7 @@ package bbdc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -178,6 +179,99 @@ func (c *Client) CurrentUser(ctx context.Context, userSlug string) (*User, error
 		return nil, err
 	}
 	return &user, nil
+}
+
+// ResolveUser finds the user matching identifier, which may be the user's
+// slug, login name, or email address. REST paths address users by slug, but
+// the login name (used for basic auth and the username.N participant filter)
+// differs from the slug whenever it contains characters such as "@"
+// ("jane@corp.example" has slug "jane_corp.example"). Unless the direct hit
+// also matches the login name, search all pages and reject identifiers that
+// match the login name and slug of different users. An email address is used
+// only when no login or slug matches and it identifies a single user.
+func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil, fmt.Errorf("user identifier is required")
+	}
+
+	user, err := c.CurrentUser(ctx, identifier)
+	if err == nil && strings.EqualFold(user.Name, identifier) {
+		return user, nil
+	}
+	var httpErr *httpx.HTTPError
+	if err != nil && (!errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusNotFound) {
+		return nil, err
+	}
+
+	var loginMatch *User
+	slugMatch := user
+	var emailMatch *User
+	ambiguousEmail := false
+	for start := 0; ; {
+		path := fmt.Sprintf("/rest/api/1.0/users?limit=100&start=%d&filter=%s", start, url.QueryEscape(identifier))
+		req, reqErr := c.http.NewRequest(ctx, "GET", path, nil)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		var resp paged[User]
+		if doErr := c.http.Do(req, &resp); doErr != nil {
+			return nil, doErr
+		}
+		for i := range resp.Values {
+			candidate := &resp.Values[i]
+			if strings.EqualFold(candidate.Name, identifier) {
+				loginMatch = candidate
+			}
+			if strings.EqualFold(candidate.Slug, identifier) {
+				slugMatch = candidate
+			}
+			if candidate.Matches(identifier) {
+				if emailMatch != nil && emailMatch.ID != candidate.ID {
+					ambiguousEmail = true
+				}
+				emailMatch = candidate
+			}
+		}
+		if resp.IsLastPage {
+			break
+		}
+		if resp.NextPageStart <= start {
+			return nil, fmt.Errorf("user search returned a non-advancing nextPageStart %d", resp.NextPageStart)
+		}
+		start = resp.NextPageStart
+	}
+	if loginMatch != nil {
+		if slugMatch != nil && loginMatch.ID != slugMatch.ID {
+			return nil, fmt.Errorf("user identifier %q is ambiguous: matches the login name and slug of different users", identifier)
+		}
+		return loginMatch, nil
+	}
+	if slugMatch != nil {
+		return slugMatch, nil
+	}
+	if ambiguousEmail {
+		return nil, fmt.Errorf("multiple users match email address %q; use a login name or user slug", identifier)
+	}
+	if emailMatch != nil {
+		return emailMatch, nil
+	}
+	return nil, err
+}
+
+// Matches reports whether identifier is this user's login name, slug, or
+// email address, ignoring case.
+func (u User) Matches(identifier string) bool {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return false
+	}
+	for _, candidate := range []string{u.Name, u.Slug, u.Email} {
+		if candidate != "" && strings.EqualFold(candidate, identifier) {
+			return true
+		}
+	}
+	return false
 }
 
 // ListRepositories enumerates repositories for a project, handling pagination.
