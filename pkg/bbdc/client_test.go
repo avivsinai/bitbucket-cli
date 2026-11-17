@@ -483,3 +483,126 @@ func TestUserMatches(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveUserSearchPagesAndIdentity(t *testing.T) {
+	const identifier = "jane@corp.example"
+	login := User{Name: identifier, Slug: "jane_corp.example", ID: 2}
+	email := User{Name: "jane.doe", Slug: "jane.doe", Email: identifier, ID: 3}
+	otherEmail := User{Name: "jane.old", Slug: "jane.old", Email: identifier, ID: 4}
+	partial := User{Name: identifier + ".old", Slug: "jane_corp.example.old", ID: 5}
+	tests := []struct {
+		name      string
+		pages     [][]User
+		wantID    int
+		wantError string
+	}{
+		{name: "login on later page", pages: [][]User{{partial}, {login}}, wantID: login.ID},
+		{name: "email on later page", pages: [][]User{{partial}, {email}}, wantID: email.ID},
+		{name: "login takes precedence over email", pages: [][]User{{email}, {login}}, wantID: login.ID},
+		{name: "login takes precedence within page", pages: [][]User{{email, login}}, wantID: login.ID},
+		{name: "unique email", pages: [][]User{{email}}, wantID: email.ID},
+		{name: "ambiguous email", pages: [][]User{{email}, {otherEmail}}, wantError: "multiple users"},
+		{name: "no exact match", pages: [][]User{{partial}, {{Name: "janet", ID: 6}}}, wantError: "404"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			searchCalls := 0
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/rest/api/1.0/users/"+identifier {
+					http.NotFound(w, r)
+					return
+				}
+				if r.URL.Path != "/rest/api/1.0/users" {
+					t.Errorf("unexpected path: %s", r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				query := r.URL.Query()
+				if query.Get("filter") != identifier || query.Get("limit") != "100" {
+					t.Errorf("query = %q", r.URL.RawQuery)
+				}
+				page := 0
+				if query.Get("start") == "17" {
+					page = 1
+				} else if query.Get("start") != "" && query.Get("start") != "0" {
+					t.Errorf("unexpected start: %q", query.Get("start"))
+				}
+				searchCalls++
+				if page >= len(tt.pages) || searchCalls > len(tt.pages) {
+					t.Error("unexpected extra search request")
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(paged[User]{
+					Values: tt.pages[page], Limit: 1,
+					IsLastPage: page == len(tt.pages)-1, NextPageStart: 17,
+				})
+			})
+			user, err := newTestClient(t, handler).ResolveUser(context.Background(), identifier)
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("user = %+v, err = %v, want error containing %q", user, err, tt.wantError)
+				}
+			} else if err != nil || user.ID != tt.wantID {
+				t.Fatalf("user = %+v, err = %v, want ID %d", user, err, tt.wantID)
+			}
+			if searchCalls != len(tt.pages) {
+				t.Errorf("search calls = %d, want %d", searchCalls, len(tt.pages))
+			}
+		})
+	}
+}
+
+func TestResolveUserDirectLookup(t *testing.T) {
+	var calls int
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/rest/api/1.0/users/jane_corp.example" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(User{Name: "jane@corp.example", Slug: "jane_corp.example", ID: 2})
+	})
+	user, err := newTestClient(t, handler).ResolveUser(context.Background(), " jane_corp.example ")
+	if err != nil || user.ID != 2 || calls != 1 {
+		t.Fatalf("user = %+v, err = %v, calls = %d", user, err, calls)
+	}
+}
+
+func TestResolveUserSearchDoesNotRepeatPage(t *testing.T) {
+	var searches int
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/1.0/users" {
+			http.NotFound(w, r)
+			return
+		}
+		searches++
+		if searches > 1 {
+			t.Error("repeated the same search page")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(paged[User]{Values: []User{{Name: "janet", ID: 3}}})
+	})
+	_, err := newTestClient(t, handler).ResolveUser(context.Background(), "jane")
+	if err == nil || !strings.Contains(err.Error(), "non-advancing") || searches != 1 {
+		t.Fatalf("err = %v, searches = %d", err, searches)
+	}
+}
+
+func TestResolveUserReturnsSearchError(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rest/api/1.0/users" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	_, err := newTestClient(t, handler).ResolveUser(context.Background(), "jane")
+	var httpErr *httpx.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusForbidden {
+		t.Fatalf("err = %v, want search's 403 HTTPError", err)
+	}
+}

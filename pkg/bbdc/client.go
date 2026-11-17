@@ -186,7 +186,8 @@ func (c *Client) CurrentUser(ctx context.Context, userSlug string) (*User, error
 // the login name (used for basic auth and the username.N participant filter)
 // differs from the slug whenever it contains characters such as "@"
 // ("jane@corp.example" has slug "jane_corp.example"). When the slug lookup
-// misses, fall back to the user search endpoint and match exactly.
+// misses, search all pages for an exact login name or slug, falling back to
+// an email address only when it identifies a single user.
 func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
@@ -202,18 +203,43 @@ func (c *Client) ResolveUser(ctx context.Context, identifier string) (*User, err
 		return nil, err
 	}
 
-	req, reqErr := c.http.NewRequest(ctx, "GET", "/rest/api/1.0/users?limit=100&filter="+url.QueryEscape(identifier), nil)
-	if reqErr != nil {
-		return nil, reqErr
-	}
-	var resp paged[User]
-	if doErr := c.http.Do(req, &resp); doErr != nil {
-		return nil, doErr
-	}
-	for i := range resp.Values {
-		if resp.Values[i].Matches(identifier) {
-			return &resp.Values[i], nil
+	var emailMatch *User
+	ambiguousEmail := false
+	for start := 0; ; {
+		path := fmt.Sprintf("/rest/api/1.0/users?limit=100&start=%d&filter=%s", start, url.QueryEscape(identifier))
+		req, reqErr := c.http.NewRequest(ctx, "GET", path, nil)
+		if reqErr != nil {
+			return nil, reqErr
 		}
+		var resp paged[User]
+		if doErr := c.http.Do(req, &resp); doErr != nil {
+			return nil, doErr
+		}
+		for i := range resp.Values {
+			candidate := &resp.Values[i]
+			if strings.EqualFold(candidate.Name, identifier) || strings.EqualFold(candidate.Slug, identifier) {
+				return candidate, nil
+			}
+			if candidate.Matches(identifier) {
+				if emailMatch != nil && emailMatch.ID != candidate.ID {
+					ambiguousEmail = true
+				}
+				emailMatch = candidate
+			}
+		}
+		if resp.IsLastPage {
+			break
+		}
+		if resp.NextPageStart <= start {
+			return nil, fmt.Errorf("user search returned a non-advancing nextPageStart %d", resp.NextPageStart)
+		}
+		start = resp.NextPageStart
+	}
+	if ambiguousEmail {
+		return nil, fmt.Errorf("multiple users match email address %q; use a login name or user slug", identifier)
+	}
+	if emailMatch != nil {
+		return emailMatch, nil
 	}
 	return nil, err
 }

@@ -891,6 +891,72 @@ func TestRunLoginDCWithTokenReadsStdin(t *testing.T) {
 	}
 }
 
+func TestRunLoginDCResolvesLoginNameAcrossSearchPages(t *testing.T) {
+	for _, authMethod := range []string{"basic", "bearer"} {
+		t.Run(authMethod, func(t *testing.T) {
+			const loginName = "jane@corp.example"
+			var calls int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if authMethod == "basic" {
+					username, password, ok := r.BasicAuth()
+					if !ok || username != loginName || password != "test-pat" {
+						t.Error("basic authentication must retain the login name")
+					}
+				} else if r.Header.Get("Authorization") != "Bearer test-pat" {
+					t.Error("missing bearer authentication")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/rest/api/1.0/users/" + loginName:
+					http.NotFound(w, r)
+				case "/rest/api/1.0/users":
+					if r.URL.Query().Get("filter") != loginName {
+						t.Errorf("filter = %q", r.URL.Query().Get("filter"))
+					}
+					if r.URL.Query().Get("start") == "17" {
+						_ = json.NewEncoder(w).Encode(map[string]any{
+							"values":     []map[string]any{{"name": loginName, "slug": "jane_corp.example", "displayName": "Jane Doe", "id": 2}},
+							"isLastPage": true,
+						})
+					} else {
+						_ = json.NewEncoder(w).Encode(map[string]any{
+							"values":     []map[string]any{{"name": loginName + ".old", "id": 1}},
+							"isLastPage": false, "nextPageStart": 17,
+						})
+					}
+				default:
+					t.Errorf("unexpected path: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			setupFileKeyring(t)
+			t.Setenv(secret.EnvToken, "")
+			t.Setenv("BKT_CONFIG_DIR", t.TempDir())
+			cfg := &config.Config{Hosts: make(map[string]*config.Host), Contexts: make(map[string]*config.Context)}
+			f, stdout, _ := newAuthTestFactory(cfg)
+			err := runLogin(newTestCmd(), f, &loginOptions{
+				Host: srv.URL, Kind: "dc", Username: loginName, Token: "test-pat", AuthMethod: authMethod,
+				AllowHTTP: true, AllowInsecureStore: true,
+			})
+			if err != nil {
+				t.Fatalf("runLogin: %v", err)
+			}
+			hostKey, err := cmdutil.HostKeyFromURL(srv.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if host := cfg.Hosts[hostKey]; host == nil || host.Username != loginName || host.AuthMethod != authMethod {
+				t.Errorf("stored host = %+v, want %s auth with login name", host, authMethod)
+			}
+			if !strings.Contains(stdout.String(), "Jane Doe") || calls != 3 {
+				t.Errorf("output = %q, requests = %d", stdout.String(), calls)
+			}
+		})
+	}
+}
+
 func TestRunLoginDCBearerFullFlow(t *testing.T) {
 	// Mock DC server: /rest/api/1.0/users?limit=1 returns user list.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
