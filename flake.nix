@@ -17,7 +17,7 @@
           pname = "bkt";
           inherit version;
           src = ./.;
-          vendorHash = "sha256-lZ1/EFTS9dVH844Z3q7qEdWFo673nTGmDA84WCT777M=";
+          vendorHash = "sha256-D/CCgj9ROPb8WIduvqmwjBGdEeMf+WD/tMeXlee1KfY=";
 
           subPackages = [ "cmd/bkt" ];
 
