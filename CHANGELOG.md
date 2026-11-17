@@ -5,6 +5,8 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.40.2] - 2026-11-17
 ### Fixed
 - Data Center: `bkt auth login`, `bkt pr list --mine`/`--reviewer` and the MCP
   repo role filter now resolve the current user, so accounts whose login name
@@ -12,6 +14,7 @@ All notable changes to this project will be documented here. The format follows
   `jane_corp.example`) authenticate and filter correctly.
 - Data Center user resolution searches all result pages and rejects ambiguous
   login/slug collisions and shared-email matches.
+
 
 ## [0.40.1] - 2026-11-16
 ### Added
@@ -1014,7 +1017,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.1...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.2...HEAD
+[0.40.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.1...v0.40.2
 [0.40.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.0...v0.40.1
 [0.40.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.38.1...v0.39.0
