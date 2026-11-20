@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -24,6 +25,7 @@ type Options struct {
 	Retry             httpx.RetryPolicy
 	MergePollInterval time.Duration
 	TokenRefresher    func(ctx context.Context) (string, error)
+	ExtraHeaders      http.Header
 }
 
 // Client wraps Bitbucket Cloud REST endpoints.
@@ -56,6 +58,7 @@ func New(opts Options) (*Client, error) {
 		EnableCache:    opts.EnableCache,
 		Retry:          opts.Retry,
 		TokenRefresher: opts.TokenRefresher,
+		ExtraHeaders:   opts.ExtraHeaders,
 	})
 	if err != nil {
 		return nil, err

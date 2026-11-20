@@ -50,6 +50,7 @@ type Client struct {
 	refreshMu       sync.Mutex
 	refreshInFlight *refreshCall
 	requestHook     func(*http.Request)
+	extraHeaders    http.Header
 
 	debug bool
 }
@@ -83,6 +84,10 @@ type Options struct {
 	// RequestHook can apply host-specific defaults after standard headers and
 	// auth are set.
 	RequestHook func(*http.Request)
+
+	// ExtraHeaders are added to every request, after auth and before
+	// RequestHook.
+	ExtraHeaders http.Header
 }
 
 // RetryPolicy defines exponential backoff characteristics for retries.
@@ -166,12 +171,21 @@ func New(opts Options) (*Client, error) {
 	client.retry = policy
 	client.tokenRefresher = opts.TokenRefresher
 	client.requestHook = opts.RequestHook
+	client.extraHeaders = opts.ExtraHeaders.Clone()
 	client.httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if via[0].Context().Value(noRedirectsKey{}) == true {
 			return http.ErrUseLastResponse
 		}
 		if len(via) >= 10 {
 			return fmt.Errorf("stopped after 10 redirects")
+		}
+		// net/http forwards most headers on a redirect, and keeps even Cookie
+		// for a subdomain or another port of the same host, so extra headers
+		// are dropped whenever the target leaves the configured origin.
+		if client.checkOrigin(req.URL) != nil {
+			for name := range client.extraHeaders {
+				req.Header.Del(name)
+			}
 		}
 		return nil
 	}
@@ -393,6 +407,11 @@ func isContextError(err error) bool {
 }
 
 func (c *Client) applyRequestHook(req *http.Request) {
+	for name, values := range c.extraHeaders {
+		for _, v := range values {
+			req.Header.Add(name, v)
+		}
+	}
 	if c.requestHook != nil {
 		c.requestHook(req)
 	}

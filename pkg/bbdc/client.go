@@ -14,12 +14,13 @@ import (
 
 // Options configure the Bitbucket Data Center client.
 type Options struct {
-	BaseURL     string
-	Username    string
-	Token       string
-	AuthMethod  string // "basic" (default) or "bearer"
-	EnableCache bool
-	Retry       httpx.RetryPolicy
+	BaseURL      string
+	Username     string
+	Token        string
+	AuthMethod   string // "basic" (default) or "bearer"
+	EnableCache  bool
+	Retry        httpx.RetryPolicy
+	ExtraHeaders http.Header
 }
 
 // Client wraps Bitbucket Data Center REST endpoints.
@@ -41,14 +42,15 @@ func New(opts Options) (*Client, error) {
 	}
 
 	httpClient, err := httpx.New(httpx.Options{
-		BaseURL:     opts.BaseURL,
-		Username:    opts.Username,
-		Password:    opts.Token,
-		AuthMethod:  opts.AuthMethod,
-		UserAgent:   "bkt-cli",
-		EnableCache: opts.EnableCache,
-		Retry:       opts.Retry,
-		RequestHook: addNoCheckHeader,
+		BaseURL:      opts.BaseURL,
+		Username:     opts.Username,
+		Password:     opts.Token,
+		AuthMethod:   opts.AuthMethod,
+		UserAgent:    "bkt-cli",
+		EnableCache:  opts.EnableCache,
+		Retry:        opts.Retry,
+		RequestHook:  addNoCheckHeader,
+		ExtraHeaders: opts.ExtraHeaders,
 	})
 	if err != nil {
 		return nil, err

@@ -228,3 +228,31 @@ func TestAPICommandRefusesMalformedDCPathWithoutRequest(t *testing.T) {
 		t.Fatalf("server got %d requests, want 0", requests)
 	}
 }
+
+func TestAPICommandHeaderFlagReplacesExtraHeader(t *testing.T) {
+	var cookies []string
+	factory, cleanup := newFactoryWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		cookies = r.Header.Values("Cookie")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	})
+	defer cleanup()
+
+	cfg, _ := factory.Config()
+	t.Setenv("BKT_HOST", cfg.Hosts["main"].BaseURL)
+	t.Setenv("BKT_TOKEN", "test-token")
+	t.Setenv("BKT_EXTRA_HEADERS", "Cookie: from=env")
+
+	cmd := NewCmdAPI(factory)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.PersistentFlags().String("context", "", "")
+	cmd.SetArgs([]string{"-H", "Cookie: from=flag", "/rest/api/1.0/projects"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("command failed: %v", err)
+	}
+	if len(cookies) != 1 || cookies[0] != "from=flag" {
+		t.Fatalf("Cookie = %q, want only the -H value", cookies)
+	}
+}

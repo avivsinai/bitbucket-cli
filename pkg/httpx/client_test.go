@@ -1813,3 +1813,42 @@ func TestNewRequestRefusesAnotherOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestClientExtraHeadersNotSentAcrossRedirect(t *testing.T) {
+	var leaked string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = r.Header.Get("X-Proxy-Token") + r.Header.Get("Cookie")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer other.Close()
+
+	var sameHost string
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/moved" {
+			http.Redirect(w, r, other.URL+"/landing", http.StatusFound)
+			return
+		}
+		sameHost = r.Header.Get("X-Proxy-Token")
+		http.Redirect(w, r, "/moved", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	client, err := New(Options{BaseURL: origin.URL, ExtraHeaders: http.Header{"X-Proxy-Token": {"secret"}, "Cookie": {"s=1"}}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/start", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	if err := client.Do(req, nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if sameHost != "secret" {
+		t.Errorf("origin got X-Proxy-Token %q, want secret", sameHost)
+	}
+	if leaked != "" {
+		t.Errorf("redirect target on another origin got extra headers %q", leaked)
+	}
+}
