@@ -5,6 +5,13 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `BKT_EXTRA_HEADERS` adds headers to API requests, one `Name: value` per
+  line, for servers behind a proxy that wants its own cookie or token next to
+  the Bitbucket credential. The headers go only to the `BKT_HOST` server (same
+  scheme, host and port), are dropped on a redirect that leaves that origin,
+  and are not passed to extensions. The Cloud browser OAuth flow does not send
+  them.
 
 ## [0.40.2] - 2026-11-17
 ### Fixed

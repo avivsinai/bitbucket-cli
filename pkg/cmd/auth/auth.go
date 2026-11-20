@@ -292,11 +292,16 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 			}
 		}
 
+		extra, err := cmdutil.ExtraHeadersFromEnv(baseURL)
+		if err != nil {
+			return err
+		}
 		client, err := bbdc.New(bbdc.Options{
-			BaseURL:    baseURL,
-			Username:   opts.Username,
-			Token:      opts.Token,
-			AuthMethod: authMethod,
+			BaseURL:      baseURL,
+			Username:     opts.Username,
+			Token:        opts.Token,
+			AuthMethod:   authMethod,
+			ExtraHeaders: extra,
 		})
 		if err != nil {
 			return err
@@ -480,6 +485,10 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 				}
 			}
 
+			extra, err := cmdutil.ExtraHeadersFromEnv(apiURL)
+			if err != nil {
+				return err
+			}
 			client, err := bbcloud.New(bbcloud.Options{
 				BaseURL:     apiURL,
 				Username:    opts.Username,
@@ -490,6 +499,7 @@ func runLogin(cmd *cobra.Command, f *cmdutil.Factory, opts *loginOptions) error 
 					InitialBackoff: 200 * time.Millisecond,
 					MaxBackoff:     2 * time.Second,
 				},
+				ExtraHeaders: extra,
 			})
 			if err != nil {
 				return err
