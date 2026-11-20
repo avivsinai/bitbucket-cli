@@ -1453,3 +1453,41 @@ func TestRunStatusAliasesJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestRunLoginDCSendsExtraHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Cookie") != "proxy_session=abc" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"values": []map[string]any{{"name": "admin", "displayName": "Admin User"}},
+		})
+	}))
+	defer srv.Close()
+
+	setupFileKeyring(t)
+	t.Setenv(secret.EnvToken, "")
+	t.Setenv("BKT_CONFIG_DIR", t.TempDir())
+	t.Setenv("BKT_HOST", srv.URL)
+	t.Setenv("BKT_EXTRA_HEADERS", "Cookie: proxy_session=abc")
+
+	cfg := &config.Config{Hosts: make(map[string]*config.Host), Contexts: make(map[string]*config.Context)}
+	f, stdout, _ := newAuthTestFactory(cfg)
+
+	err := runLogin(newTestCmd(), f, &loginOptions{
+		Host:               srv.URL,
+		Kind:               "dc",
+		AuthMethod:         "bearer",
+		Token:              "test-pat",
+		AllowHTTP:          true,
+		AllowInsecureStore: true,
+	})
+	if err != nil {
+		t.Fatalf("runLogin: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Logged in") {
+		t.Errorf("expected success message, got:\n%s", stdout.String())
+	}
+}

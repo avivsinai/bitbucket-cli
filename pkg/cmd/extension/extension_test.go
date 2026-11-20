@@ -316,3 +316,19 @@ func extensionTestArgsAfterDoubleDash(args []string) []string {
 	}
 	return nil
 }
+
+func TestFilterSensitiveEnvDropsCredentials(t *testing.T) {
+	t.Setenv("BKT_TOKEN", "secret-token")
+	t.Setenv("BKT_EXTRA_HEADERS", "Cookie: proxy_session=abc")
+	t.Setenv("BKT_HOST", "https://bitbucket.example.com")
+
+	env := strings.Join(filterSensitiveEnv(), "\n")
+	for _, leaked := range []string{"secret-token", "proxy_session=abc"} {
+		if strings.Contains(env, leaked) {
+			t.Errorf("extension environment carries %q", leaked)
+		}
+	}
+	if !strings.Contains(env, "BKT_HOST=https://bitbucket.example.com") {
+		t.Error("BKT_HOST was dropped; only credentials should be")
+	}
+}

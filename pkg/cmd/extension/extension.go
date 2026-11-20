@@ -17,6 +17,7 @@ import (
 
 var sensitiveEnvPrefixes = []string{
 	"BKT_TOKEN=",
+	"BKT_EXTRA_HEADERS=",
 	"BKT_KEYRING_PASSPHRASE=",
 	"BKT_ALLOW_INSECURE_STORE=",
 }
