@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Build with `golang.org/x/term` 0.48.0 and `golang.org/x/sys` 0.50.0, and
+  refresh the Nix vendor hash for the updated dependencies.
+
 ## [0.40.2] - 2026-11-17
 ### Fixed
 - Data Center: `bkt auth login`, `bkt pr list --mine`/`--reviewer` and the MCP
