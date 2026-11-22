@@ -6,9 +6,11 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.40.3] - 2026-11-22
 ### Changed
 - Build with `golang.org/x/term` 0.48.0 and `golang.org/x/sys` 0.50.0, and
   refresh the Nix vendor hash for the updated dependencies.
+
 
 ## [0.40.2] - 2026-11-17
 ### Fixed
@@ -1021,7 +1023,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.2...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.3...HEAD
+[0.40.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.2...v0.40.3
 [0.40.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.1...v0.40.2
 [0.40.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.0...v0.40.1
 [0.40.0]: https://github.com/avivsinai/bitbucket-cli/compare/v0.39.0...v0.40.0
