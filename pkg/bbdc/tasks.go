@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/avivsinai/bitbucket-cli/pkg/httpx"
 )
 
 const (
@@ -91,6 +93,22 @@ func (c *Client) ListPullRequestTasks(ctx context.Context, projectKey, repoSlug 
 //
 // Bitbucket Data Center exposes pull request tasks as blocker comments.
 func (c *Client) CreatePullRequestTask(ctx context.Context, projectKey, repoSlug string, prID int, text string) (*PullRequestTask, error) {
+	return c.createPullRequestTask(ctx, projectKey, repoSlug, prID, text, nil)
+}
+
+// CreateInlinePullRequestTask creates a blocker comment on one line of the PR diff.
+func (c *Client) CreateInlinePullRequestTask(ctx context.Context, projectKey, repoSlug string, prID int, opts CommentOptions) (*PullRequestTask, error) {
+	if strings.TrimSpace(opts.File) == "" || opts.FromLine < 0 || opts.ToLine < 0 || (opts.FromLine > 0) == (opts.ToLine > 0) {
+		return nil, fmt.Errorf("inline task requires a file and exactly one positive diff line")
+	}
+	if opts.ParentID != 0 || opts.Pending {
+		return nil, fmt.Errorf("inline tasks do not support a parent or pending state")
+	}
+	ctx = httpx.WithoutRetries(httpx.WithoutRedirects(ctx))
+	return c.createPullRequestTask(ctx, projectKey, repoSlug, prID, opts.Text, commentDiffAnchor(opts))
+}
+
+func (c *Client) createPullRequestTask(ctx context.Context, projectKey, repoSlug string, prID int, text string, anchor map[string]any) (*PullRequestTask, error) {
 	if err := validatePullRequestTaskTarget(projectKey, repoSlug, prID); err != nil {
 		return nil, err
 	}
@@ -100,6 +118,9 @@ func (c *Client) CreatePullRequestTask(ctx context.Context, projectKey, repoSlug
 
 	body := map[string]any{
 		"text": text,
+	}
+	if anchor != nil {
+		body["anchor"] = anchor
 	}
 
 	req, err := c.http.NewRequest(ctx, http.MethodPost, blockerCommentsPath(projectKey, repoSlug, prID), body)

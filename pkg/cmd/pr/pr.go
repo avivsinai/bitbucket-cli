@@ -2856,15 +2856,57 @@ func runReopen(cmd *cobra.Command, f *cmdutil.Factory, id int, opts *reopenOptio
 	}
 }
 
+type commentAnchorOptions struct {
+	File     string
+	FromLine int
+	ToLine   int
+}
+
+func (opts *commentAnchorOptions) registerFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&opts.File, "file", "", "File path in the diff (requires --from-line or --to-line)")
+	cmd.Flags().IntVar(&opts.FromLine, "from-line", 0, "Line in the old file (removed/source side)")
+	cmd.Flags().IntVar(&opts.ToLine, "to-line", 0, "Line in the new file (added/destination side)")
+}
+
+func (opts *commentAnchorOptions) validate(cmd *cobra.Command) error {
+	opts.File = strings.TrimSpace(opts.File)
+	fileFlagChanged := cmd.Flags().Changed("file")
+	hasFile := opts.File != ""
+	hasFromLine := cmd.Flags().Changed("from-line")
+	hasToLine := cmd.Flags().Changed("to-line")
+	hasInline := hasFile || hasFromLine || hasToLine
+
+	if fileFlagChanged && !hasFile {
+		return fmt.Errorf("--file value must not be blank")
+	}
+	if (hasFromLine || hasToLine) && !hasFile {
+		return fmt.Errorf("--file is required when --from-line or --to-line is specified")
+	}
+	if hasFile && !hasFromLine && !hasToLine {
+		return fmt.Errorf("--file must be used with either --from-line or --to-line (file-level comments not yet supported)")
+	}
+	if hasFromLine && hasToLine {
+		return fmt.Errorf("--from-line and --to-line are mutually exclusive")
+	}
+	if cmd.Flags().Changed("parent") && hasInline {
+		return fmt.Errorf("--parent cannot be combined with inline comment flags (--file, --from-line, --to-line)")
+	}
+	if hasFromLine && opts.FromLine <= 0 {
+		return fmt.Errorf("--from-line must be a positive integer")
+	}
+	if hasToLine && opts.ToLine <= 0 {
+		return fmt.Errorf("--to-line must be a positive integer")
+	}
+	return nil
+}
+
 type commentOptions struct {
+	commentAnchorOptions
 	Workspace string
 	Project   string
 	Repo      string
 	Text      string
 	ParentID  int
-	File      string
-	FromLine  int
-	ToLine    int
 	Pending   bool
 }
 
@@ -2900,33 +2942,8 @@ Works on both Data Center and Cloud.`,
 				return fmt.Errorf("--parent must be a positive comment ID")
 			}
 
-			opts.File = strings.TrimSpace(opts.File)
-			fileFlagChanged := cmd.Flags().Changed("file")
-			hasFile := opts.File != ""
-			hasFromLine := cmd.Flags().Changed("from-line")
-			hasToLine := cmd.Flags().Changed("to-line")
-			hasInline := hasFile || hasFromLine || hasToLine
-
-			if fileFlagChanged && !hasFile {
-				return fmt.Errorf("--file value must not be blank")
-			}
-			if (hasFromLine || hasToLine) && !hasFile {
-				return fmt.Errorf("--file is required when --from-line or --to-line is specified")
-			}
-			if hasFile && !hasFromLine && !hasToLine {
-				return fmt.Errorf("--file must be used with either --from-line or --to-line (file-level comments not yet supported)")
-			}
-			if hasFromLine && hasToLine {
-				return fmt.Errorf("--from-line and --to-line are mutually exclusive")
-			}
-			if cmd.Flags().Changed("parent") && hasInline {
-				return fmt.Errorf("--parent cannot be combined with inline comment flags (--file, --from-line, --to-line)")
-			}
-			if hasFromLine && opts.FromLine <= 0 {
-				return fmt.Errorf("--from-line must be a positive integer")
-			}
-			if hasToLine && opts.ToLine <= 0 {
-				return fmt.Errorf("--to-line must be a positive integer")
+			if err := opts.commentAnchorOptions.validate(cmd); err != nil {
+				return err
 			}
 
 			return runComment(cmd, f, id, opts)
@@ -2938,9 +2955,7 @@ Works on both Data Center and Cloud.`,
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Comment text")
 	cmd.Flags().IntVar(&opts.ParentID, "parent", 0, "Parent comment ID for threaded replies")
-	cmd.Flags().StringVar(&opts.File, "file", "", "File path in the diff (requires --from-line or --to-line)")
-	cmd.Flags().IntVar(&opts.FromLine, "from-line", 0, "Line in the old file (removed/source side)")
-	cmd.Flags().IntVar(&opts.ToLine, "to-line", 0, "Line in the new file (added/destination side)")
+	opts.commentAnchorOptions.registerFlags(cmd)
 	cmd.Flags().BoolVar(&opts.Pending, "pending", false, "Create the comment as pending (draft review feedback)")
 	_ = cmd.MarkFlagRequired("text")
 

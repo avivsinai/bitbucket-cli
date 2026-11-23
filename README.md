@@ -187,6 +187,7 @@ bkt pr checks 42 --wait --timeout 5m             # wait for builds, with backoff
 bkt pr mergeability 42 --json                    # Cloud: read-only merge checks
 bkt pr comments 42 --details                     # threads with file/line anchors
 bkt pr comments resolve 42 1001
+bkt pr task create 42 --text "Add a nil check here" --file src/main.go --to-line 55
 bkt pr merge 42 --message "merge: feature/cache"
 ```
 
