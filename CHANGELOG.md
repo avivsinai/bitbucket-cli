@@ -5,13 +5,18 @@ All notable changes to this project will be documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.40.4] - 2026-11-23
 ### Added
 - `BKT_EXTRA_HEADERS` adds headers to API requests, one `Name: value` per
   line, for servers behind a proxy that wants its own cookie or token next to
   the Bitbucket credential. The headers go only to the `BKT_HOST` server (same
   scheme, host and port), are dropped on a redirect that leaves that origin,
   and are not passed to extensions. The Cloud browser OAuth flow does not send
-  them.
+  them. Thanks to Grigory Zubankov ([ssgreg](https://github.com/ssgreg)) for
+  the original implementation in
+  [#407](https://github.com/avivsinai/bitbucket-cli/pull/407).
+
 
 ## [0.40.3] - 2026-11-22
 ### Changed
@@ -1030,7 +1035,8 @@ All notable changes to this project will be documented here. The format follows
 ## [0.1.0] - 2025-10-26
 - Initial public release of `bkt`.
 
-[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.3...HEAD
+[Unreleased]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.4...HEAD
+[0.40.4]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.3...v0.40.4
 [0.40.3]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.2...v0.40.3
 [0.40.2]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.1...v0.40.2
 [0.40.1]: https://github.com/avivsinai/bitbucket-cli/compare/v0.40.0...v0.40.1
