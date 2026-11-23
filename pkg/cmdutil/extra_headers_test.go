@@ -61,6 +61,14 @@ func TestParseExtraHeaders(t *testing.T) {
 	}
 }
 
+func TestParseExtraHeadersRejectsHost(t *testing.T) {
+	const want = "BKT_EXTRA_HEADERS line 2: Host is unsupported. Use BKT_HOST to choose the endpoint"
+	_, err := parseExtraHeaders("X-Trace: fixture\nhOsT: dummy.invalid")
+	if err == nil || err.Error() != want {
+		t.Fatalf("parseExtraHeaders error = %v, want %q", err, want)
+	}
+}
+
 func TestExtraHeadersFromEnvScope(t *testing.T) {
 	t.Run("refused without BKT_HOST", func(t *testing.T) {
 		t.Setenv("BKT_HOST", "")

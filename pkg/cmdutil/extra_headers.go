@@ -63,6 +63,9 @@ func parseExtraHeaders(raw string) (http.Header, error) {
 		if strings.EqualFold(name, "Authorization") {
 			return nil, fmt.Errorf("%s line %d: Authorization comes from the stored token or BKT_TOKEN", envExtraHeaders, i+1)
 		}
+		if strings.EqualFold(name, "Host") {
+			return nil, fmt.Errorf("%s line %d: Host is unsupported. Use BKT_HOST to choose the endpoint", envExtraHeaders, i+1)
+		}
 		headers.Add(name, strings.TrimSpace(value))
 	}
 	return headers, nil
