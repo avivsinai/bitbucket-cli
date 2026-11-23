@@ -22,10 +22,10 @@ func TestPRTaskCreateInlineCloudOAuth(t *testing.T) {
 		commentURL     = baseURL + "/repositories/myworkspace/my-repo/pullrequests/42/comments"
 		taskURL        = baseURL + "/repositories/myworkspace/my-repo/pullrequests/42/tasks"
 		clientID       = "fixture-consumer"
-		clientSecret   = "fixture-secret"
-		oldAccessToken = "fixture-old"
-		newAccessToken = "fixture-new"
-		refreshToken   = "fixture-refresh"
+		clientSecret   = "dummy-secret"
+		oldAccessToken = "fake-token-old"
+		newAccessToken = "fake-token-new"
+		refreshToken   = "fake-token-refresh"
 		commentReply   = `{"id":19}`
 		taskReply      = `{"id":77,"content":{"raw":"fixture"},"state":"UNRESOLVED"}`
 	)
@@ -35,7 +35,7 @@ func TestPRTaskCreateInlineCloudOAuth(t *testing.T) {
 		status int
 		reply  string
 	}
-	refresh := request{oauth.CloudTokenURL, "", http.StatusOK, `{"access_token":"fixture-new","refresh_token":"fixture-rotated","expires_in":3600}`}
+	refresh := request{oauth.CloudTokenURL, "", http.StatusOK, `{"access_token":"fake-token-new","refresh_token":"fake-token-rotated","expires_in":3600}`}
 	comment := request{commentURL, newAccessToken, http.StatusCreated, commentReply}
 	task := request{taskURL, newAccessToken, http.StatusCreated, taskReply}
 	tests := []struct {

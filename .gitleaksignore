@@ -27,3 +27,9 @@ e49525476b6c9f5f7e3f08abd7bbda71d1883b68:promptcode_bitbucket-cli-full.md:generi
 674fd2160c1f39ac07b02738d53d558b3dececcf:promptcode_bitbucket-cli-full.md:generic-auth-tuple:865
 674fd2160c1f39ac07b02738d53d558b3dececcf:promptcode_bitbucket-cli-full.md:generic-auth-tuple:12551
 674fd2160c1f39ac07b02738d53d558b3dececcf:promptcode_bitbucket-cli-full.md:generic-auth-tuple:12587
+
+# Dummy OAuth fixture values in the inline task CLI test
+73bd598c81f88bc835b0a9acedb2c2d904ca2bc3:pkg/cmd/pr/tasks_inline_oauth_test.go:credentials-go:25
+73bd598c81f88bc835b0a9acedb2c2d904ca2bc3:pkg/cmd/pr/tasks_inline_oauth_test.go:credentials-go:26
+73bd598c81f88bc835b0a9acedb2c2d904ca2bc3:pkg/cmd/pr/tasks_inline_oauth_test.go:credentials-go:27
+73bd598c81f88bc835b0a9acedb2c2d904ca2bc3:pkg/cmd/pr/tasks_inline_oauth_test.go:credentials-go:28
