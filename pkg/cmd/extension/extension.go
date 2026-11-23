@@ -15,13 +15,6 @@ import (
 	"github.com/avivsinai/bitbucket-cli/pkg/cmdutil"
 )
 
-var sensitiveEnvPrefixes = []string{
-	"BKT_TOKEN=",
-	"BKT_EXTRA_HEADERS=",
-	"BKT_KEYRING_PASSPHRASE=",
-	"BKT_ALLOW_INSECURE_STORE=",
-}
-
 func validateExtensionName(name string) error {
 	if name == "" {
 		return fmt.Errorf("extension name is required")
@@ -37,19 +30,19 @@ func validateExtensionName(name string) error {
 	return nil
 }
 
-func filterSensitiveEnv() []string {
+func filterSensitiveEnv(entries []string, ignoreCase bool) []string {
 	var filtered []string
-	for _, env := range os.Environ() {
-		sensitive := false
-		for _, prefix := range sensitiveEnvPrefixes {
-			if strings.HasPrefix(env, prefix) {
-				sensitive = true
-				break
+	for _, entry := range entries {
+		if key, _, ok := strings.Cut(entry, "="); ok {
+			if ignoreCase {
+				key = strings.ToUpper(key)
+			}
+			switch key {
+			case "BKT_TOKEN", "BKT_EXTRA_HEADERS", "BKT_KEYRING_PASSPHRASE", "BKT_ALLOW_INSECURE_STORE":
+				continue
 			}
 		}
-		if !sensitive {
-			filtered = append(filtered, env)
-		}
+		filtered = append(filtered, entry)
 	}
 	return filtered
 }
@@ -366,7 +359,7 @@ func runExtensionExec(cmd *cobra.Command, f *cmdutil.Factory, name string, args 
 	cmdExec.Stderr = ios.ErrOut
 	cmdExec.Stdin = ios.In
 	cmdExec.Dir = dir
-	cmdExec.Env = append(filterSensitiveEnv(),
+	cmdExec.Env = append(filterSensitiveEnv(os.Environ(), runtime.GOOS == "windows"),
 		fmt.Sprintf("BKT_EXTENSION_DIR=%s", dir),
 		fmt.Sprintf("BKT_EXTENSION_NAME=%s", name),
 	)

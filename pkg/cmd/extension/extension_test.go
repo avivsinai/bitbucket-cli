@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -318,17 +319,34 @@ func extensionTestArgsAfterDoubleDash(args []string) []string {
 }
 
 func TestFilterSensitiveEnvDropsCredentials(t *testing.T) {
-	t.Setenv("BKT_TOKEN", "secret-token")
-	t.Setenv("BKT_EXTRA_HEADERS", "Cookie: proxy_session=abc")
-	t.Setenv("BKT_HOST", "https://bitbucket.example.com")
-
-	env := strings.Join(filterSensitiveEnv(), "\n")
-	for _, leaked := range []string{"secret-token", "proxy_session=abc"} {
-		if strings.Contains(env, leaked) {
-			t.Errorf("extension environment carries %q", leaked)
-		}
+	passthrough := []string{
+		"BKT_HOST=https://fixture.invalid",
+		"BKT_EXTRA_HEADERS_HINT=fixture",
+		"NOTE=BKT_EXTRA_HEADERS=fixture",
+		"=C:=C:\\fixture",
 	}
-	if !strings.Contains(env, "BKT_HOST=https://bitbucket.example.com") {
-		t.Error("BKT_HOST was dropped; only credentials should be")
+	mixedCase := []string{
+		"bkt_token=fixture",
+		"bKt_ExTrA_hEaDeRs=fixture",
+		"bkt_keyring_passphrase=fixture",
+		"bkt_allow_insecure_store=1",
+	}
+	entries := append([]string{"BKT_TOKEN=fixture", "BKT_EXTRA_HEADERS=fixture"}, mixedCase...)
+	entries = append(entries, passthrough...)
+
+	tests := []struct {
+		name       string
+		ignoreCase bool
+		want       []string
+	}{
+		{name: "windows", ignoreCase: true, want: passthrough},
+		{name: "case-sensitive", want: append(slices.Clone(mixedCase), passthrough...)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := filterSensitiveEnv(entries, tt.ignoreCase); !slices.Equal(got, tt.want) {
+				t.Errorf("filtered environment = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
