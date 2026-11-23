@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -315,4 +316,37 @@ func extensionTestArgsAfterDoubleDash(args []string) []string {
 		}
 	}
 	return nil
+}
+
+func TestFilterSensitiveEnvDropsCredentials(t *testing.T) {
+	passthrough := []string{
+		"BKT_HOST=https://fixture.invalid",
+		"BKT_EXTRA_HEADERS_HINT=fixture",
+		"NOTE=BKT_EXTRA_HEADERS=fixture",
+		"=C:=C:\\fixture",
+	}
+	mixedCase := []string{
+		"bkt_token=fixture",
+		"bKt_ExTrA_hEaDeRs=fixture",
+		"bkt_keyring_passphrase=fixture",
+		"bkt_allow_insecure_store=1",
+	}
+	entries := append([]string{"BKT_TOKEN=fixture", "BKT_EXTRA_HEADERS=fixture"}, mixedCase...)
+	entries = append(entries, passthrough...)
+
+	tests := []struct {
+		name       string
+		ignoreCase bool
+		want       []string
+	}{
+		{name: "windows", ignoreCase: true, want: passthrough},
+		{name: "case-sensitive", want: append(slices.Clone(mixedCase), passthrough...)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := filterSensitiveEnv(entries, tt.ignoreCase); !slices.Equal(got, tt.want) {
+				t.Errorf("filtered environment = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

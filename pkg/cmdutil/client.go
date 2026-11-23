@@ -25,6 +25,10 @@ func NewDCClient(host *config.Host) (*bbdc.Client, error) {
 	if host.BaseURL == "" {
 		return nil, fmt.Errorf("host %q has no base URL configured", host.Kind)
 	}
+	extra, err := ExtraHeadersFromEnv(host.BaseURL)
+	if err != nil {
+		return nil, err
+	}
 	opts := bbdc.Options{
 		BaseURL:     host.BaseURL,
 		Username:    host.Username,
@@ -36,6 +40,7 @@ func NewDCClient(host *config.Host) (*bbdc.Client, error) {
 			InitialBackoff: 250 * time.Millisecond,
 			MaxBackoff:     2 * time.Second,
 		},
+		ExtraHeaders: extra,
 	}
 	return bbdc.New(opts)
 }
@@ -65,6 +70,10 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 	if host.BaseURL == "" {
 		host.BaseURL = "https://api.bitbucket.org/2.0"
 	}
+	extra, err := ExtraHeadersFromEnv(host.BaseURL)
+	if err != nil {
+		return nil, err
+	}
 	opts := bbcloud.Options{
 		BaseURL:     host.BaseURL,
 		Username:    host.Username,
@@ -75,6 +84,7 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 			InitialBackoff: 250 * time.Millisecond,
 			MaxBackoff:     2 * time.Second,
 		},
+		ExtraHeaders: extra,
 	}
 
 	if host.AuthMethod != "oauth" {
