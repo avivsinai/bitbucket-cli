@@ -434,7 +434,8 @@ func WithoutRedirects(ctx context.Context) context.Context {
 
 type noRetriesKey struct{}
 
-// WithoutRetries disables automatic retries for requests using ctx.
+// WithoutRetries disables this client's retry loop, including its OAuth
+// refresh and replay on 401, for requests using ctx.
 func WithoutRetries(ctx context.Context) context.Context {
 	return context.WithValue(ctx, noRetriesKey{}, true)
 }

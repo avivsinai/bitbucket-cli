@@ -1541,6 +1541,9 @@ an inline comment with the task text, then attaches the task to it. If the
 task request fails, bkt reports the inline comment ID so you can inspect it
 on the pull request.
 
+For anchored writes, bkt skips its automatic request retries. On Cloud, it
+refreshes expiring saved OAuth credentials before the first write.
+
 ### Usage
 
 ```

@@ -127,7 +127,10 @@ func newTaskCreateCmd(f *cmdutil.Factory, opts *taskOptions) *cobra.Command {
 Data Center creates an anchored blocker comment in one request. Cloud creates
 an inline comment with the task text, then attaches the task to it. If the
 task request fails, bkt reports the inline comment ID so you can inspect it
-on the pull request.`,
+on the pull request.
+
+For anchored writes, bkt skips its automatic request retries. On Cloud, it
+refreshes expiring saved OAuth credentials before the first write.`,
 		Example: `  bkt pr task create 42 --text "Add unit tests"
 
   bkt pr task create 42 --text "Add a nil check here" --file src/main.go --to-line 55`,
@@ -138,7 +141,7 @@ on the pull request.`,
 				return err
 			}
 			opts.ID = id
-			if err := opts.commentAnchorOptions.validate(cmd); err != nil {
+			if err := opts.validate(cmd); err != nil {
 				return err
 			}
 			return runTaskCreate(cmd, f, opts)
@@ -146,7 +149,7 @@ on the pull request.`,
 	}
 	registerTaskTargetFlags(cmd, opts)
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Task text")
-	opts.commentAnchorOptions.registerFlags(cmd)
+	opts.registerFlags(cmd)
 	_ = cmd.MarkFlagRequired("text")
 	return cmd
 }
@@ -339,6 +342,11 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		workspace, repoSlug, err := cloudContext(opts, ctxCfg.Workspace, ctxCfg.DefaultRepo)
 		if err != nil {
 			return err
+		}
+		if opts.File != "" {
+			if err := cmdutil.RefreshExpiredCloudOAuth(ctx, host); err != nil {
+				return fmt.Errorf("refresh OAuth token before creating inline task: %w", err)
+			}
 		}
 		client, err := cmdutil.NewCloudClient(host)
 		if err != nil {

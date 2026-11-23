@@ -2942,7 +2942,7 @@ Works on both Data Center and Cloud.`,
 				return fmt.Errorf("--parent must be a positive comment ID")
 			}
 
-			if err := opts.commentAnchorOptions.validate(cmd); err != nil {
+			if err := opts.validate(cmd); err != nil {
 				return err
 			}
 
@@ -2955,7 +2955,7 @@ Works on both Data Center and Cloud.`,
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Repository slug override")
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Comment text")
 	cmd.Flags().IntVar(&opts.ParentID, "parent", 0, "Parent comment ID for threaded replies")
-	opts.commentAnchorOptions.registerFlags(cmd)
+	opts.registerFlags(cmd)
 	cmd.Flags().BoolVar(&opts.Pending, "pending", false, "Create the comment as pending (draft review feedback)")
 	_ = cmd.MarkFlagRequired("text")
 

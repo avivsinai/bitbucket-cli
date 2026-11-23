@@ -133,7 +133,7 @@ func (c *Client) CreateInlinePullRequestTask(ctx context.Context, workspace, rep
 
 	task, err := c.createPullRequestTask(ctx, workspace, repoSlug, prID, opts.Text, comment.ID)
 	if err == nil && task.ID <= 0 {
-		err = fmt.Errorf("Bitbucket did not return a task ID")
+		err = fmt.Errorf("response did not include a task ID")
 	}
 	if err != nil {
 		return nil, comment.ID, fmt.Errorf("created inline comment %d on pull request #%d. Could not confirm task creation: %w", comment.ID, prID, err)
