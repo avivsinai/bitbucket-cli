@@ -10,7 +10,8 @@ metadata:
 # Bitbucket CLI (`bkt`)
 
 Use `bkt` for Bitbucket Cloud and Data Center operations. Prefer structured
-`--json`, `--yaml`, `--jq`, or `--template` output for automation.
+`--json`, `--yaml`, `--jq`, or `--template` output for automation. Use `--jq`
+on its own to filter JSON when no output format flag is set.
 
 ## Start with the requested operation
 
