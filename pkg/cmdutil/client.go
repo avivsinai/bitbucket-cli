@@ -52,6 +52,25 @@ func NewCloudClient(host *config.Host) (*bbcloud.Client, error) {
 	return newCloudClient(host, true)
 }
 
+// RefreshExpiredCloudOAuth refreshes a saved OAuth token before a Cloud
+// mutation that cannot be replayed on 401. Use the resolved host to construct
+// the client after this call so the request uses the new credential.
+func RefreshExpiredCloudOAuth(ctx context.Context, host *config.Host) error {
+	if !usesKeyringOAuth(host) || host.OAuthExpiresAt.IsZero() {
+		return nil
+	}
+	token := oauth.Token{ExpiresAt: host.OAuthExpiresAt}
+	if !token.IsExpired() {
+		return nil
+	}
+	hostKey, err := credentialKey(host)
+	if err != nil {
+		return fmt.Errorf("resolve host key: %w", err)
+	}
+	_, err = oauthTokenRefresher(hostKey, host)(ctx)
+	return err
+}
+
 // NewFrozenCloudClient constructs a Bitbucket Cloud client that uses exactly
 // the supplied credential for its lifetime. OAuth credentials use bearer auth,
 // but the client never reopens the credential store or refreshes on 401.
@@ -93,7 +112,7 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 	// Keyring-stored OAuth tokens use Bearer auth. When BKT_TOKEN overrides,
 	// the caller controls the token type and the auth method defaults to
 	// basic (matching API-token behavior), for frozen clients too.
-	keyringOAuth := host.AuthMethod == "oauth" && secret.TokenFromEnv() == ""
+	keyringOAuth := usesKeyringOAuth(host)
 	if keyringOAuth {
 		opts.AuthMethod = "bearer"
 	}
@@ -106,6 +125,10 @@ func newCloudClient(host *config.Host, enableOAuthRefresh bool) (*bbcloud.Client
 	}
 
 	return bbcloud.New(opts)
+}
+
+func usesKeyringOAuth(host *config.Host) bool {
+	return host != nil && host.AuthMethod == "oauth" && secret.TokenFromEnv() == ""
 }
 
 // credentialKey returns the key that a host's token is stored under: its own

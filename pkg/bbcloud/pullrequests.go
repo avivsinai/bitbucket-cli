@@ -565,11 +565,16 @@ type CommentOptions struct {
 // When ParentID > 0, the comment is a threaded reply.
 // When File is set with FromLine or ToLine, the comment targets a specific diff line.
 func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug string, prID int, opts CommentOptions) error {
+	_, err := c.createPullRequestComment(ctx, workspace, repoSlug, prID, opts)
+	return err
+}
+
+func (c *Client) createPullRequestComment(ctx context.Context, workspace, repoSlug string, prID int, opts CommentOptions) (*PullRequestComment, error) {
 	if workspace == "" || repoSlug == "" {
-		return fmt.Errorf("workspace and repository slug are required")
+		return nil, fmt.Errorf("workspace and repository slug are required")
 	}
 	if strings.TrimSpace(opts.Text) == "" {
-		return fmt.Errorf("comment text is required")
+		return nil, fmt.Errorf("comment text is required")
 	}
 
 	body := map[string]any{
@@ -601,7 +606,7 @@ func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug str
 	)
 	req, err := c.http.NewRequest(ctx, "POST", path, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Capture the created comment so a requested threaded reply can be
@@ -609,7 +614,7 @@ func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug str
 	// parent.id, on a successful POST.
 	var created PullRequestComment
 	if err := c.http.Do(req, &created); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Only verify threading when a reply was requested and Bitbucket actually
@@ -617,14 +622,14 @@ func (c *Client) CommentPullRequest(ctx context.Context, workspace, repoSlug str
 	// stubs) return a 2xx with an empty body, which is still a success.
 	if opts.ParentID > 0 && created.ID != 0 {
 		if created.Parent == nil || created.Parent.ID != opts.ParentID {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"comment created (id %d) but Bitbucket did not thread it under parent %d; the parent may not be a valid reply target (e.g. resolved, deleted, or a comment that does not accept replies) — delete the stray comment or retry against a top-level comment",
 				created.ID, opts.ParentID,
 			)
 		}
 	}
 
-	return nil
+	return &created, nil
 }
 
 // PullRequestDiff streams the unified diff for the given pull request into w.

@@ -17,6 +17,7 @@ import (
 const taskRequestTimeout = 10 * time.Second
 
 type taskOptions struct {
+	commentAnchorOptions
 	Project   string
 	Repo      string
 	Workspace string
@@ -118,21 +119,37 @@ func newTaskListCmd(f *cmdutil.Factory, opts *taskOptions) *cobra.Command {
 
 func newTaskCreateCmd(f *cmdutil.Factory, opts *taskOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "create <id>",
-		Short:   "Create a task on a pull request",
-		Example: `  bkt pr task create 42 --text "Add unit tests"`,
-		Args:    cobra.ExactArgs(1),
+		Use:   "create <id>",
+		Short: "Create a task on a pull request",
+		Long: `Create a task on a pull request. To anchor it to a line in the diff, use
+--file with exactly one of --from-line (source side) or --to-line (destination side).
+
+Data Center creates an anchored blocker comment in one request. Cloud creates
+an inline comment with the task text, then attaches the task to it. If the
+task request fails, bkt reports the inline comment ID so you can inspect it
+on the pull request.
+
+For anchored writes, bkt skips its automatic request retries. On Cloud, it
+refreshes expiring saved OAuth credentials before the first write.`,
+		Example: `  bkt pr task create 42 --text "Add unit tests"
+
+  bkt pr task create 42 --text "Add a nil check here" --file src/main.go --to-line 55`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parsePRID(args[0])
 			if err != nil {
 				return err
 			}
 			opts.ID = id
+			if err := opts.validate(cmd); err != nil {
+				return err
+			}
 			return runTaskCreate(cmd, f, opts)
 		},
 	}
 	registerTaskTargetFlags(cmd, opts)
 	cmd.Flags().StringVar(&opts.Text, "text", "", "Task text")
+	opts.registerFlags(cmd)
 	_ = cmd.MarkFlagRequired("text")
 	return cmd
 }
@@ -307,7 +324,14 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		if err != nil {
 			return err
 		}
-		task, err := client.CreatePullRequestTask(ctx, projectKey, repoSlug, opts.ID, opts.Text)
+		var task *bbdc.PullRequestTask
+		if opts.File == "" {
+			task, err = client.CreatePullRequestTask(ctx, projectKey, repoSlug, opts.ID, opts.Text)
+		} else {
+			task, err = client.CreateInlinePullRequestTask(ctx, projectKey, repoSlug, opts.ID, bbdc.CommentOptions{
+				Text: opts.Text, File: opts.File, FromLine: opts.FromLine, ToLine: opts.ToLine,
+			})
+		}
 		if err != nil {
 			return err
 		}
@@ -319,12 +343,31 @@ func runTaskCreate(cmd *cobra.Command, f *cmdutil.Factory, opts *taskOptions) er
 		if err != nil {
 			return err
 		}
+		if opts.File != "" {
+			if err := cmdutil.RefreshExpiredCloudOAuth(ctx, host); err != nil {
+				return fmt.Errorf("refresh OAuth token before creating inline task: %w", err)
+			}
+		}
 		client, err := cmdutil.NewCloudClient(host)
 		if err != nil {
 			return err
 		}
-		task, err := client.CreatePullRequestTask(ctx, workspace, repoSlug, opts.ID, opts.Text)
+		var task *bbcloud.PullRequestTask
+		var commentID int
+		if opts.File == "" {
+			task, err = client.CreatePullRequestTask(ctx, workspace, repoSlug, opts.ID, opts.Text)
+		} else {
+			task, commentID, err = client.CreateInlinePullRequestTask(ctx, workspace, repoSlug, opts.ID, bbcloud.CommentOptions{
+				Text: opts.Text, File: opts.File, FromLine: opts.FromLine, ToLine: opts.ToLine,
+			})
+		}
 		if err != nil {
+			if commentID > 0 {
+				// Report the completed write even when CLI shutdown suppresses errors.
+				if _, writeErr := fmt.Fprintf(ios.ErrOut, "Error: %v\n", err); writeErr == nil {
+					return cmdutil.ErrSilent
+				}
+			}
 			return err
 		}
 		view = cloudTaskView(*task)
