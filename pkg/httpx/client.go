@@ -432,6 +432,14 @@ func WithoutRedirects(ctx context.Context) context.Context {
 	return context.WithValue(ctx, noRedirectsKey{}, true)
 }
 
+type noRetriesKey struct{}
+
+// WithoutRetries disables this client's retry loop, including its OAuth
+// refresh and replay on 401, for requests using ctx.
+func WithoutRetries(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noRetriesKey{}, true)
+}
+
 // Do executes the HTTP request and decodes the response into v when provided.
 func (c *Client) Do(req *http.Request, v any) error {
 	return c.do(req, v, nil)
@@ -454,6 +462,7 @@ func (c *Client) do(req *http.Request, v any, response *Response) error {
 		return fmt.Errorf("request is nil")
 	}
 
+	noRetries := req.Context().Value(noRetriesKey{}) == true
 	attempts := 0
 	tokenRefreshed := false
 	for {
@@ -474,7 +483,7 @@ func (c *Client) do(req *http.Request, v any, response *Response) error {
 
 		resp, err := c.httpClient.Do(attemptReq)
 		if err != nil {
-			if !c.shouldRetry(attempts, attemptReq.Method, 0) {
+			if noRetries || !c.shouldRetry(attempts, attemptReq.Method, 0) {
 				if c.debug {
 					fmt.Fprintf(os.Stderr, "<-- network error: %v\n", err)
 				}
@@ -515,7 +524,7 @@ func (c *Client) do(req *http.Request, v any, response *Response) error {
 			return nil
 		}
 
-		if shouldRetryStatus(resp.StatusCode) {
+		if !noRetries && shouldRetryStatus(resp.StatusCode) {
 			// Read body for retry logic; errors are intentionally ignored as we'll retry anyway
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
@@ -539,7 +548,7 @@ func (c *Client) do(req *http.Request, v any, response *Response) error {
 			continue
 		}
 
-		if resp.StatusCode == http.StatusUnauthorized && c.tokenRefresher != nil && !tokenRefreshed {
+		if !noRetries && resp.StatusCode == http.StatusUnauthorized && c.tokenRefresher != nil && !tokenRefreshed {
 			_ = resp.Body.Close()
 			if refreshErr := c.refreshCredentials(req.Context(), attemptReq.Header.Get("Authorization")); refreshErr != nil {
 				return fmt.Errorf("refresh token: %w", refreshErr)

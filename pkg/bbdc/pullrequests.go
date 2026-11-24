@@ -678,18 +678,7 @@ func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug st
 		body["parent"] = map[string]int{"id": opts.ParentID}
 	}
 	if opts.File != "" {
-		anchor := map[string]any{"path": opts.File}
-		if opts.ToLine > 0 {
-			anchor["line"] = opts.ToLine
-			anchor["lineType"] = "ADDED"
-			anchor["fileType"] = "TO"
-		}
-		if opts.FromLine > 0 {
-			anchor["line"] = opts.FromLine
-			anchor["lineType"] = "REMOVED"
-			anchor["fileType"] = "FROM"
-		}
-		body["anchor"] = anchor
+		body["anchor"] = commentDiffAnchor(opts)
 	}
 
 	req, err := c.http.NewRequest(ctx, "POST", fmt.Sprintf("/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/comments",
@@ -701,6 +690,21 @@ func (c *Client) CommentPullRequest(ctx context.Context, projectKey, repoSlug st
 		return err
 	}
 	return c.http.Do(req, nil)
+}
+
+func commentDiffAnchor(opts CommentOptions) map[string]any {
+	anchor := map[string]any{"path": opts.File}
+	if opts.ToLine > 0 {
+		anchor["line"] = opts.ToLine
+		anchor["lineType"] = "ADDED"
+		anchor["fileType"] = "TO"
+	}
+	if opts.FromLine > 0 {
+		anchor["line"] = opts.FromLine
+		anchor["lineType"] = "REMOVED"
+		anchor["fileType"] = "FROM"
+	}
+	return anchor
 }
 
 // UpdatePROptions configures pull request updates.
