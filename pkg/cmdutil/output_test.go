@@ -81,25 +81,43 @@ func TestResolveOutputSettingsRejectsJQAndTemplate(t *testing.T) {
 	}
 }
 
-func TestResolveOutputSettingsJQRequiresJSON(t *testing.T) {
-	cmd := newTestCommand(map[string]string{"jq": ".name"})
-	_, err := ResolveOutputSettings(cmd)
-	if err == nil {
-		t.Fatal("expected error for --jq without --json")
+func TestResolveOutputSettingsJQ(t *testing.T) {
+	const formatError = "--jq requires JSON output"
+	tests := []struct {
+		name    string
+		flags   map[string]string
+		wantErr string
+	}{
+		{name: "implied json"},
+		{name: "explicit json flag", flags: map[string]string{"json": "true"}},
+		{name: "explicit json format", flags: map[string]string{"format": "JSON"}},
+		{name: "json format with disabled boolean", flags: map[string]string{"json": "false", "format": "json"}},
+		{name: "yaml flag", flags: map[string]string{"yaml": "true"}, wantErr: formatError},
+		{name: "yaml format", flags: map[string]string{"format": "yaml"}, wantErr: formatError},
+		{name: "explicit json false", flags: map[string]string{"json": "false"}, wantErr: formatError},
+		{name: "explicit yaml false", flags: map[string]string{"yaml": "false"}, wantErr: formatError},
+		{name: "explicit empty format", flags: map[string]string{"format": ""}, wantErr: formatError},
 	}
-	if !strings.Contains(err.Error(), "--jq requires --json") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestResolveOutputSettingsJQWithJSON(t *testing.T) {
-	cmd := newTestCommand(map[string]string{"json": "true", "jq": ".name"})
-	settings, err := ResolveOutputSettings(cmd)
-	if err != nil {
-		t.Fatalf("ResolveOutputSettings: %v", err)
-	}
-	if settings.Format != "json" || settings.JQ != ".name" {
-		t.Fatalf("unexpected settings: %+v", settings)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newTestCommand(tt.flags)
+			if err := cmd.Root().PersistentFlags().Set("jq", ".name"); err != nil {
+				t.Fatal(err)
+			}
+			settings, err := ResolveOutputSettings(cmd)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveOutputSettings: %v", err)
+			}
+			if settings.Format != "json" || settings.JQ != ".name" {
+				t.Fatalf("unexpected settings: %+v", settings)
+			}
+		})
 	}
 }
 

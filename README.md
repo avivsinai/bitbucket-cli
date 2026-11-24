@@ -218,6 +218,8 @@ bkt api /repositories --param workspace=myteam --field pagelen=50  # Cloud
 ```
 
 **Output for scripts.** Commands accept `--json`, `--yaml`, `--jq <expr>`, and `--template <go-template>`.
+`--jq` implies JSON when no output format flag is set. If you pass an output
+format flag, select JSON with `--json` or `--format json`.
 
 **Extensions.** `bkt extension install <git-url>` adds a `bkt-<name>` command; `bkt extension exec <name>` runs it.
 

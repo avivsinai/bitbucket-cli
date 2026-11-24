@@ -19,10 +19,10 @@ type OutputSettings struct {
 
 // OutputSettings extracts flags from the command hierarchy with validation.
 func ResolveOutputSettings(cmd *cobra.Command) (OutputSettings, error) {
-	root := cmd.Root()
+	flags := cmd.Root().PersistentFlags()
 
 	lookup := func(name string) string {
-		flag := root.PersistentFlags().Lookup(name)
+		flag := flags.Lookup(name)
 		if flag == nil {
 			return ""
 		}
@@ -51,10 +51,6 @@ func ResolveOutputSettings(cmd *cobra.Command) (OutputSettings, error) {
 		return OutputSettings{}, fmt.Errorf("cannot use --jq and --template simultaneously")
 	}
 
-	if jqExpr != "" && !jsonEnabled && formatVal != "json" {
-		return OutputSettings{}, fmt.Errorf("--jq requires --json or --format json")
-	}
-
 	format := formatVal
 	if format == "" {
 		if jsonEnabled {
@@ -62,6 +58,13 @@ func ResolveOutputSettings(cmd *cobra.Command) (OutputSettings, error) {
 		} else if yamlEnabled {
 			format = "yaml"
 		}
+	}
+
+	if jqExpr != "" && format != "json" {
+		if format != "" || flags.Changed("json") || flags.Changed("yaml") || flags.Changed("format") {
+			return OutputSettings{}, fmt.Errorf("--jq requires JSON output when an output format flag is set")
+		}
+		format = "json"
 	}
 
 	return OutputSettings{

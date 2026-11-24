@@ -102,10 +102,11 @@ bkt pr checkout 42               # Creates pr/42 branch
 
 ### Structured output for scripting
 
-All commands support `--json`, `--yaml`, `--jq`, and `--template`:
+Use `--jq` to filter structured output. It implies JSON when no output format
+flag is set. With an explicit output format flag, select `--json` or `--format json`.
 
 ```bash
-bkt pr list --mine --json | jq '.pull_requests[].title'
+bkt pr list --mine --jq '.pull_requests[].title'
 ```
 
 ### Raw API escape hatch
@@ -138,7 +139,7 @@ Every command accepts these inherited flags:
 | `--context` | `-c` | Use a specific named context |
 | `--json` | | JSON output |
 | `--yaml` | | YAML output |
-| `--jq` | | Apply a jq expression (requires `--json`) |
+| `--jq` | | Apply a jq expression (implies JSON when no output format flag is set) |
 | `--template` | | Render with Go template |
 
 ## References
