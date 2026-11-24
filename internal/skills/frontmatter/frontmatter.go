@@ -194,21 +194,40 @@ func StripInstallMetadata(content string) (string, error) {
 	kept := append([]string(nil), lines[:metaIdx+1]...)
 	remaining := 0
 	drop := false
+	inMetadata := true
+	childIndent := ""
 	for _, line := range lines[metaIdx+1:] {
 		trimmed := strings.TrimRight(line, "\r")
+		blank := strings.TrimSpace(trimmed) == ""
+		indented := strings.HasPrefix(trimmed, " ") || strings.HasPrefix(trimmed, "\t")
+		if inMetadata && !blank && !indented {
+			// Dedented back to the top level: the metadata block has ended.
+			inMetadata = false
+			drop = false
+		}
+		if !inMetadata {
+			kept = append(kept, line)
+			continue
+		}
+
 		m := entryKeyLine.FindStringSubmatch(trimmed)
 		switch {
 		case m != nil:
-			// A new entry decides whether it and its continuation lines stay.
-			key := strings.TrimSpace(strings.Trim(m[2], `"'`))
-			drop = install[key]
-			if !drop {
-				remaining++
+			if childIndent == "" {
+				childIndent = m[1]
 			}
-		case strings.TrimSpace(trimmed) == "":
-			drop = false
-		case !strings.HasPrefix(trimmed, " ") && !strings.HasPrefix(trimmed, "\t"):
-			// Dedented back to the top level: the metadata block has ended.
+			// Only entries at the metadata map's own child indentation decide
+			// whether their continuation lines stay. A nested key that happens to
+			// use an install key's name is ordinary authored content, both inside
+			// metadata and after a later top-level key.
+			if m[1] == childIndent {
+				key := strings.TrimSpace(strings.Trim(m[2], `"'`))
+				drop = install[key]
+				if !drop {
+					remaining++
+				}
+			}
+		case blank:
 			drop = false
 		}
 		if !drop {

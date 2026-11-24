@@ -327,6 +327,16 @@ func TestStripInstallMetadata(t *testing.T) {
 			want:    "---\nname: x\nlicense: MIT\n---\n",
 		},
 		{
+			name:    "nested install-looking keys outside the metadata map are kept",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\nlicense:\n    local-path: /licenses/MIT\n---\n",
+			want:    "---\nname: x\nlicense:\n    local-path: /licenses/MIT\n---\n",
+		},
+		{
+			name:    "nested install-looking keys inside another metadata value are kept",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\n    nested:\n        local-path: /nested/path\n---\n",
+			want:    "---\nname: x\nmetadata:\n    nested:\n        local-path: /nested/path\n---\n",
+		},
+		{
 			name:    "windows line endings survive",
 			content: "---\r\nname: x\r\nmetadata:\r\n    bitbucket-repo: r\r\n    author: a\r\n---\r\n# body\r\n",
 			want:    "---\r\nname: x\r\nmetadata:\r\n    author: a\r\n---\r\n# body\r\n",

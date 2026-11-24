@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `bkt skill publish` keeps nested keys that merely share a name with install
+  metadata when stripping the install metadata itself.
+
 ## [0.41.0] - 2026-11-24
 ### Added
 - `bkt pr task create` can anchor tasks to the pull request diff in Bitbucket
