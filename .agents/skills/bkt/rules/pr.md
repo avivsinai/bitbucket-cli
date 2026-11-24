@@ -1533,7 +1533,16 @@ bkt pr task complete 42 99
 
 ## bkt pr task create
 
-Create a task on a pull request
+Create a task on a pull request. To anchor it to a line in the diff, use
+--file with exactly one of --from-line (source side) or --to-line (destination side).
+
+Data Center creates an anchored blocker comment in one request. Cloud creates
+an inline comment with the task text, then attaches the task to it. If the
+task request fails, bkt reports the inline comment ID so you can inspect it
+on the pull request.
+
+For anchored writes, bkt skips its automatic request retries. On Cloud, it
+refreshes expiring saved OAuth credentials before the first write.
 
 ### Usage
 
@@ -1545,9 +1554,12 @@ bkt pr task create <id> [flags]
 
 | Flag | Short | Description |
 |---|---|---|
+| `--file` |  | File path in the diff (requires --from-line or --to-line) |
+| `--from-line` |  | Line in the old file (removed/source side) |
 | `--project` |  | Bitbucket project key override (DC) |
 | `--repo` |  | Repository slug override |
 | `--text` |  | Task text |
+| `--to-line` |  | Line in the new file (added/destination side) |
 | `--workspace` |  | Bitbucket Cloud workspace override |
 
 ### Inherited Flags
@@ -1565,6 +1577,8 @@ bkt pr task create <id> [flags]
 
 ```bash
 bkt pr task create 42 --text "Add unit tests"
+
+  bkt pr task create 42 --text "Add a nil check here" --file src/main.go --to-line 55
 ```
 
 ## bkt pr task list

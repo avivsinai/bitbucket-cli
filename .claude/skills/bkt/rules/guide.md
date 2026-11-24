@@ -70,7 +70,8 @@ Some commands are **Data Center only** or **Cloud only** — check the command r
 | Pipelines | — | yes |
 | Permissions | yes | — |
 | Webhooks | yes | yes |
-| Auto-merge, tasks, reactions | yes | — |
+| Pull request tasks and inline task anchors | yes | yes |
+| Auto-merge, reactions | yes | — |
 | Variables | — | yes |
 | Skill search | — | yes |
 
