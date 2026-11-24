@@ -51,7 +51,7 @@ Common flows:
 	root.PersistentFlags().Bool("json", false, "Output in JSON format when supported")
 	root.PersistentFlags().Bool("yaml", false, "Output in YAML format when supported")
 	root.PersistentFlags().String("format", "", "Output format: json or yaml (alias for --json/--yaml)")
-	root.PersistentFlags().String("jq", "", "Apply a jq expression to JSON output (requires --json or --format json)")
+	root.PersistentFlags().String("jq", "", "Apply a jq expression (implies JSON when no output format flag is set)")
 	root.PersistentFlags().String("template", "", "Render output using Go templates")
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
