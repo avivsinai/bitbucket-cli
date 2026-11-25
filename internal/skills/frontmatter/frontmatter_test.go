@@ -342,6 +342,32 @@ func TestStripInstallMetadata(t *testing.T) {
 			want:    "---\r\nname: x\r\nmetadata:\r\n    author: a\r\n---\r\n# body\r\n",
 		},
 		{
+			// A top-level comment does not end a YAML mapping, so the entries
+			// after it are still metadata children: the install keys must be
+			// stripped rather than surviving as orphans of a removed header.
+			name:    "a comment before the first child does not end the metadata map",
+			content: "---\nname: x\nmetadata:\n# written by the installer\n    bitbucket-repo: r\n    author: a\n---\n",
+			want:    "---\nname: x\nmetadata:\n# written by the installer\n    author: a\n---\n",
+		},
+		{
+			// The same comment after an authored child must not re-scope the
+			// later entries either: the install keys below it are still inside
+			// the metadata map and leave with the rest of the install metadata.
+			name:    "a comment after an authored child does not re-scope later entries",
+			content: "---\nname: x\nmetadata:\n    author: a\n# everything below came from the install\n    bitbucket-repo: r\n    local-path: /p\n---\n",
+			want:    "---\nname: x\nmetadata:\n    author: a\n# everything below came from the install\n---\n",
+		},
+		{
+			name:    "a comment is kept when an emptied metadata map is removed",
+			content: "---\nname: x\nmetadata:\n# installed copy\n    bitbucket-repo: r\n---\n# body\n",
+			want:    "---\nname: x\n# installed copy\n---\n# body\n",
+		},
+		{
+			name:    "a comment after the metadata map is preserved with later top-level keys",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\n# license note\nlicense: MIT\n---\n",
+			want:    "---\nname: x\n# license note\nlicense: MIT\n---\n",
+		},
+		{
 			name:    "flow-style metadata is reported, not mangled",
 			content: "---\nname: x\nmetadata: {bitbucket-repo: r, author: a}\n---\n",
 			wantErr: "metadata is not written as a block mapping",

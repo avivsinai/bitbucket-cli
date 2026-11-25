@@ -200,12 +200,22 @@ func StripInstallMetadata(content string) (string, error) {
 		trimmed := strings.TrimRight(line, "\r")
 		blank := strings.TrimSpace(trimmed) == ""
 		indented := strings.HasPrefix(trimmed, " ") || strings.HasPrefix(trimmed, "\t")
-		if inMetadata && !blank && !indented {
+		// A comment is never part of the mapping structure, at any column:
+		// it neither ends the metadata block nor re-scopes the entries around it.
+		comment := strings.HasPrefix(strings.TrimSpace(trimmed), "#")
+		if inMetadata && !blank && !indented && !comment {
 			// Dedented back to the top level: the metadata block has ended.
 			inMetadata = false
 			drop = false
 		}
 		if !inMetadata {
+			kept = append(kept, line)
+			continue
+		}
+		if comment && !indented {
+			// A top-level comment cannot be block scalar content (that would
+			// have to be indented), so it is always authored trivia: keep it
+			// instead of treating it as part of a dropped entry.
 			kept = append(kept, line)
 			continue
 		}
