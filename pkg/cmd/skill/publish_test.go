@@ -224,6 +224,33 @@ func TestPublishFixStripsInstallMetadataAroundComments(t *testing.T) {
 	}
 }
 
+func TestPublishFixPreservesMultilineAndExplicitKeyValues(t *testing.T) {
+	f, stdout, stderr := newTestFactory(t)
+	root := t.TempDir()
+	writeSkill(t, root, "skills/code-review",
+		"---\nname: code-review\ndescription: d\nlicense: MIT\nmetadata:\n  team: |\n    Platform\n\n    Owners\n  bitbucket-repo: |\n    tracking first\n\n    tracking remainder\n  ? owner\n  :\n    nested: original\n---\n# Body\n")
+
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--fix"); err != nil {
+		t.Fatalf("publish --fix: %v (stderr=%s)", err, stderr)
+	}
+
+	fixed := readFile(t, filepath.Join(root, "skills", "code-review", "SKILL.md"))
+	for _, gone := range []string{"bitbucket-repo", "tracking first", "tracking remainder"} {
+		if strings.Contains(fixed, gone) {
+			t.Errorf("%s survived --fix:\n%s", gone, fixed)
+		}
+	}
+	for _, kept := range []string{"team: |", "Platform", "Owners", "? owner", "nested: original", "# Body"} {
+		if !strings.Contains(fixed, kept) {
+			t.Errorf("--fix removed %q:\n%s", kept, fixed)
+		}
+	}
+
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--dry-run"); err != nil {
+		t.Fatalf("after --fix the repository should validate: %v (stdout=%s)", err, stdout)
+	}
+}
+
 func TestPublishFixWithNothingToFix(t *testing.T) {
 	f, stdout, stderr := newTestFactory(t)
 	root := t.TempDir()

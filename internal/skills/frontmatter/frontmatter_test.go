@@ -368,6 +368,21 @@ func TestStripInstallMetadata(t *testing.T) {
 			want:    "---\nname: x\n# license note\nlicense: MIT\n---\n",
 		},
 		{
+			name:    "multiline install values do not leak into authored block scalars",
+			content: "---\nname: x\nmetadata:\n  team: |\n    alpha\n\n    omega\n  bitbucket-repo: |\n    first\n\n    rest\n  author: a\n---\n",
+			want:    "---\nname: x\nmetadata:\n  team: |\n    alpha\n\n    omega\n  author: a\n---\n",
+		},
+		{
+			name:    "an explicit key with a nested value keeps its child indentation",
+			content: "---\nname: x\nmetadata:\n  ? team\n  :\n    nested: original\n  bitbucket-repo: source\n---\n",
+			want:    "---\nname: x\nmetadata:\n  ? team\n  :\n    nested: original\n---\n",
+		},
+		{
+			name:    "an explicit key directly after an install key is preserved",
+			content: "---\nname: x\nmetadata:\n  team: Ada\n  bitbucket-repo: source\n  ? owner\n  :\n    nested: original\n---\n",
+			want:    "---\nname: x\nmetadata:\n  team: Ada\n  ? owner\n  :\n    nested: original\n---\n",
+		},
+		{
 			name:    "flow-style metadata is reported, not mangled",
 			content: "---\nname: x\nmetadata: {bitbucket-repo: r, author: a}\n---\n",
 			wantErr: "metadata is not written as a block mapping",

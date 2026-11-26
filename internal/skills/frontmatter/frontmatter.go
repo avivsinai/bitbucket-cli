@@ -4,6 +4,7 @@ package frontmatter
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -148,9 +149,6 @@ func FindInstallMetadata(result *ParseResult) []string {
 // frontmatter, allowing a trailing comment.
 var metadataKeyLine = regexp.MustCompile(`^metadata:[ \t]*(#.*)?$`)
 
-// entryKeyLine captures the indentation and key of a mapping entry.
-var entryKeyLine = regexp.MustCompile(`^([ \t]+)([^\s:#][^:]*):`)
-
 // StripInstallMetadata removes the install-tracking keys from a SKILL.md by
 // editing the frontmatter line by line. Everything else the author wrote,
 // including comments, quoting, key order and indentation, is preserved byte
@@ -191,65 +189,158 @@ func StripInstallMetadata(content string) (string, error) {
 		install[key] = true
 	}
 
-	kept := append([]string(nil), lines[:metaIdx+1]...)
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content[start:end]), &doc); err != nil {
+		return "", err
+	}
+	entries, err := directMetadataEntries(&doc, metaIdx, len(lines), install)
+	if err != nil {
+		return "", err
+	}
+
+	remove := make([]bool, len(lines))
+	removed := 0
 	remaining := 0
-	drop := false
-	inMetadata := true
-	childIndent := ""
-	for _, line := range lines[metaIdx+1:] {
-		trimmed := strings.TrimRight(line, "\r")
-		blank := strings.TrimSpace(trimmed) == ""
-		indented := strings.HasPrefix(trimmed, " ") || strings.HasPrefix(trimmed, "\t")
-		// A comment is never part of the mapping structure, at any column:
-		// it neither ends the metadata block nor re-scopes the entries around it.
-		comment := strings.HasPrefix(strings.TrimSpace(trimmed), "#")
-		if inMetadata && !blank && !indented && !comment {
-			// Dedented back to the top level: the metadata block has ended.
-			inMetadata = false
-			drop = false
-		}
-		if !inMetadata {
-			kept = append(kept, line)
+	for _, entry := range entries {
+		if !entry.install {
+			remaining++
 			continue
 		}
-		if comment && !indented {
-			// A top-level comment cannot be block scalar content (that would
-			// have to be indented), so it is always authored trivia: keep it
-			// instead of treating it as part of a dropped entry.
-			kept = append(kept, line)
-			continue
-		}
-
-		m := entryKeyLine.FindStringSubmatch(trimmed)
-		switch {
-		case m != nil:
-			if childIndent == "" {
-				childIndent = m[1]
+		from, to := entry.start, entry.end
+		// Blank lines and unindented comments at the end of a span are YAML
+		// trivia rather than mapping structure. Keep them with the surrounding
+		// document instead of deleting them with the install entry.
+		for to > from {
+			trimmed := strings.TrimRight(lines[to-1], "\r")
+			if strings.TrimSpace(trimmed) == "" {
+				to--
+				continue
 			}
-			// Only entries at the metadata map's own child indentation decide
-			// whether their continuation lines stay. A nested key that happens to
-			// use an install key's name is ordinary authored content, both inside
-			// metadata and after a later top-level key.
-			if m[1] == childIndent {
-				key := strings.TrimSpace(strings.Trim(m[2], `"'`))
-				drop = install[key]
-				if !drop {
-					remaining++
-				}
+			if strings.HasPrefix(trimmed, "#") {
+				to--
+				continue
 			}
-		case blank:
-			drop = false
+			break
 		}
-		if !drop {
-			kept = append(kept, line)
+		for i := from; i < to; i++ {
+			if !remove[i] {
+				remove[i] = true
+				removed++
+			}
 		}
 	}
-
+	if removed == 0 {
+		return content, nil
+	}
 	if remaining == 0 {
-		kept = append(kept[:metaIdx], kept[metaIdx+1:]...)
+		remove[metaIdx] = true
 	}
 
-	return content[:start] + strings.Join(kept, "\n") + content[end:], nil
+	kept := make([]string, 0, len(lines)-removed)
+	for i, line := range lines {
+		if !remove[i] {
+			kept = append(kept, line)
+		}
+	}
+	stripped := content[:start] + strings.Join(kept, "\n") + content[end:]
+	if err := verifyOnlyInstallMetadataRemoved(content, stripped); err != nil {
+		return "", err
+	}
+	return stripped, nil
+}
+
+type metadataEntry struct {
+	start   int
+	end     int
+	install bool
+}
+
+// directMetadataEntries returns the line spans of the metadata mapping's direct
+// children. yaml.v3 knows which keys are direct children even when they use
+// explicit-key syntax or have multiline values; using its positions keeps the
+// line rewrite from guessing at indentation inside those values.
+func directMetadataEntries(doc *yaml.Node, metaIdx, lineCount int, install map[string]bool) ([]metadataEntry, error) {
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	root := doc.Content[0]
+	metaPair := -1
+	var metaValue *yaml.Node
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		key := root.Content[i]
+		if key.Value == "metadata" && key.Line-1 == metaIdx {
+			metaPair = i
+			metaValue = root.Content[i+1]
+			break
+		}
+	}
+	if metaPair == -1 || metaValue.Kind != yaml.MappingNode {
+		return nil, nil
+	}
+
+	mappingEnd := lineCount
+	if metaPair+2 < len(root.Content) {
+		mappingEnd = root.Content[metaPair+2].Line - 1
+	}
+	entries := make([]metadataEntry, 0, len(metaValue.Content)/2)
+	for i := 0; i+1 < len(metaValue.Content); i += 2 {
+		key := metaValue.Content[i]
+		start := key.Line - 1
+		end := mappingEnd
+		if i+2 < len(metaValue.Content) {
+			end = metaValue.Content[i+2].Line - 1
+		}
+		if start < 0 || end < start || end > lineCount {
+			return nil, fmt.Errorf("metadata entry positions are inconsistent; remove the install keys by hand")
+		}
+		entries = append(entries, metadataEntry{
+			start:   start,
+			end:     end,
+			install: install[key.Value],
+		})
+	}
+	return entries, nil
+}
+
+// verifyOnlyInstallMetadataRemoved proves that the semantic YAML document is
+// unchanged except for direct install keys missing from metadata. The rewrite
+// is intentionally line-oriented to preserve author formatting, but malformed
+// or unusual YAML must fail closed rather than silently drop authored values.
+func verifyOnlyInstallMetadataRemoved(original, stripped string) error {
+	before, err := Parse(original)
+	if err != nil {
+		return err
+	}
+	after, err := Parse(stripped)
+	if err != nil {
+		return fmt.Errorf("stripped frontmatter does not parse: %w", err)
+	}
+	if before.Body != after.Body {
+		return fmt.Errorf("stripping install metadata changed the document body; remove the install keys by hand")
+	}
+
+	expected := make(map[string]any, len(before.RawYAML))
+	for key, value := range before.RawYAML {
+		expected[key] = value
+	}
+	if meta, ok := before.RawYAML["metadata"].(map[string]any); ok {
+		copyMeta := make(map[string]any, len(meta))
+		for key, value := range meta {
+			copyMeta[key] = value
+		}
+		for _, key := range InstallMetadataKeys {
+			delete(copyMeta, key)
+		}
+		if len(copyMeta) == 0 {
+			delete(expected, "metadata")
+		} else {
+			expected["metadata"] = copyMeta
+		}
+	}
+	if !reflect.DeepEqual(expected, after.RawYAML) {
+		return fmt.Errorf("stripping install metadata changed authored frontmatter values; remove the install keys by hand")
+	}
+	return nil
 }
 
 // frontmatterBounds returns the byte range of the YAML between the delimiters.
