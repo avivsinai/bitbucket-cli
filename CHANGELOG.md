@@ -7,11 +7,12 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
-- `bkt skill publish` keeps nested keys that merely share a name with install
-  metadata when stripping the install metadata itself. Top-level comments no
-  longer end the metadata mapping during the strip, multiline values and
-  explicit YAML keys keep their authored content, and the rewritten frontmatter
-  is validated before the file is written or reported fixed.
+- `bkt skill publish` strips only direct install metadata keys. Nested keys,
+  standalone comments and separators, multiline values, and explicit YAML keys
+  retain their authored content, and the rewritten frontmatter is validated
+  before writing ([#418](https://github.com/avivsinai/bitbucket-cli/pull/418)).
+- Update the `--jq` engine to gojq 0.12.20 for jq compatibility fixes, and
+  refresh the Nix vendor hash.
 
 ## [0.41.0] - 2026-11-24
 ### Added
