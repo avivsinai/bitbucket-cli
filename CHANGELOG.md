@@ -6,6 +6,13 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `bkt skill publish` keeps nested keys that merely share a name with install
+  metadata when stripping the install metadata itself. Top-level comments no
+  longer end the metadata mapping during the strip, multiline values and
+  explicit YAML keys keep their authored content, and the rewritten frontmatter
+  is validated before the file is written or reported fixed.
+
 ## [0.41.0] - 2026-11-24
 ### Added
 - `bkt pr task create` can anchor tasks to the pull request diff in Bitbucket

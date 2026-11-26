@@ -327,9 +327,80 @@ func TestStripInstallMetadata(t *testing.T) {
 			want:    "---\nname: x\nlicense: MIT\n---\n",
 		},
 		{
+			name:    "nested install-looking keys outside the metadata map are kept",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\nlicense:\n    local-path: /licenses/MIT\n---\n",
+			want:    "---\nname: x\nlicense:\n    local-path: /licenses/MIT\n---\n",
+		},
+		{
+			name:    "nested install-looking keys inside another metadata value are kept",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\n    nested:\n        local-path: /nested/path\n---\n",
+			want:    "---\nname: x\nmetadata:\n    nested:\n        local-path: /nested/path\n---\n",
+		},
+		{
 			name:    "windows line endings survive",
 			content: "---\r\nname: x\r\nmetadata:\r\n    bitbucket-repo: r\r\n    author: a\r\n---\r\n# body\r\n",
 			want:    "---\r\nname: x\r\nmetadata:\r\n    author: a\r\n---\r\n# body\r\n",
+		},
+		{
+			// A top-level comment does not end a YAML mapping, so the entries
+			// after it are still metadata children: the install keys must be
+			// stripped rather than surviving as orphans of a removed header.
+			name:    "a comment before the first child does not end the metadata map",
+			content: "---\nname: x\nmetadata:\n# written by the installer\n    bitbucket-repo: r\n    author: a\n---\n",
+			want:    "---\nname: x\nmetadata:\n# written by the installer\n    author: a\n---\n",
+		},
+		{
+			// The same comment after an authored child must not re-scope the
+			// later entries either: the install keys below it are still inside
+			// the metadata map and leave with the rest of the install metadata.
+			name:    "a comment after an authored child does not re-scope later entries",
+			content: "---\nname: x\nmetadata:\n    author: a\n# everything below came from the install\n    bitbucket-repo: r\n    local-path: /p\n---\n",
+			want:    "---\nname: x\nmetadata:\n    author: a\n# everything below came from the install\n---\n",
+		},
+		{
+			name:    "a comment is kept when an emptied metadata map is removed",
+			content: "---\nname: x\nmetadata:\n# installed copy\n    bitbucket-repo: r\n---\n# body\n",
+			want:    "---\nname: x\n# installed copy\n---\n# body\n",
+		},
+		{
+			name:    "a comment after the metadata map is preserved with later top-level keys",
+			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\n# license note\nlicense: MIT\n---\n",
+			want:    "---\nname: x\n# license note\nlicense: MIT\n---\n",
+		},
+		{
+			name:    "a comment and blank separator before a retained key are kept",
+			content: "---\nname: x\nmetadata:\n  bitbucket-repo: source\n\n  # Note for owner\n  owner: Ada\n---\n# Body\n",
+			want:    "---\nname: x\nmetadata:\n\n  # Note for owner\n  owner: Ada\n---\n# Body\n",
+		},
+		{
+			name:    "indented standalone comments are kept without retaining hash-prefixed scalar data",
+			content: "---\r\nname: x\r\nmetadata:\r\n  local-path:\r\n    origin: |\r\n      source\r\n      # scalar data, not a comment\r\n\r\n    # standalone at a deeper indentation\r\n  # Note for owner\r\n  owner: Ada\r\n---\r\n# Body\r\n",
+			want:    "---\r\nname: x\r\nmetadata:\r\n\r\n    # standalone at a deeper indentation\r\n  # Note for owner\r\n  owner: Ada\r\n---\r\n# Body\r\n",
+		},
+		{
+			name:    "hash-prefixed lines in multiline quoted install values are removed",
+			content: "---\nname: x\nmetadata:\n  bitbucket-repo: 'source\n    # still part of the value'\n\n    # real comment\n  owner: Ada\n---\n",
+			want:    "---\nname: x\nmetadata:\n\n    # real comment\n  owner: Ada\n---\n",
+		},
+		{
+			name:    "a comment inside an install span is retained when its surrounding map is removed",
+			content: "---\nname: x\nmetadata:\n  local-path:\n    first: a\n    # authored tracking explanation\n    next: b\nlicense: MIT\n---\n",
+			want:    "---\nname: x\n    # authored tracking explanation\nlicense: MIT\n---\n",
+		},
+		{
+			name:    "multiline install values do not leak into authored block scalars",
+			content: "---\nname: x\nmetadata:\n  team: |\n    alpha\n\n    omega\n  bitbucket-repo: |\n    first\n\n    rest\n  author: a\n---\n",
+			want:    "---\nname: x\nmetadata:\n  team: |\n    alpha\n\n    omega\n  author: a\n---\n",
+		},
+		{
+			name:    "an explicit key with a nested value keeps its child indentation",
+			content: "---\nname: x\nmetadata:\n  ? team\n  :\n    nested: original\n  bitbucket-repo: source\n---\n",
+			want:    "---\nname: x\nmetadata:\n  ? team\n  :\n    nested: original\n---\n",
+		},
+		{
+			name:    "an explicit key directly after an install key is preserved",
+			content: "---\nname: x\nmetadata:\n  team: Ada\n  bitbucket-repo: source\n  ? owner\n  :\n    nested: original\n---\n",
+			want:    "---\nname: x\nmetadata:\n  team: Ada\n  ? owner\n  :\n    nested: original\n---\n",
 		},
 		{
 			name:    "flow-style metadata is reported, not mangled",

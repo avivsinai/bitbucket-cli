@@ -324,6 +324,20 @@ func applyFixes(root string, skills []discovery.Skill, diagnostics []diagnostic)
 			out = append(out, d)
 			continue
 		}
+		// The rewrite is line-oriented, so prove before writing that the result
+		// still parses and no install keys survived; a file that fails either
+		// check stays untouched and is reported rather than fixed.
+		rewritten, err := frontmatter.Parse(stripped)
+		if err != nil {
+			d.Message = fmt.Sprintf("stripping install metadata produced invalid frontmatter, file left unchanged: %v", err)
+			out = append(out, d)
+			continue
+		}
+		if left := frontmatter.FindInstallMetadata(rewritten); len(left) > 0 {
+			d.Message = fmt.Sprintf("stripping install metadata left %s behind, file left unchanged", strings.Join(left, ", "))
+			out = append(out, d)
+			continue
+		}
 		if err := os.WriteFile(skillFile, []byte(stripped), 0o644); err != nil {
 			d.Message = fmt.Sprintf("could not write fixed SKILL.md: %v", err)
 			out = append(out, d)

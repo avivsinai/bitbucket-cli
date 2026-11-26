@@ -189,6 +189,86 @@ func TestPublishFixStripsInstallMetadata(t *testing.T) {
 	}
 }
 
+func TestPublishFixStripsInstallMetadataAroundComments(t *testing.T) {
+	// A top-level comment does not end a YAML mapping: install keys after one
+	// are still metadata children, whether the comment sits before the first
+	// child or after an authored one.
+	f, stdout, stderr := newTestFactory(t)
+	root := t.TempDir()
+	writeSkill(t, root, "skills/code-review",
+		"---\nname: code-review\ndescription: d\nlicense: MIT\nmetadata:\n# written by the installer\n    bitbucket-repo: r\n    author: monalisa\n---\n# Body\n")
+	writeSkill(t, root, "skills/security-review",
+		"---\nname: security-review\ndescription: d\nlicense: MIT\nmetadata:\n    author: monalisa\n# everything below came from the install\n    bitbucket-repo: r\n    local-path: /p\n---\n# Body\n")
+
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--fix"); err != nil {
+		t.Fatalf("publish --fix: %v (stderr=%s)", err, stderr)
+	}
+
+	for _, dir := range []string{"code-review", "security-review"} {
+		fixed := readFile(t, filepath.Join(root, "skills", dir, "SKILL.md"))
+		for _, gone := range []string{"bitbucket-repo", "local-path"} {
+			if strings.Contains(fixed, gone) {
+				t.Errorf("%s: %s survived --fix:\n%s", dir, gone, fixed)
+			}
+		}
+		for _, kept := range []string{"author: monalisa", "metadata:", "# Body"} {
+			if !strings.Contains(fixed, kept) {
+				t.Errorf("%s: --fix removed %q:\n%s", dir, kept, fixed)
+			}
+		}
+	}
+
+	// Both rewritten files validate, so the repository now passes.
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--dry-run"); err != nil {
+		t.Fatalf("after --fix the repository should validate: %v (stdout=%s)", err, stdout)
+	}
+}
+
+func TestPublishFixPreservesMultilineAndExplicitKeyValues(t *testing.T) {
+	f, stdout, stderr := newTestFactory(t)
+	root := t.TempDir()
+	writeSkill(t, root, "skills/code-review",
+		"---\nname: code-review\ndescription: d\nlicense: MIT\nmetadata:\n  team: |\n    Platform\n\n    Owners\n  bitbucket-repo: |\n    tracking first\n\n    tracking remainder\n  ? owner\n  :\n    nested: original\n---\n# Body\n")
+
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--fix"); err != nil {
+		t.Fatalf("publish --fix: %v (stderr=%s)", err, stderr)
+	}
+
+	fixed := readFile(t, filepath.Join(root, "skills", "code-review", "SKILL.md"))
+	for _, gone := range []string{"bitbucket-repo", "tracking first", "tracking remainder"} {
+		if strings.Contains(fixed, gone) {
+			t.Errorf("%s survived --fix:\n%s", gone, fixed)
+		}
+	}
+	for _, kept := range []string{"team: |", "Platform", "Owners", "? owner", "nested: original", "# Body"} {
+		if !strings.Contains(fixed, kept) {
+			t.Errorf("--fix removed %q:\n%s", kept, fixed)
+		}
+	}
+
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--dry-run"); err != nil {
+		t.Fatalf("after --fix the repository should validate: %v (stdout=%s)", err, stdout)
+	}
+}
+
+func TestPublishFixKeepsStandaloneCommentsAndSeparators(t *testing.T) {
+	f, stdout, stderr := newTestFactory(t)
+	root := t.TempDir()
+	const before = "---\r\nname: code-review\r\ndescription: d\r\nlicense: MIT\r\nmetadata:\r\n  bitbucket-repo: source\r\n\r\n  # Note for owner\r\n  owner: Ada\r\n---\r\n# Body\r\n"
+	const want = "---\r\nname: code-review\r\ndescription: d\r\nlicense: MIT\r\nmetadata:\r\n\r\n  # Note for owner\r\n  owner: Ada\r\n---\r\n# Body\r\n"
+	writeSkill(t, root, "skills/code-review", before)
+
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--fix"); err != nil {
+		t.Fatalf("publish --fix: %v (stderr=%s)", err, stderr)
+	}
+	if got := readFile(t, filepath.Join(root, "skills", "code-review", "SKILL.md")); got != want {
+		t.Fatalf("--fix rewrote authored bytes.\n got: %q\nwant: %q", got, want)
+	}
+	if err := runSkill(t, f, stdout, stderr, "publish", root, "--dry-run"); err != nil {
+		t.Fatalf("after --fix the repository should validate: %v (stdout=%s)", err, stdout)
+	}
+}
+
 func TestPublishFixWithNothingToFix(t *testing.T) {
 	f, stdout, stderr := newTestFactory(t)
 	root := t.TempDir()
