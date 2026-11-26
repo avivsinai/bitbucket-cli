@@ -7,6 +7,10 @@ All notable changes to this project will be documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- `bkt skill publish` strips only direct install metadata keys. Nested keys,
+  standalone comments and separators, multiline values, and explicit YAML keys
+  retain their authored content, and the rewritten frontmatter is validated
+  before writing ([#418](https://github.com/avivsinai/bitbucket-cli/pull/418)).
 - Update the `--jq` engine to gojq 0.12.20 for jq compatibility fixes, and
   refresh the Nix vendor hash.
 
