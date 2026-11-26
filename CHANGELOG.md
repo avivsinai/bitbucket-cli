@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Update the `--jq` engine to gojq 0.12.20 for jq compatibility fixes, and
+  refresh the Nix vendor hash.
+
 ## [0.41.0] - 2026-11-24
 ### Added
 - `bkt pr task create` can anchor tasks to the pull request diff in Bitbucket
