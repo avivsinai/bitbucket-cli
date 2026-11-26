@@ -194,7 +194,7 @@ func StripInstallMetadata(content string) (string, error) {
 	if err := yaml.Unmarshal([]byte(content[start:end]), &doc); err != nil {
 		return "", err
 	}
-	entries, err := directMetadataEntries(&doc, metaIdx, len(lines), install)
+	entries, err := directMetadataEntries(&doc, metaIdx, yamlDocumentEnd(lines), install)
 	if err != nil {
 		return "", err
 	}
@@ -229,7 +229,13 @@ func StripInstallMetadata(content string) (string, error) {
 		return content, nil
 	}
 	if remaining == 0 {
-		remove[metaIdx] = true
+		headerSuffix := lines[metaIdx][len("metadata:"):]
+		if strings.Contains(headerSuffix, "#") {
+			// Only the empty mapping is removed. Its note can stand alone.
+			lines[metaIdx] = headerSuffix
+		} else {
+			remove[metaIdx] = true
+		}
 	}
 
 	kept := make([]string, 0, len(lines)-removed)
@@ -243,6 +249,17 @@ func StripInstallMetadata(content string) (string, error) {
 		return "", err
 	}
 	return stripped, nil
+}
+
+// yamlDocumentEnd returns the first line outside the root mapping's bounds.
+func yamlDocumentEnd(lines []string) int {
+	for i, line := range lines {
+		if rest, ok := strings.CutPrefix(line, "..."); ok &&
+			(rest == "" || strings.ContainsRune(" \t\r", rune(rest[0]))) {
+			return i
+		}
+	}
+	return len(lines)
 }
 
 type metadataEntry struct {

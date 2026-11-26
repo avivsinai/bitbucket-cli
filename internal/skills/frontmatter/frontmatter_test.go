@@ -327,6 +327,16 @@ func TestStripInstallMetadata(t *testing.T) {
 			want:    "---\nname: x\nlicense: MIT\n---\n",
 		},
 		{
+			name:    "the end of the YAML document and its comment are kept",
+			content: "---\r\nname: x\r\nmetadata:\r\n  local-path: source\r\n... # document end\r\n---\r\n# Body\r\n",
+			want:    "---\r\nname: x\r\n... # document end\r\n---\r\n# Body\r\n",
+		},
+		{
+			name:    "the comment on the metadata header survives when the map is removed",
+			content: "---\nname: x\nmetadata:  # author note\n  local-path: source\n---\n",
+			want:    "---\nname: x\n  # author note\n---\n",
+		},
+		{
 			name:    "nested install-looking keys outside the metadata map are kept",
 			content: "---\nname: x\nmetadata:\n    bitbucket-repo: r\nlicense:\n    local-path: /licenses/MIT\n---\n",
 			want:    "---\nname: x\nlicense:\n    local-path: /licenses/MIT\n---\n",
